@@ -851,7 +851,9 @@ export default function App(){
   const [pending,setPending]   = useState(INIT_PENDING);
   const [investments,setInvestments] = useState(INIT_INVESTMENTS);
   const [dbLoading,setDbLoading] = useState(true);
-
+const [expModal,setExpModal] = useState(false);
+const [editExp,setEditExp]   = useState(null);
+const [expF,setExpF]         = useState({...emptyE});
   useEffect(function(){
     async function loadAll(){
       try {
