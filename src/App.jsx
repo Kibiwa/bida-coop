@@ -83,6 +83,15 @@ function effectiveBorrowLimit(m,loans){
   return Math.round(base*borrowCapacityRate(m,loans||[])*(1-defaultPrincipalPenalty(m,loans||[])));
 }
 const borrowLimit=(m,loans)=>effectiveBorrowLimit(m,loans||[]);
+// Service provider compliance: must have membership, annualSub >= 50,000, monthlySavings > 0
+const isProviderCompliant=(m)=>m&&(m.membership||0)>=50000&&(m.annualSub||0)>=50000&&(m.monthlySavings||0)>0;
+const spExpiryDate=(sp)=>{
+  if(!sp.registeredDate)return null;
+  const d=new Date(sp.registeredDate);
+  d.setMonth(d.getMonth()+(sp.isMember?12:6));
+  return d;
+};
+const spIsActive=(sp)=>{const e=spExpiryDate(sp);return e?new Date()<=e:false;};
 
 const INIT_MEMBERS = [
   {id:1,name:"LUKULA PATRICK",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:60000,welfare:40000,shares:150000,joinDate:"2024-01-01"},
@@ -140,8 +149,99 @@ const INIT_LOANS = [
 ];
 
 const INIT_INVESTMENTS = [];
-const INIT_EXPENSES    = [];
+const SAVINGS_CHART_DATA = [{"month": "2022 Q1", "total": 2850000, "label": "Q1 2022"}, {"month": "2022 Q2", "total": 5200000, "label": "Q2 2022"}, {"month": "2022 Q3", "total": 7100000, "label": "Q3 2022"}, {"month": "2022 Q4", "total": 9800000, "label": "Q4 2022"}, {"month": "2023 Q1", "total": 12400000, "label": "Q1 2023"}, {"month": "2023 Q2", "total": 15600000, "label": "Q2 2023"}, {"month": "2023 Q3", "total": 18200000, "label": "Q3 2023"}, {"month": "2023 Q4", "total": 20500000, "label": "Q4 2023"}, {"month": "2024 Q1", "total": 22800000, "label": "Q1 2024"}, {"month": "2024 Q2", "total": 24500000, "label": "Q2 2024"}, {"month": "2024 Q3", "total": 26100000, "label": "Q3 2024"}, {"month": "2024 Q4", "total": 27400000, "label": "Q4 2024"}, {"month": "2025 Q1", "total": 28100000, "label": "Q1 2025"}, {"month": "2025 Q2", "total": 28500000, "label": "Q2 2025"}, {"month": "2025 Q3", "total": 28760000, "label": "Q3 2025 (Current)"}];
+const EXPENSES_CHART_DATA = [{"month": "2022-02", "total": 20000, "meetings": 0, "transport": 20000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-03", "total": 200000, "meetings": 200000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-04", "total": 585000, "meetings": 60000, "transport": 125000, "printing": 0, "legal_registration": 400000, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-05", "total": 847000, "meetings": 420000, "transport": 0, "printing": 62000, "legal_registration": 150000, "banking": 0, "operations": 122000, "communications": 0, "refunds": 93000}, {"month": "2023-02", "total": 100000, "meetings": 0, "transport": 0, "printing": 100000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-03", "total": 285000, "meetings": 0, "transport": 285000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-04", "total": 390000, "meetings": 120000, "transport": 270000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-06", "total": 320000, "meetings": 0, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 100000, "communications": 20000, "refunds": 200000}, {"month": "2023-07", "total": 895000, "meetings": 105000, "transport": 220000, "printing": 0, "legal_registration": 0, "banking": 270000, "operations": 300000, "communications": 0, "refunds": 0}, {"month": "2023-09", "total": 40000, "meetings": 40000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-11", "total": 150000, "meetings": 150000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-12", "total": 100000, "meetings": 0, "transport": 0, "printing": 100000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-01", "total": 280000, "meetings": 60000, "transport": 100000, "printing": 120000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-02", "total": 1110000, "meetings": 170000, "transport": 125000, "printing": 670000, "legal_registration": 135000, "banking": 0, "operations": 10000, "communications": 0, "refunds": 0}, {"month": "2024-04", "total": 120000, "meetings": 120000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-08", "total": 100000, "meetings": 0, "transport": 100000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-09", "total": 100000, "meetings": 0, "transport": 100000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-03", "total": 2103000, "meetings": 1403000, "transport": 200000, "printing": 0, "legal_registration": 500000, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-04", "total": 250000, "meetings": 250000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-08", "total": 25000, "meetings": 25000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-09", "total": 80000, "meetings": 80000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}];
+const INIT_EXPENSES    = [
+  {id:1,date:"2022-02-15",activity:"TRANSPORT TO PICK CASHFLOW BOOK",amount:20000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:2,date:"2022-03-03",activity:"VENUE AT BISTRONA",amount:100000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:3,date:"2022-03-05",activity:"FACILITATION",amount:100000,issuedBy:"LUBAALE ANGELLA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:4,date:"2022-04-15",activity:"PRINTING OF ALL BIDA DOCUMENTS PLUS TRANSPORT",amount:125000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:5,date:"2022-04-15",activity:"REFUND TO BINNASALI FOR PAYMENT VENUE2/4/2022",amount:60000,issuedBy:"HAJJI BINNASALI",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:6,date:"2022-04-16",activity:"ACCOUNT OPENNING",amount:320000,issuedBy:"MR GANDI FRED",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:7,date:"2022-04-16",activity:"BIDA TRADING LICENCE 24/3/2022",amount:80000,issuedBy:"HAJJI BINNASALI",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:8,date:"2022-05-05",activity:"BIDA SACCO MEETING AT BISTRONA",amount:100000,issuedBy:"BAIRA RICHARD",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:9,date:"2022-05-15",activity:"DESIGNING BI LAWS",amount:100000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:10,date:"2022-05-20",activity:"TIN",amount:50000,issuedBy:"BINNASALI KITAKKULE",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:11,date:"2022-05-20",activity:"ON 16/4/2022 MEETING FACILITATION AT KASAKA",amount:100000,issuedBy:"MWASE PATRICK",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:12,date:"2022-05-20",activity:"1 MINUTE BOOK ON",amount:12000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:13,date:"2022-05-20",activity:"PLASTIC BURNER",amount:70000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:14,date:"2022-05-20",activity:"TEMPORARY BIDA OFFICE",amount:52000,issuedBy:"ME MUTESI",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:15,date:"2022-05-20",activity:"TRANSPORT TO NANSANA MEETING",amount:35000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:16,date:"2022-05-20",activity:"FACILITATION DATA/AIRTIME",amount:50000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:17,date:"2022-05-20",activity:"MARTHER FEES REFUND",amount:93000,issuedBy:"BAFUMBA SARAH",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"refunds",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:18,date:"2022-05-20",activity:"PURCHACEOF COOPERATIVE BOOKS",amount:50000,issuedBy:"NAMULAWA ZABIA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:19,date:"2022-05-20",activity:"3TIMES  MEETING HAJJ AND CHAIR 3/12/22,08/22,18/12/22",amount:135000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:20,date:"2023-02-24",activity:"PHONE AND LINES DESGINING DOCUMENTS",amount:100000,issuedBy:"AIDHA ZIRABA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:21,date:"2023-03-25",activity:"PTINTING AND TRANSPORT",amount:165000,issuedBy:"AIDHA ZIRABA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:22,date:"2023-03-25",activity:"TRANSPORT TO MEET CHAIRMAN TO SIGN BIDA DOCUMENTS",amount:20000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:23,date:"2023-03-27",activity:"TRANSPORTTOBIDA MEMBERS SIGN DOCUMENTS",amount:100000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:24,date:"2023-04-28",activity:"TRANSPORT TP,CHAIRMAN,SECRETARYTREASURER",amount:70000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:25,date:"2023-04-28",activity:"FACILITATION  DURING BIDA MEETING AT KASAKA",amount:120000,issuedBy:"MONICA NANSIKO",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:26,date:"2023-04-28",activity:"MEMBERS FILES AND TRANSPORT",amount:100000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:27,date:"2023-04-28",activity:"TRANSPORT TP TREASUER MARCH AND APRIL 4TIMES",amount:100000,issuedBy:"WANYAN JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:28,date:"2023-06-07",activity:"TRANSP0RT TO BIDA ACTIVITIES",amount:100000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:29,date:"2023-06-17",activity:"REFUND",amount:200000,issuedBy:"ZZABIA NAMULAWA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"refunds",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:30,date:"2023-06-18",activity:"AIRTIME AND DATA",amount:20000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"communications",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:31,date:"2023-07-14",activity:"TRANSPORT",amount:30000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:32,date:"2023-07-14",activity:"THE STAMP /TRANSPORT",amount:65000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:33,date:"2023-07-18",activity:"TO TRANSPORT DOCUMENTS TO KAMULI",amount:25000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:34,date:"2023-07-18",activity:"TRANSPORT TO COMMRCIAL OFFICER",amount:100000,issuedBy:"INHENSICO MONICA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:35,date:"2023-07-18",activity:"FACILITATION TO THE COMMERCIAL OFFICER",amount:105000,issuedBy:"INHENSICO MONICA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:36,date:"2023-07-18",activity:"Payment to Zabia Mulawa",amount:300000,issuedBy:"NAMULAWA ZABIA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:37,date:"2023-07-30",activity:"BANK CHARGES",amount:270000,issuedBy:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:38,date:"2023-09-07",activity:"TRANSPORT AND FACILITATION",amount:40000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:39,date:"2023-11-25",activity:"FACILITATION TO THE COMMERCIAL OFFICER",amount:150000,issuedBy:"INHENSICO MONICA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:40,date:"2023-12-04",activity:"PAYMMENTFOR STAMP",amount:100000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:41,date:"2024-01-11",activity:"Facilitation to treasurer for data and airtime",amount:20000,issuedBy:"WANYAN JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:42,date:"2024-01-11",activity:"FACILITATION DATA/AIRTIME",amount:20000,issuedBy:"Aidah Ziraba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:43,date:"2024-01-11",activity:"Printing headed papers for the coop",amount:120000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:44,date:"2024-01-11",activity:"Mukesi transport to Kamuli to see DCO",amount:60000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:45,date:"2024-01-11",activity:"Robina transport to Kampala to deliver minutes for the AGM for the coop",amount:20000,issuedBy:"Robina Kalinaki",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:46,date:"2024-01-13",activity:"Mukesi transport from Kamuli to kampala after seing the DCO",amount:40000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:47,date:"2024-02-08",activity:"Facilitation to David to see Aidah and Julie to sign board resolution",amount:30000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:48,date:"2024-02-10",activity:"Transport for Mukesi to look Aidah to sign Board resolution",amount:20000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:49,date:"2024-02-10",activity:"Paid David for filing BIDA cooperative returns to URSB",amount:80000,issuedBy:"Daved Kemba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:50,date:"2024-02-10",activity:"Facilitation to lawyer David to change initial wrong board resolution made for t",amount:50000,issuedBy:"Daved Kemba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:51,date:"2024-02-12",activity:"Transport of chair to the bank of Nansana 4 times",amount:75000,issuedBy:"Fred Gandi",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:52,date:"2024-02-21",activity:"Transport facilitation to the Bank to open up coop A/C",amount:30000,issuedBy:"WANYAN JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:53,date:"2024-02-21",activity:"Transport facilitation to the Bank",amount:30000,issuedBy:"Aidah Ziraba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:54,date:"2024-02-21",activity:"Afidavit by Aidah for wrong signatures",amount:55000,issuedBy:"Aidah Ziraba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:55,date:"2024-02-22",activity:"Banker-Brian facilitation to open up account",amount:30000,issuedBy:"Fred Gandi",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:56,date:"2024-02-22",activity:"Paid Brian to follow up our cooperative opening of account",amount:10000,issuedBy:"Fred Gandi",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:57,date:"2024-02-26",activity:"Spent on printing BIDA Cooperative documents including (50 passbooks, 8 big rece",amount:670000,issuedBy:"Vincent Ntale",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:58,date:"2024-02-26",activity:"Transport to town to collect printed books by Peter",amount:30000,issuedBy:"Vincent Ntale",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:59,date:"2024-04-26",activity:"MEALS AND REFRESHMENTS DYRING A MEETING AT KASAKA",amount:120000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:60,date:"2024-08-10",activity:"Transport to Wagabaza for picking letters for certificate",amount:50000,issuedBy:"Musitafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:61,date:"2024-08-30",activity:"Transport to Musitafa for transport to pick final letters for permanent certific",amount:50000,issuedBy:"Musitafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:62,date:"2024-09-10",activity:"Transport and token to Musitafa for delivering permanent certificate",amount:100000,issuedBy:"Musitafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:63,date:"2024-12-31",activity:"Bank Charges — Year 2024",amount:137999,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:64,date:"2025-02-01",activity:"Bank Charges — 2025-02",amount:17483,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:65,date:"2025-03-01",activity:"Bank Charges — 2025-03",amount:1368,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:66,date:"2025-03-20",activity:"Paid transport to inhensiko transport",amount:200000,issuedBy:"Monica",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:67,date:"2025-03-20",activity:"Printing charges of AGM documents",amount:215000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:68,date:"2025-03-20",activity:"Paid to AGM extra costs to hotel",amount:58000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:69,date:"2025-03-20",activity:"AGM Arrangement-withrew from account and paid hotel",amount:500000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:70,date:"2025-03-20",activity:"Audit for cooperative paid to Izimba",amount:500000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:71,date:"2025-03-20",activity:"AGM arrangement paid to hotel",amount:300000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:72,date:"2025-03-20",activity:"AGM arrangement paid to hotel",amount:200000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:73,date:"2025-03-29",activity:"AGM arrangements hotel",amount:130000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:74,date:"2025-04-01",activity:"Bank Charges — 2025-04",amount:12689,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:75,date:"2025-04-11",activity:"Payment to Sarah Namugoya to facilitate coop training",amount:250000,issuedBy:"Sarah Namugooya",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:76,date:"2025-05-01",activity:"Bank Charges — 2025-05",amount:1490,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:77,date:"2025-06-01",activity:"Bank Charges — 2025-06",amount:1551,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:78,date:"2025-07-01",activity:"Bank Charges — 2025-07",amount:88353,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:79,date:"2025-08-01",activity:"Bank Charges — 2025-08",amount:1198,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:80,date:"2025-08-12",activity:"Musitafa paid for re-writing BIDA coop AGM minutes",amount:25000,issuedBy:"Musitafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:81,date:"2025-09-01",activity:"Bank Charges — 2025-09",amount:1162,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:82,date:"2025-09-16",activity:"Musitafa paid for re-writing BIDA coop AGM minutes",amount:35000,issuedBy:"Mustafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:83,date:"2025-09-16",activity:"Refreshmnets for 3 pple (fred, Rogers and Mustafa)",amount:45000,issuedBy:"Fred Gandi",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:84,date:"2025-10-01",activity:"Bank Charges — 2025-10",amount:1205,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
+  {id:85,date:"2025-11-01",activity:"Bank Charges — 2025-11",amount:11500,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""}
+];
 const INIT_RECEIPTS    = [];
+// Service providers: BIDA members who provide consistent services
+// Must be compliant: active membership, annualSub >= 50,000, monthlySavings > 0
+const INIT_SERVICE_PROVIDERS = [];
 const INIT_PENDING     = []; // pending approvals queue
 
 // ── AUTH — two users only ──
@@ -151,19 +251,23 @@ const USERS = {
 };
 // Change PINs above before deploying!
 
-const EXP_CATEGORIES = ["Operations","Travel","Office Supplies","Meetings","Banking","Welfare Payouts","Salaries","Other"];
+const SERVICE_TYPES = ["Printing & Stationery","Transport","Catering & Meetings","Legal & Registration","IT & Communications","Venue & Facilities","Audit & Accounting","Other"];
+const EXP_CATEGORIES = ["Operations","Meetings","Transport","Printing","Legal & Registration","Banking","Communications","Welfare Payouts","Refunds","Salaries","Other"];
 const INV_TYPE_LABELS = {unit_trust:"Unit Trust",treasury_bond:"Treasury Bond",fixed_deposit:"Fixed Deposit",money_market:"Money Market",other:"Other"};
 
 const emptyInv = {
   id:null, platform:"", type:"unit_trust", amount:"", dateInvested:"",
-  interestEarned:0, lastUpdated:"", status:"active", notes:""
+  investmentYear:new Date().getFullYear(), interestEarned:0, lastUpdated:"", status:"active", notes:"",
+  approvalStatus:"pending", approvedByMemberId:"", approvedBy:"", approvalDate:"",
+  documents:[], docNames:[]
 };
 
 const emptyE = {
   date: new Date().toISOString().split("T")[0],
-  activity:"", amount:"", issuedBy:"", approvedBy:"", approverPhone:"", approverNIN:"",
+  activity:"", amount:"", issuedBy:"", issuedByPhone:"", issuedByNIN:"", issuedById:"",
+  approvedBy:"", approverPhone:"", approverNIN:"",
   purpose:"", payMode:"cash", bankName:"", bankAccount:"", depositorName:"",
-  mobileNumber:"", transactionId:"", category:"operations", categoryCustom:""
+  mobileNumber:"", transactionId:"", category:"operations", categoryCustom:"", bankCharges:0, approverMemberId:""
 };
 const emptyL = {
   memberId:"", memberName:"", dateBanked:"", amountLoaned:"", processingFeePaid:"",
@@ -205,23 +309,130 @@ function buildSavingsEmail(m){const mn=MONTHS[new Date().getMonth()],yr=new Date
 function buildLoanEmail(m,loan){const c=calcLoan(loan);return{subj:"BIDA Cooperative — Loan Settlement Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nThis is a reminder that you have an outstanding loan balance with BIDA Co-operative.\n\nLoan Details:\n  Principal:        "+fmt(loan.amountLoaned)+"\n  Issued:           "+fmtD(loan.dateBanked)+"\n  Months elapsed:   "+c.months+"\n  Monthly Payment:  "+fmt(c.monthlyPayment)+"\n  Total due:        "+fmt(c.totalDue)+"\n  ─────────────────────────\n  Outstanding:      "+fmt(c.balance)+"\n\nPlease arrange payment at your earliest convenience.\n\nBIDA Co-operative Multi-Purpose Society\n"+toStr()};}
 function buildDueEmail(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return{subj:"⚠️ BIDA Cooperative — Loan Due in 5 Days: "+dueFmt,body:"Dear "+m.name.split(" ")[0]+",\n\nThis is an automated reminder that your BIDA Co-operative loan is due for full settlement on "+dueFmt+".\n\nLoan Summary:\n  Principal:       "+fmt(loan.amountLoaned)+"\n  Monthly Payment: "+fmt(c.monthlyPayment)+"\n  ─────────────────────────\n  Balance Due:     "+fmt(c.balance)+"\n\nPlease ensure payment is made on or before the due date to avoid your account being marked overdue.\n\nBIDA Co-operative Multi-Purpose Society\n"+toStr()};}
 
+// Convert blob to base64 data URL — works in ALL environments including sandboxed iframes
+function blobToDataUrl(blob){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(r.result);
+    r.onerror=reject;
+    r.readAsDataURL(blob);
+  });
+}
+
 async function shareViaPDF(blob, filename, memberName){
+  // Try native share (mobile)
   if(navigator.canShare&&navigator.canShare({files:[new File([blob],filename,{type:"application/pdf"})]})){
-    try{await navigator.share({files:[new File([blob],filename,{type:"application/pdf"})],title:"BIDA Cooperative — "+(memberName||"Report"),text:"Please find your BIDA Cooperative statement attached."});return "shared";}
-    catch(e){if(e.name!=="AbortError")console.warn("Share failed:",e);return "cancelled";}
+    try{
+      await navigator.share({files:[new File([blob],filename,{type:"application/pdf"})],title:"BIDA Cooperative — "+(memberName||"Report"),text:"Please find your BIDA Cooperative statement attached."});
+      return "shared";
+    }catch(e){if(e.name!=="AbortError")console.warn("Share failed:",e);}
   }
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");a.href=url;a.download=filename;a.click();
-  setTimeout(()=>URL.revokeObjectURL(url),5000);
-  const msg=encodeURIComponent("Hi, please find your BIDA Co-operative statement — "+(memberName||"report")+" — just downloaded to your device.");
-  window.open("https://wa.me/?text="+msg,"_blank");
-  return "fallback";
+  // Fallback: data URL anchor click
+  const dataUrl=await blobToDataUrl(blob);
+  const a=document.createElement("a");
+  a.href=dataUrl;
+  a.download=filename;
+  a.style.cssText="position:fixed;top:-100px;left:-100px;opacity:0";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{try{document.body.removeChild(a);}catch(e){}},5000);
+  return "downloaded";
+}
+
+// ── Central PDF loader — loads jsPDF + autoTable once ──
+let _jspdfLoaded=false;
+async function loadJsPDF(){
+  if(_jspdfLoaded&&window.jspdf&&window.jspdf.jsPDF)return;
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+  _jspdfLoaded=true;
+}
+
+
+// ── LOAN AGREEMENT PDF ──────────────────────────────────────────────────────
+async function generateLoanPDF(loan, member, calc){
+  await loadJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  const NAVY=[13,52,97],BLUE=[21,101,192],WHITE=[255,255,255],GREY=[94,127,160],RED=[198,40,40],GREEN=[27,94,32],BLITE=[227,242,253];
+  // Header
+  doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
+  doc.setFillColor(...BLUE);doc.rect(0,28,W,2,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(...WHITE);doc.text("BIDA",14,12);
+  doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",14,18);
+  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("LOAN AGREEMENT",W/2,12,{align:"center"});
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(187,222,251);doc.text("Official Loan Disbursement Record — Confidential",W/2,19,{align:"center"});
+  doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Date: "+toStr(),W-12,12,{align:"right"});doc.text("Loan Ref: #"+loan.id,W-12,18,{align:"right"});
+  // Borrower block
+  doc.setFillColor(...BLITE);doc.roundedRect(12,36,W-24,22,3,3,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...NAVY);doc.text("BORROWER DETAILS",16,44);
+  doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(40,40,40);
+  doc.text("Name: "+member.name,16,51);
+  doc.text("Phone: "+(loan.borrowerPhone||member.phone||"—")+"   NIN: "+(loan.borrowerNIN||member.nin||"—"),16,57);
+  doc.text("Address: "+(loan.borrowerAddress||member.address||"—"),16,63);
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...BLUE);doc.text(fmt(loan.amountLoaned),W-14,50,{align:"right"});
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("PRINCIPAL AMOUNT",W-14,56,{align:"right"});
+  // Loan terms table
+  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("LOAN TERMS",14,73);
+  const method=calc.method==="reducing"?"6% Reducing Balance":"4% Flat Rate";
+  doc.autoTable({startY:77,
+    head:[["Item","Details"]],
+    body:[
+      ["Loan Reference","#"+loan.id],
+      ["Principal Amount",fmt(loan.amountLoaned)],
+      ["Interest Method",method],
+      ["Interest Rate",(calc.rate*100)+"%  per month"],
+      ["Repayment Term",calc.term+" months"],
+      ["Monthly Payment",fmt(calc.monthlyPayment)],
+      ["Total Interest",fmt(calc.totalInterest)],
+      ["Total Amount Due",fmt(calc.totalDue)],
+      ["Processing Fee",fmt(loan.processingFeePaid||0)],
+      ["Date Issued",fmtD(loan.dateBanked)],
+      ["Expected Completion",(()=>{if(!loan.dateBanked)return "—";const d=new Date(loan.dateBanked);d.setMonth(d.getMonth()+calc.term);return d.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});})()],
+      ["Loan Purpose",loan.loanPurpose||"—"],
+      ["Loan Type",(loan.loanType||"personal").charAt(0).toUpperCase()+(loan.loanType||"personal").slice(1)],
+    ],
+    styles:{fontSize:9,cellPadding:3},
+    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
+    columnStyles:{0:{cellWidth:70,fontStyle:"bold",textColor:NAVY},1:{fontStyle:"normal"}},
+    alternateRowStyles:{fillColor:[245,250,255]},
+    didParseCell:(d)=>{
+      if(d.row.index===7&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";}
+    },
+    margin:{left:14,right:14}
+  });
+  // Guarantor
+  if(loan.guarantorName){
+    const gy=doc.lastAutoTable.finalY+8;
+    doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("GUARANTOR DETAILS",14,gy);
+    doc.autoTable({startY:gy+4,
+      body:[["Name",loan.guarantorName],["Phone",loan.guarantorPhone||"—"],["NIN",loan.guarantorNIN||"—"],["Address",loan.guarantorAddress||"—"]],
+      styles:{fontSize:8.5,cellPadding:2.5},
+      columnStyles:{0:{cellWidth:40,fontStyle:"bold",textColor:NAVY}},
+      margin:{left:14,right:14}
+    });
+  }
+  // Signature block
+  const sigY=Math.min(doc.lastAutoTable?doc.lastAutoTable.finalY+12:200, H-55);
+  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("ACKNOWLEDGEMENT & SIGNATURES",14,sigY);
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(60,60,60);
+  doc.text("I, the borrower, confirm receipt of "+fmt(loan.amountLoaned)+" and agree to repay as stated above.",14,sigY+7);
+  doc.setDrawColor(150,150,150);
+  doc.line(14,sigY+22,85,sigY+22);doc.line(105,sigY+22,W-14,sigY+22);
+  doc.setFontSize(7);doc.setTextColor(...GREY);
+  doc.text("Borrower Signature & Date",14,sigY+27);doc.text("BIDA Authorised Signatory & Date",105,sigY+27);
+  // Footer
+  doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+  doc.text("BIDA Co-operative Multi-Purpose Society — Loan Agreement — Confidential",12,H-4);
+  doc.text(toStr(),W-12,H-4,{align:"right"});
+  return doc.output("blob");
 }
 
 // ── PDF GENERATION ──────────────────────────────────────────────────────────
 async function generatePDF(type, members, loans, expenses, returnBlob=false){
-  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+  await loadJsPDF();
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
@@ -232,11 +443,56 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
 
   if(type==="savings"){
     const tM=members.reduce((s,m)=>s+(m.membership||0),0),tA=members.reduce((s,m)=>s+(m.annualSub||0),0),tS=members.reduce((s,m)=>s+(m.monthlySavings||0),0),tW=members.reduce((s,m)=>s+(m.welfare||0),0),tSh=members.reduce((s,m)=>s+(m.shares||0),0),grand=members.reduce((s,m)=>s+totBanked(m),0);
-    dH("MEMBER SAVINGS REPORT","Savings & Contributions — "+toStr());
-    sB(10,27,42,16,"Members",""+members.length,BLUE);sB(56,27,42,16,"Total Banked",fmt(grand),BLUE);sB(102,27,42,16,"Monthly Savings",fmt(tS),[25,118,210]);sB(148,27,42,16,"Total Shares",fmt(tSh),[30,136,229]);sB(194,27,42,16,"Welfare Pool",fmt(tW),[66,165,245]);sB(240,27,42,16,"Annual Subs",fmt(tA),[100,181,246]);
-    const rows=members.map((m,i)=>[i+1,m.name,fmtN(m.membership),fmtN(m.annualSub),fmtN(m.monthlySavings),fmtN(m.welfare),fmtN(m.shares),fmtN(totBanked(m)),fmt(borrowLimit(m,loans))]);
-    rows.push(["","TOTAL",fmtN(tM),fmtN(tA),fmtN(tS),fmtN(tW),fmtN(tSh),fmtN(grand),"—"]);
-    doc.autoTable({startY:48,head:[["#","Member Name","Membership","Annual Sub","Monthly Savings","Welfare","Shares","Total Banked","Max Borrow"]],body:rows,styles:{fontSize:7.5,cellPadding:2.5},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center"},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{halign:"center",cellWidth:8},1:{cellWidth:46,fontStyle:"bold"},2:{halign:"right"},3:{halign:"right"},4:{halign:"right"},5:{halign:"right"},6:{halign:"right"},7:{halign:"right",fontStyle:"bold"},8:{halign:"right",textColor:BLUE}},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
+    const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
+    const profit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
+    const cashInBk=grand+profit-totalExp;
+    dH("BIDA CO-OPERATIVE — MEMBER SAVINGS LEDGER","Financial Statement as at "+toStr());
+    sB(10,27,38,16,"Members",""+members.length,BLUE);
+    sB(52,27,46,16,"Total Banked",fmt(grand),BLUE);
+    sB(102,27,44,16,"Monthly Rate",fmt(tS),[25,118,210]);
+    sB(150,27,44,16,"Welfare Pool",fmt(tW),[66,165,245]);
+    sB(198,27,44,16,"Cash in Bank",fmt(cashInBk),cashInBk<0?RED:GREEN);
+    sB(246,27,40,16,"Total Expenses",fmt(totalExp),RED);
+    // Main member table with contact details
+    const rows=members.map((m,i)=>{
+      const bl=borrowLimit(m,loans);
+      const activeLoan=loans.find(l=>l.memberId===m.id&&l.status!=="paid");
+      const contact=(m.phone||m.whatsapp)?" | "+(m.phone||m.whatsapp):"";
+      const nin=m.nin?" | "+m.nin:"";
+      return [i+1,m.name+contact+nin,m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{month:"short",year:"numeric"}):"—",fmtN(m.membership),fmtN(m.annualSub),fmtN(m.monthlySavings),fmtN(m.welfare),fmtN(m.shares),fmtN(totBanked(m)),fmt(bl),activeLoan?fmt(calcLoan(activeLoan).balance):"—"];
+    });
+    rows.push(["","TOTALS","",fmtN(tM),fmtN(tA),fmtN(tS),fmtN(tW),fmtN(tSh),fmtN(grand),"","—"]);
+    doc.autoTable({
+      startY:48,
+      head:[["#","Member","Since","Membership","Annual Sub","Monthly","Welfare","Shares","Total Banked","Max Borrow","Loan Bal"]],
+      body:rows,
+      styles:{fontSize:6.5,cellPadding:2},
+      headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:6.5},
+      alternateRowStyles:{fillColor:[245,250,255]},
+      columnStyles:{
+        0:{halign:"center",cellWidth:6},
+        1:{cellWidth:40,fontStyle:"bold"},
+        2:{halign:"center",cellWidth:16},
+        3:{halign:"right",cellWidth:18},4:{halign:"right",cellWidth:18},
+        5:{halign:"right",cellWidth:18},6:{halign:"right",cellWidth:18},
+        7:{halign:"right",cellWidth:18},
+        8:{halign:"right",fontStyle:"bold",cellWidth:22},
+        9:{halign:"right",textColor:BLUE,cellWidth:22},
+        10:{halign:"right",textColor:RED,cellWidth:18},
+      },
+      didParseCell:(d)=>{
+        if(d.row.index===members.length&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";}
+        if(d.column.index===10&&d.section==="body"&&d.cell.raw!=="—")d.cell.styles.textColor=RED;
+      },
+      margin:{left:8,right:8},
+      didDrawPage:(d)=>dF(d.pageNumber)
+    });
+    // Summary footer
+    const fy=doc.lastAutoTable.finalY+5;
+    doc.setFillColor(227,242,253);doc.roundedRect(8,fy,W-16,16,2,2,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...NAVY);
+    const summaryItems=[["Total Banked",fmt(grand)],["Total Expenses",fmt(totalExp)],["Loan Profit",fmt(profit)],["Cash in Bank",fmt(cashInBk)],["Active Loans",""+loans.filter(l=>l.status!=="paid").length],["Outstanding",fmt(loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+calcLoan(l).balance,0))]];
+    summaryItems.forEach((item,i)=>{const x=10+i*47;doc.setFontSize(6);doc.setFont("helvetica","normal");doc.setTextColor(...GREY);doc.text(item[0].toUpperCase(),x,fy+5);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...NAVY);doc.text(item[1],x,fy+11);});
     if(returnBlob)return doc.output("blob");doc.save("BIDA_Savings_Report.pdf");
   } else if(type==="loans"){
     const calcs=loans.map(l=>({...l,...calcLoan(l)})),active=calcs.filter(l=>l.status!=="paid"),paid=calcs.filter(l=>l.status==="paid");
@@ -250,72 +506,250 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
     const pool=members.reduce((s,m)=>s+totBanked(m),0);
     const profit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-    dH("EXPENSES REGISTER","Expenditure Record — "+toStr());
-    sB(10,27,42,16,"Total Expenses",fmt(totalExp),RED);sB(56,27,42,16,"Fund Pool",fmt(pool),BLUE);sB(102,27,42,16,"Profit Realised",fmt(profit),GREEN);sB(148,27,42,16,"Net Balance",fmt(pool+profit-totalExp),[21,101,192]);sB(194,27,42,16,"Transactions",""+expenses.length,GREY);
+    const cashInBk=pool+profit-totalExp;
     const catTotals={};expenses.forEach(e=>{catTotals[e.category]=(catTotals[e.category]||0)+(+e.amount||0);});
-    const rows=expenses.map((e,i)=>{
-      let payDetail=e.payMode==="cash"?"Cash":e.payMode==="bank"?`Bank Transfer — ${e.bankName||""} Acct: ${e.bankAccount||""}`:e.payMode==="mtn"?`MTN MoMo — ${e.mobileNumber||""}`:e.payMode==="airtel"?`Airtel Money — ${e.mobileNumber||""}`:e.payMode;
-      return [i+1,fmtD(e.date),e.activity,e.purpose||"—",fmtN(+e.amount||0),e.issuedBy||"—",e.approvedBy||"—",payDetail,e.category];
+    dH("BIDA CO-OPERATIVE — EXPENSES REGISTER","Full Expenditure Ledger with Running Balance — "+toStr());
+    sB(10,27,42,16,"Fund Pool",fmt(pool),BLUE);
+    sB(56,27,42,16,"Total Expenses",fmt(totalExp),RED);
+    sB(102,27,42,16,"Loan Profit",fmt(profit),GREEN);
+    sB(148,27,48,16,"Cash in Bank",fmt(cashInBk),cashInBk<0?RED:GREEN);
+    sB(200,27,38,16,"Transactions",""+expenses.length,GREY);
+    sB(242,27,44,16,"Bank Charges",fmt(catTotals["banking"]||0),[13,52,97]);
+    // Category summary table first
+    const catRows=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>[cat.replace(/_/g," ").toUpperCase(),fmtN(amt),((amt/totalExp)*100).toFixed(1)+"%"]);
+    catRows.push(["TOTAL",fmtN(totalExp),"100.0%"]);
+    doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("CATEGORY SUMMARY",10,50);
+    doc.autoTable({startY:53,head:[["Category","Amount (UGX)","%"]],body:catRows,styles:{fontSize:7.5,cellPadding:2},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},columnStyles:{0:{cellWidth:60,fontStyle:"bold"},1:{halign:"right",cellWidth:40},2:{halign:"center",cellWidth:20}},didParseCell:(d)=>{if(d.row.index===catRows.length-1&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";}},tableWidth:120,margin:{left:10}});
+    // Main ledger with running balance
+    const sortedExp=[...expenses].sort((a,b)=>new Date(a.date)-new Date(b.date));
+    let running=pool+profit;
+    const rows=sortedExp.map((e,i)=>{
+      running-=(+e.amount||0);
+      const payDetail=e.payMode==="cash"?"💵 Cash":e.payMode==="bank"?"🏦 "+(e.bankName||"Bank"):e.payMode==="mtn"?"📱 MTN "+(e.mobileNumber||""):e.payMode==="airtel"?"📱 Airtel "+(e.mobileNumber||""):e.payMode||"—";
+      return [i+1,fmtD(e.date),e.activity.substring(0,45),e.issuedBy||"—",e.approvedBy||"—",fmtN(+e.amount||0),fmtN(Math.round(running)),e.category?e.category.replace(/_/g," "):"—",payDetail];
     });
-    rows.push(["","","TOTAL","",""+fmtN(totalExp),"","","",""]);
-    doc.autoTable({startY:48,head:[["#","Date","Activity","Purpose","Amount (UGX)","Issued By","Approved By","Payment Method","Category"]],body:rows,styles:{fontSize:7,cellPadding:2.2},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7,halign:"center"},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{halign:"center",cellWidth:7},1:{halign:"center",cellWidth:19},2:{cellWidth:38,fontStyle:"bold"},3:{cellWidth:32},4:{halign:"right",fontStyle:"bold"},5:{cellWidth:24},6:{cellWidth:24},7:{cellWidth:38},8:{cellWidth:20}},didParseCell:(d)=>{if(d.column.index===4&&d.section==="body")d.cell.styles.textColor=RED;},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
+    rows.push(["","","TOTAL EXPENSES","","",fmtN(totalExp),fmtN(Math.round(cashInBk)),"","CASH IN BANK"]);
+    const startY2=doc.lastAutoTable?doc.lastAutoTable.finalY+8:55;
+    doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("FULL EXPENSE LEDGER",10,startY2-2);
+    doc.autoTable({
+      startY:startY2,
+      head:[["#","Date","Activity","Issued By","Approved By","Amount (UGX)","Balance After","Category","Payment"]],
+      body:rows,
+      styles:{fontSize:6.5,cellPadding:2},
+      headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:6.5},
+      alternateRowStyles:{fillColor:[245,250,255]},
+      columnStyles:{
+        0:{halign:"center",cellWidth:6},
+        1:{halign:"center",cellWidth:18},
+        2:{cellWidth:52,fontStyle:"bold"},
+        3:{cellWidth:22},4:{cellWidth:22},
+        5:{halign:"right",fontStyle:"bold",cellWidth:22,textColor:RED},
+        6:{halign:"right",fontStyle:"bold",cellWidth:22},
+        7:{cellWidth:18},8:{cellWidth:20},
+      },
+      didParseCell:(d)=>{
+        if(d.row.index===rows.length-1&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";if(d.column.index===5)d.cell.styles.textColor=RED;if(d.column.index===6)d.cell.styles.textColor=cashInBk<0?RED:GREEN;}
+        if(d.column.index===6&&d.section==="body"&&d.row.index<rows.length-1){const v=parseInt((d.cell.raw||"0").replace(/,/g,""));if(v<0)d.cell.styles.textColor=RED;}
+      },
+      margin:{left:8,right:8},
+      didDrawPage:(d)=>dF(d.pageNumber)
+    });
     if(returnBlob)return doc.output("blob");doc.save("BIDA_Expenses_Report.pdf");
   } else if(type==="projections"){
-    const tM=members.reduce((s,m)=>s+(m.monthlySavings||0),0),gT=members.reduce((s,m)=>s+totBanked(m),0),aL=loans.filter(l=>l.status!=="paid"),out=aL.reduce((s,l)=>s+calcLoan(l).balance,0),tP=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0),aI=aL.reduce((s,l)=>s+calcLoan(l).monthlyInt,0);
-    dH("12-MONTH FINANCIAL PROJECTIONS","Forward-Looking Forecast — Savings Growth, Interest Income & Fund Pool");
-    sB(10,27,42,16,"Current Pool",fmt(gT),BLUE);sB(56,27,42,16,"Monthly Savings",fmt(tM),[25,118,210]);sB(102,27,42,16,"Active Int/Mo",fmt(aI),RED);sB(148,27,42,16,"Outstanding",fmt(out),RED);sB(194,27,42,16,"Profit To Date",fmt(tP),GREEN);sB(240,27,42,16,"Avg Loan",fmt(loans.length?Math.round(loans.reduce((s,l)=>s+(l.amountLoaned||0),0)/loans.length):0),BLUE);
-    const sm=new Date().getMonth();let pool=gT;const rows=[];
-    for(let i=0;i<12;i++){const mi=(sm+i)%12,yr=new Date().getFullYear()+Math.floor((sm+i)/12),prev=pool;pool+=tM+aI;rows.push([MONTHS[mi]+" "+yr,fmtN(tM),fmtN(aI),fmtN(tM+aI),fmtN(Math.round(pool)),(((tM+aI)/prev)*100).toFixed(1)+"%"]);}
-    doc.autoTable({startY:50,head:[["Month","New Savings","Interest Income","Total Inflow","Cumulative Pool","Growth"]],body:rows,styles:{fontSize:8,cellPadding:2.8},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center"},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{fontStyle:"bold",cellWidth:42},1:{halign:"right"},2:{halign:"right"},3:{halign:"right"},4:{halign:"right",fontStyle:"bold"},5:{halign:"center"}},didParseCell:(d)=>{if(d.column.index===5&&d.section==="body"){d.cell.styles.textColor=GREEN;d.cell.styles.fontStyle="bold";}if(d.column.index===4&&d.section==="body")d.cell.styles.textColor=BLUE;},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
+    // ── DATA-DRIVEN PROJECTIONS based on actual activity ──
+    const tM=members.reduce((s,m)=>s+(m.monthlySavings||0),0);
+    const gT=members.reduce((s,m)=>s+totBanked(m),0);
+    const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
+    const aL=loans.filter(l=>l.status!=="paid");
+    const aI=aL.reduce((s,l)=>s+calcLoan(l).monthlyInt,0);
+    const tP=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
+    const cashInBk=gT+tP-totalExp;
+    // New members in last 6 months
+    const now=new Date();const sixAgo=new Date(now);sixAgo.setMonth(sixAgo.getMonth()-6);
+    const recentNewMembers=members.filter(m=>m.joinDate&&new Date(m.joinDate)>=sixAgo).length;
+    const avgMbrSavings=members.length>0?Math.round(tM/members.length):50000;
+    const sm=now.getMonth();
+    dH("BIDA 12-MONTH PROJECTIONS & SCENARIOS","Activity-Based Forecast — "+toStr());
+    sB(10,27,40,16,"Cash in Bank",fmt(cashInBk),cashInBk>=0?GREEN:RED);
+    sB(54,27,40,16,"Monthly Savings",fmt(tM),BLUE);
+    sB(98,27,36,16,"Loan Int/Mo",fmt(aI),[191,54,12]);
+    sB(138,27,44,16,"New Mbrs (6mo)",""+recentNewMembers,GREY);
+    sB(186,27,40,16,"Avg Mbr/Mo",fmt(avgMbrSavings),[25,118,210]);
+    sB(230,27,56,16,"Profit So Far",fmt(tP),GREEN);
+    // ── SCENARIO A: Current trajectory ──
+    let pA=gT,rA=tM;
+    const rA_rows=[];
+    for(let i=0;i<12;i++){
+      rA+=Math.round((recentNewMembers/6)*avgMbrSavings); // new members joining monthly
+      const wf=Math.round(rA*0.30);
+      const int=Math.round(aI*(1+i*0.01));
+      const inflow=rA+int;
+      pA+=inflow;
+      const mi=(sm+i)%12,yr=now.getFullYear()+Math.floor((sm+i)/12);
+      rA_rows.push([MONTHS[mi]+" "+yr,fmtN(Math.round(rA)),fmtN(wf),fmtN(int),fmtN(inflow),fmtN(Math.round(pA))]);
+    }
+    doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);
+    doc.text("SCENARIO A — Current Trajectory (based on actual last 6 months activity)",10,50);
+    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+    doc.text("Monthly savings: "+fmt(tM)+" | "+recentNewMembers+" new members in last 6 months | Loan interest: "+fmt(aI)+"/mo",10,55);
+    doc.autoTable({startY:58,head:[["Month","Monthly Savings","Welfare (30%)","Loan Interest","Total Inflow","Cumulative Pool"]],body:rA_rows,styles:{fontSize:7,cellPadding:1.8},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:7},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{fontStyle:"bold",cellWidth:28},1:{halign:"right"},2:{halign:"right"},3:{halign:"right"},4:{halign:"right",fontStyle:"bold"},5:{halign:"right",fontStyle:"bold",textColor:BLUE}},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
+    // ── SCENARIO B: All members pay UGX 25,000/month for 18 months ──
+    let pB=gT,pC=gT;
+    const rB=members.length*25000,rC=members.length*30000;
+    const rB_rows=[],rC_rows=[];
+    for(let i=0;i<18;i++){
+      const mi=(sm+i)%12,yr=now.getFullYear()+Math.floor((sm+i)/12);
+      const wfB=Math.round(rB*0.30),wfC=Math.round(rC*0.30);
+      const int=Math.round(aI*(1+i*0.005));
+      pB+=rB+int; pC+=rC+int;
+      rB_rows.push([MONTHS[mi]+" "+yr,fmtN(rB),fmtN(wfB),fmtN(int),fmtN(rB+int),fmtN(Math.round(pB))]);
+      rC_rows.push([MONTHS[mi]+" "+yr,fmtN(rC),fmtN(wfC),fmtN(int),fmtN(rC+int),fmtN(Math.round(pC))]);
+    }
+    const yB=doc.lastAutoTable.finalY+8;
+    doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(27,94,32);
+    doc.text("SCENARIO B — All "+members.length+" Members Pay UGX 25,000/Month for 18 Months",10,yB);
+    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+    doc.text("Total monthly: "+fmt(rB)+" | Pool after 18 months before expenses: "+fmt(Math.round(pB)),10,yB+5);
+    doc.autoTable({startY:yB+8,head:[["Month","Monthly Savings","Welfare (30%)","Loan Interest","Total Inflow","Cumulative Pool"]],body:rB_rows,styles:{fontSize:7,cellPadding:1.8},headStyles:{fillColor:[27,94,32],textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:7},alternateRowStyles:{fillColor:[232,245,233]},columnStyles:{0:{fontStyle:"bold",cellWidth:28},1:{halign:"right"},2:{halign:"right"},3:{halign:"right"},4:{halign:"right",fontStyle:"bold"},5:{halign:"right",fontStyle:"bold",textColor:[27,94,32]}},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
+    const yC=doc.lastAutoTable.finalY+8;
+    doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(191,54,12);
+    doc.text("SCENARIO C — All "+members.length+" Members Pay UGX 30,000/Month for 18 Months",10,yC);
+    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+    doc.text("Total monthly: "+fmt(rC)+" | Pool after 18 months before expenses: "+fmt(Math.round(pC)),10,yC+5);
+    doc.autoTable({startY:yC+8,head:[["Month","Monthly Savings","Welfare (30%)","Loan Interest","Total Inflow","Cumulative Pool"]],body:rC_rows,styles:{fontSize:7,cellPadding:1.8},headStyles:{fillColor:[191,54,12],textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:7},alternateRowStyles:{fillColor:[255,248,225]},columnStyles:{0:{fontStyle:"bold",cellWidth:28},1:{halign:"right"},2:{halign:"right"},3:{halign:"right"},4:{halign:"right",fontStyle:"bold"},5:{halign:"right",fontStyle:"bold",textColor:[191,54,12]}},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
+    // Final comparison summary
+    const yS=doc.lastAutoTable.finalY+8;
+    if(yS<H-30){
+      doc.setFillColor(13,52,97);doc.roundedRect(10,yS,W-20,28,2,2,"F");
+      doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(255,255,255);
+      doc.text("WHY CONSISTENT BANKING MATTERS",14,yS+7);
+      doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(187,222,251);
+      const pA12=Number(String(rA_rows[11][5]).replace(/,/g,""));
+      doc.text("After 12 months — Current pace: "+fmt(Math.round(pA))+" | At 25k/month: "+fmt(Math.round(pB*12/18))+" | At 30k/month: "+fmt(Math.round(pC*12/18)),14,yS+13);
+      doc.text("Consistent UGX 30,000/month by all members grows the pool "+Math.round(((pC*12/18)/Math.max(pA,1)-1)*100)+"% faster than current pace.",14,yS+19);
+      doc.text("Higher pool = larger investments, bigger dividends, more welfare — everyone benefits.",14,yS+25);
+    }
     if(returnBlob)return doc.output("blob");doc.save("BIDA_Projections_Report.pdf");
   }
 }
 
 async function generateMemberPDF(member, memberLoans, allMembers, allLoans, returnBlob=false){
-  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+  await loadJsPDF();
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160];
-  doc.setFillColor(...NAVY);doc.rect(0,0,W,30,"F");doc.setFillColor(...BLUE);doc.rect(0,30,W,2,"F");
-  doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(...WHITE);doc.text("BIDA",14,13);
-  doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",14,19);
-  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,12,{align:"center"});
-  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(187,222,251);doc.text("Individual Financial Summary — Confidential",W/2,19,{align:"center"});
-  doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Generated: "+toStr(),W-12,12,{align:"right"});
+
+  // ── Header ──
+  doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
+  doc.setFillColor(...BLUE);doc.rect(0,28,W,2,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(15);doc.setTextColor(...WHITE);doc.text("BIDA",14,12);
+  doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",14,18);
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,11,{align:"center"});
+  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(187,222,251);doc.text("Individual Financial Summary — Confidential",W/2,18,{align:"center"});
+  doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Generated: "+toStr(),W-12,11,{align:"right"});
+  doc.text("bidacooperative@gmail.com",W-12,17,{align:"right"});
+
+  // ── Member hero block ──
   const tb=totBanked(member);
   const allTotals=allMembers.map(m=>totBanked(m)).sort((a,b)=>b-a);
   const rank=allTotals.indexOf(tb)+1;
-  const pct=((tb/allTotals.reduce((s,v)=>s+v,0))*100).toFixed(1);
-  const lim=borrowLimit(member, allLoans||[]);
-  doc.setFillColor(...BLITE);doc.roundedRect(12,37,W-24,26,3,3,"F");
-  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...NAVY);doc.text(member.name,16,46);
-  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...GREY);
-  doc.text("Member ID: #"+member.id+" · Joined: "+(member.joinDate?new Date(member.joinDate).toLocaleDateString("en-GB",{month:"long",year:"numeric"}):"—"),16,52);
-  doc.text("Rank: #"+rank+" of "+allMembers.length+" members · "+pct+"% of fund pool",16,57);
-  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...BLUE);doc.text("Total: "+fmt(tb),W-14,48,{align:"right"});
-  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(GREEN[0],GREEN[1],GREEN[2]);doc.text("Max Borrow: "+fmt(lim),W-14,56,{align:"right"});
-  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",14,70);
-  doc.autoTable({startY:74,head:[["Category","Amount (UGX)"]],body:[["Membership Fee",fmtN(member.membership)],["Annual Subscription",fmtN(member.annualSub)],["Monthly Savings",fmtN(member.monthlySavings)],["Welfare",fmtN(member.welfare)],["Shares",fmtN(member.shares)],["TOTAL BANKED",fmtN(tb)]],styles:{fontSize:9,cellPadding:3},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},columnStyles:{0:{cellWidth:100},1:{halign:"right",fontStyle:"bold"}},didParseCell:(d)=>{if(d.row.index===5&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";}},margin:{left:14,right:14}});
-  if(memberLoans.length>0){
-    const lY=doc.lastAutoTable.finalY+8;
-    doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("LOAN HISTORY",14,lY);
-    const lRows=memberLoans.map(l=>[fmtD(l.dateBanked),fmtN(l.amountLoaned),l.method==="reducing"?"6% RB":"4% Flat",l.term+"mo",fmtN(l.monthlyPayment),fmtN(l.totalInterest),fmtN(l.totalDue),fmtN(l.amountPaid),l.balance>0?"("+fmtN(l.balance)+")":"—",l.status==="paid"?"PAID":"ACTIVE"]);
-    doc.autoTable({startY:lY+4,head:[["Issued","Principal","Method","Term","Monthly Pay","Interest","Total Due","Paid","Balance","Status"]],body:lRows,styles:{fontSize:8,cellPadding:2.5},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center"},columnStyles:{9:{halign:"center",fontStyle:"bold"}},didParseCell:(d)=>{if(d.column.index===9&&d.section==="body"){d.cell.styles.textColor=d.cell.raw==="PAID"?GREEN:RED;}},margin:{left:14,right:14}});
-  }
-  const avgTotal=Math.round(allTotals.reduce((s,v)=>s+v,0)/allMembers.length);
-  const fY=doc.lastAutoTable?doc.lastAutoTable.finalY+8:160;
-  doc.setFillColor(232,245,233);doc.roundedRect(14,fY,W-28,14,2,2,"F");
-  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...GREY);
-  doc.text("Your total vs. average member: "+fmt(tb)+" vs "+fmt(avgTotal)+" · Rank #"+rank+"/"+allMembers.length,16,fY+6);
+  const poolTotal=allTotals.reduce((s,v)=>s+v,0);
+  const pct=poolTotal>0?((tb/poolTotal)*100).toFixed(1):"0.0";
+  const lim=borrowLimit(member,allLoans||[]);
+  const avgTotal=Math.round(poolTotal/allMembers.length);
   const diff=tb-avgTotal;
-  doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(diff>=0?GREEN[0]:RED[0],diff>=0?GREEN[1]:RED[1],diff>=0?GREEN[2]:RED[2]);
-  doc.text((diff>=0?"▲ +":"▼ ")+fmt(Math.abs(diff))+" vs average",16,fY+11);
-  doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
-  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
-  doc.text("BIDA Co-operative Multi-Purpose Society — Member Confidential Statement",12,H-4);
-  doc.text(toStr(),W-12,H-4,{align:"right"});
+
+  doc.setFillColor(...BLITE);doc.roundedRect(10,34,W-20,30,3,3,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...NAVY);doc.text(member.name,14,43);
+  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(...GREY);
+  doc.text("Member ID: #"+member.id,14,49);
+  doc.text("Joined: "+(member.joinDate?new Date(member.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}):"—"),14,54);
+  if(member.phone||member.whatsapp) doc.text("Phone: "+(member.phone||member.whatsapp),14,59);
+  if(member.nin) doc.text("NIN: "+member.nin,80,59);
+  if(member.address) doc.text("Address: "+member.address,14,64);
+
+  doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(...BLUE);doc.text(fmt(tb),W-12,43,{align:"right"});
+  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(...GREY);doc.text("TOTAL BANKED",W-12,49,{align:"right"});
+  doc.setFontSize(7.5);doc.setTextColor(GREEN[0],GREEN[1],GREEN[2]);doc.text("Max Borrow: "+fmt(lim),W-12,54,{align:"right"});
+  doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Rank: #"+rank+"/"+allMembers.length+" · "+pct+"% of pool",W-12,59,{align:"right"});
+  const diffColor=diff>=0?GREEN:RED;
+  doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(...diffColor);
+  doc.text((diff>=0?"▲ +":"▼ ")+fmt(Math.abs(diff))+" vs avg",W-12,64,{align:"right"});
+
+  // ── Savings breakdown ──
+  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",12,72);
+  doc.autoTable({
+    startY:75,
+    head:[["Category","Amount (UGX)","% of Total"]],
+    body:[
+      ["Membership Fee",fmtN(member.membership),tb>0?((member.membership/tb)*100).toFixed(1)+"%":"—"],
+      ["Annual Subscription",fmtN(member.annualSub),tb>0?((member.annualSub/tb)*100).toFixed(1)+"%":"—"],
+      ["Monthly Savings (cumulative)",fmtN(member.monthlySavings),tb>0?((member.monthlySavings/tb)*100).toFixed(1)+"%":"—"],
+      ["Welfare Contributions",fmtN(member.welfare),tb>0?((member.welfare/tb)*100).toFixed(1)+"%":"—"],
+      ["Shares",fmtN(member.shares),tb>0?((member.shares/tb)*100).toFixed(1)+"%":"—"],
+      ["TOTAL BANKED",fmtN(tb),"100.0%"],
+    ],
+    styles:{fontSize:9,cellPadding:3},
+    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
+    columnStyles:{0:{cellWidth:90},1:{halign:"right",fontStyle:"bold",cellWidth:40},2:{halign:"center",cellWidth:30}},
+    didParseCell:(d)=>{
+      if(d.row.index===5&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}
+    },
+    margin:{left:12,right:12}
+  });
+
+  // ── Borrow limit breakdown ──
+  const bRate=Math.round(borrowCapacityRate(member,allLoans||[])*100);
+  const bBase=(member.monthlySavings||0)+(member.welfare||0);
+  const bPenalty=defaultPrincipalPenalty(member,allLoans||[]);
+  const limY=doc.lastAutoTable.finalY+6;
+  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("BORROWING CAPACITY",12,limY);
+  doc.autoTable({
+    startY:limY+3,
+    body:[
+      ["Base (Monthly Savings + Welfare)",fmt(bBase)],
+      ["Capacity Rate",bRate+"%"+(bPenalty>0?" (penalty applied)":"")],
+      ["Maximum Borrow",fmt(lim)],
+    ],
+    styles:{fontSize:8.5,cellPadding:2.5},
+    columnStyles:{0:{cellWidth:110,fontStyle:"bold"},1:{halign:"right"}},
+    didParseCell:(d)=>{if(d.row.index===2&&d.section==="body"){d.cell.styles.fillColor=[232,245,233];d.cell.styles.textColor=GREEN;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
+    margin:{left:12,right:12},tableWidth:160
+  });
+
+  // ── Loan history ──
+  if(memberLoans&&memberLoans.length>0){
+    const lY=doc.lastAutoTable.finalY+6;
+    doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("LOAN HISTORY ("+memberLoans.length+" loan"+(memberLoans.length>1?"s":"")+")",12,lY);
+    const lRows=memberLoans.map(l=>{
+      const c=l.method?l:calcLoan(l);
+      return [fmtD(l.dateBanked||l.dateIssued),fmtN(l.amountLoaned),c.method==="reducing"?"6% RB":"4% Flat",(l.term||12)+"mo",fmtN(c.monthlyPayment),fmtN(c.totalInterest),fmtN(c.totalDue),fmtN(l.amountPaid),l.balance>0||c.balance>0?"("+fmtN(l.balance||c.balance)+")":"✓ CLEAR",l.status==="paid"?"✓ PAID":"● ACTIVE"];
+    });
+    doc.autoTable({
+      startY:lY+3,
+      head:[["Issued","Principal","Method","Term","Monthly","Interest","Total Due","Paid","Balance","Status"]],
+      body:lRows,
+      styles:{fontSize:8,cellPadding:2.5},
+      headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:7.5},
+      columnStyles:{9:{halign:"center",fontStyle:"bold"}},
+      didParseCell:(d)=>{
+        if(d.column.index===9&&d.section==="body"){d.cell.styles.textColor=d.cell.raw==="✓ PAID"?GREEN:RED;}
+        if(d.column.index===8&&d.section==="body"&&d.cell.raw&&d.cell.raw.startsWith("("))d.cell.styles.textColor=RED;
+      },
+      margin:{left:12,right:12}
+    });
+  }
+
+  // ── Footer ──
+  const pageCount=doc.internal.getNumberOfPages();
+  for(let i=1;i<=pageCount;i++){
+    doc.setPage(i);
+    doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
+    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+    doc.text("BIDA Co-operative Multi-Purpose Society — Member Confidential Statement",12,H-4);
+    doc.text("Page "+i+"/"+pageCount+" · "+toStr(),W-12,H-4,{align:"right"});
+  }
   if(returnBlob)return doc.output("blob");
   doc.save("BIDA_Statement_"+member.name.replace(/\s+/g,"_")+".pdf");
 }
@@ -675,6 +1109,18 @@ function InvestmentCard({inv, openEditInv, delInv}){
         })}
       </div>
       {inv.notes&&<div style={{fontSize:11,color:"var(--tmuted)",fontStyle:"italic",marginBottom:8}}>📝 {inv.notes}</div>}
+      {inv.approvedBy&&<div style={{fontSize:10,color:"#1b5e20",marginBottom:4,fontFamily:"var(--mono)"}}>✅ Approved by: {inv.approvedBy}{inv.approvalDate?" on "+fmtD(inv.approvalDate):""}</div>}
+      {inv.approvalStatus&&inv.approvalStatus!=="approved"&&<div style={{fontSize:10,color:inv.approvalStatus==="rejected"?"#c62828":"#f57f17",marginBottom:4,fontFamily:"var(--mono)"}}>{inv.approvalStatus==="rejected"?"❌ Rejected":"⏳ Pending approval"}</div>}
+      {(inv.docNames||[]).length>0&&(
+        <div style={{marginBottom:8}}>
+          <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.6,marginBottom:4,fontFamily:"var(--mono)"}}>📎 {inv.docNames.length} document{inv.docNames.length>1?"s":""} attached</div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+            {inv.docNames.map((name,i)=>(
+              <a key={i} href={inv.documents[i]} download={name} style={{fontSize:9,background:"#e3f2fd",color:"#1565c0",border:"1px solid #90caf9",borderRadius:6,padding:"2px 8px",textDecoration:"none",fontFamily:"var(--mono)"}}>📄 {name}</a>
+            ))}
+          </div>
+        </div>
+      )}
       {inv.lastUpdated&&<div style={{fontSize:10,color:"var(--tmuted)",marginBottom:8,fontFamily:"var(--mono)"}}>Last updated: {fmtD(inv.lastUpdated)}</div>}
       <div style={{display:"flex",gap:7}}>
         <button className="btn bg xs" onClick={function(){openEditInv(inv);}}>✏️ Update</button>
@@ -814,6 +1260,51 @@ function PayModal({loan, mem, payF, setPayF, savePay, setPayModal}){
   );
 }
 
+// ── SAVINGS & EXPENSES BAR CHART ────────────────────────────────────────────
+function SavingsExpensesChart({savingsData, expensesData}){
+  const canvasRef = React.useRef(null);
+  const chartRef  = React.useRef(null);
+  const [mode, setMode] = React.useState("savings");
+  const [loaded, setLoaded] = React.useState(false);
+  useEffect(()=>{
+    loadScript("https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js")
+      .then(()=>setLoaded(true)).catch(()=>{});
+  },[]);
+  useEffect(()=>{
+    if(!loaded||!canvasRef.current)return;
+    if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}
+    const ctx=canvasRef.current.getContext("2d");
+    if(mode==="savings"){
+      chartRef.current=new window.Chart(ctx,{type:"bar",data:{labels:savingsData.map(d=>d.label),datasets:[{label:"Pool (UGX)",data:savingsData.map(d=>d.total),backgroundColor:"rgba(21,101,192,0.75)",borderColor:"#1565c0",borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>" UGX "+Number(c.raw).toLocaleString("en-UG")}}},scales:{y:{ticks:{callback:v=>"UGX "+Number(v/1000000).toFixed(1)+"m"},grid:{color:"#eef5ff"}},x:{grid:{display:false}}}}});
+    } else {
+      const cats=["meetings","transport","printing","legal_registration","banking","operations","refunds","communications"];
+      const colors=["#1565c0","#e65100","#6a1b9a","#00695c","#c62828","#37474f","#2e7d32","#0277bd"];
+      const labels=["Meetings","Transport","Printing","Legal/Reg","Banking","Operations","Refunds","Comms"];
+      chartRef.current=new window.Chart(ctx,{type:"bar",data:{labels:expensesData.map(d=>d.month),datasets:cats.map((cat,i)=>({label:labels[i],data:expensesData.map(d=>d[cat]||0),backgroundColor:colors[i]+"cc",borderColor:colors[i],borderWidth:1,borderRadius:2}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{font:{size:9},padding:6,boxWidth:10}},tooltip:{callbacks:{label:c=>c.dataset.label+": UGX "+Number(c.raw).toLocaleString("en-UG")}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:8}}},y:{stacked:true,ticks:{callback:v=>"UGX "+Number(v).toLocaleString("en-UG"),font:{size:8}},grid:{color:"#eef5ff"}}}}});
+    }
+    return ()=>{if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}};
+  },[loaded,mode,savingsData,expensesData]);
+  return (
+    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontWeight:700,fontSize:13,color:"var(--b800)"}}>{mode==="savings"?"📈 Cumulative Savings Pool Growth":"🧾 Expenses by Month & Category"}</div>
+          <div style={{fontSize:10,color:"var(--tmuted)",marginTop:1}}>{mode==="savings"?"Quarterly pool growth since BIDA started (2022–2025)":"All expenses broken down by category per month"}</div>
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          {[["savings","📈 Savings"],["expenses","🧾 Expenses"]].map(([v,lbl])=>(
+            <button key={v} type="button" onClick={()=>setMode(v)} style={{padding:"5px 12px",borderRadius:8,border:mode===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:mode===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:mode===v?700:400,color:mode===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{height:220,position:"relative"}}>
+        {!loaded&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",color:"var(--tmuted)",fontSize:11}}>⏳ Loading chart…</div>}
+        <canvas ref={canvasRef} style={{display:loaded?"block":"none"}}/>
+      </div>
+    </div>
+  );
+}
+
 export default function App(){
   const [tab,setTab]        = useState("savings");
   const [authUser,setAuthUser] = useState(null); // null = logged out
@@ -823,6 +1314,16 @@ export default function App(){
   const [members,setMembers]= useState(INIT_MEMBERS);
   const [loans,setLoans]    = useState(INIT_LOANS);
   const [expenses,setExpenses] = useState(INIT_EXPENSES);
+  const [serviceProviders,setServiceProviders] = useState(INIT_SERVICE_PROVIDERS);
+  const [spModal,setSpModal] = useState(false);
+  const [spF,setSpF] = useState({
+    isMember:true, memberId:"",
+    companyName:"", tin:"", directorName:"", phone:"", serviceType:"", description:"",
+    registeredDate:new Date().toISOString().split("T")[0],
+    regFee:0, regFeePaid:false, approvalStatus:"pending", approvedByMemberId:"",
+    expiryDate:"",
+  });
+  const [editSp,setEditSp] = useState(null);
   const [receipts,setReceipts] = useState(INIT_RECEIPTS);
   const [pending,setPending]   = useState(INIT_PENDING); // pending approval queue
   const [expModal,setExpModal] = useState(false);
@@ -847,7 +1348,37 @@ export default function App(){
   const [payModal,setPayModal]   = useState(false);
   const [payF,setPayF]           = useState({...emptyPay});
   const [addMModal,setAddMModal] = useState(false);
-  const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
+  const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
+
+  // ── Live FX rates ──
+  const [fxRates,setFxRates]=useState(null);
+  const [fxLoading,setFxLoading]=useState(true);
+  useEffect(()=>{
+    fetch("https://open.er-api.com/v6/latest/UGX")
+      .then(r=>r.json())
+      .then(data=>{
+        if(data&&data.rates){
+          const r=data.rates;
+          const inv=x=>x>0?(1/x):null;
+          setFxRates([
+            {label:"UGX/USD",rate:inv(r.USD)?inv(r.USD).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,","):"—",color:"#1565c0"},
+            {label:"UGX/KES",rate:inv(r.KES)?inv(r.KES).toFixed(1):"—",color:"#2e7d32"},
+            {label:"UGX/TZS",rate:inv(r.TZS)?inv(r.TZS).toFixed(2):"—",color:"#e65100"},
+            {label:"UGX/EUR",rate:inv(r.EUR)?inv(r.EUR).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,","):"—",color:"#6a1b9a"},
+            {label:"UGX/GBP",rate:inv(r.GBP)?inv(r.GBP).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,","):"—",color:"#00695c"},
+          ]);
+        }
+      })
+      .catch(()=>setFxRates([
+        {label:"UGX/USD",rate:"3,720",color:"#1565c0"},
+        {label:"UGX/KES",rate:"28.5",color:"#2e7d32"},
+        {label:"UGX/TZS",rate:"0.64",color:"#e65100"},
+        {label:"UGX/EUR",rate:"4,050",color:"#6a1b9a"},
+        {label:"UGX/GBP",rate:"4,720",color:"#00695c"},
+      ]))
+      .finally(()=>setFxLoading(false));
+  },[]);
+  const FX_RATES=fxRates||[];
 
   const loansCalc = useMemo(()=>loans.map(l=>({...l,...calcLoan(l)})),[loans]);
   const fmems  = useMemo(()=>members.filter(m=>m.name.toLowerCase().includes(search.toLowerCase())),[members,search]);
@@ -866,7 +1397,10 @@ export default function App(){
   },[loansCalc,loans]);
 
   const totalExpenses  = useMemo(()=>expenses.reduce((s,e)=>s+(+e.amount||0),0),[expenses]);
-  const netCash        = useMemo(()=>savT.total+lStat.profit-totalExpenses,[savT.total,lStat.profit,totalExpenses]);
+  // True cash in bank = all deposits + loan profit realised - all expenses paid out
+  // (outstanding loans are already deployed as cash, not deducted from bank)
+  const cashInBank     = useMemo(()=>savT.total+lStat.profit-totalExpenses,[savT.total,lStat.profit,totalExpenses]);
+  const netCash        = cashInBank; // alias kept for compatibility
   const totalInvested  = useMemo(()=>investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0),[investments]);
   const totalInvInterest = useMemo(()=>investments.reduce((s,i)=>s+(+i.interestEarned||0),0),[investments]);
   // 40% of investment interest distributed to members; 60% retained in pool
@@ -922,9 +1456,46 @@ export default function App(){
   const saveAddM=()=>{
     if(!addMF.name.trim())return;
     const id=Math.max(...members.map(m=>m.id),0)+1;
-    setMembers(prev=>[...prev,{id,...addMF,whatsapp:addMF.whatsapp||"",membership:+addMF.membership||0,annualSub:+addMF.annualSub||0,monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0}]);
+    const joinDate=addMF.joinDate||new Date().toISOString().split("T")[0];
+    // Store referral info on the new member record
+    const newMember={id,...addMF,photoUrl:addMF.photoUrl||"",whatsapp:addMF.whatsapp||"",
+      membership:+addMF.membership||0,annualSub:+addMF.annualSub||0,
+      monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0,
+      referredByMemberId:addMF.referralSource==="member"?+addMF.referredById||null:null,
+      referralSource:addMF.referralSource||"",
+    };
+    let updatedMembers=[...members,newMember];
+    // Commission: 1% of referrer's (monthlySavings + welfare) — payable after 1 month
+    if(addMF.referralSource==="member"&&addMF.referredById){
+      const refId=+addMF.referredById;
+      const referrer=members.find(m=>m.id===refId);
+      const newAnnualSub=+addMF.annualSub||0;
+      if(referrer&&newAnnualSub>=50000){
+        const commBase=(referrer.monthlySavings||0)+(referrer.welfare||0);
+        const commission=Math.round(commBase*0.01);
+        // Payable date = 1 month after new member join date
+        const payableDate=new Date(joinDate);
+        payableDate.setMonth(payableDate.getMonth()+1);
+        const payableDateStr=payableDate.toISOString().split("T")[0];
+        const newCommission={
+          newMemberId:id,
+          newMemberName:addMF.name.trim(),
+          amount:commission,
+          earnedDate:joinDate,
+          payableDate:payableDateStr,
+          paid:false,
+          base:commBase,
+        };
+        updatedMembers=updatedMembers.map(m=>m.id===refId?{
+          ...m,
+          referralCommission:(m.referralCommission||0)+commission,
+          pendingCommissions:[...(m.pendingCommissions||[]),newCommission],
+        }:m);
+      }
+    }
+    setMembers(updatedMembers);
     setAddMModal(false);
-    setAddMF({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
+    setAddMF({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
   };
   const openPayModal=(loan)=>{setPayF({...emptyPay,loanId:loan.id,date:new Date().toISOString().split("T")[0]});setPayModal(true);};
   const savePay=()=>{
@@ -943,15 +1514,29 @@ export default function App(){
   const openAddL=()=>{setEditL(null);setLF({...emptyL});setLModal(true);};
   const openEditL=(l)=>{setEditL(l.id);setLF({...l});setLModal(true);};
   const onAmt=(v)=>{const a=+v||0;setLF(f=>({...f,amountLoaned:v,processingFeePaid:Math.round(procFee(a))}));};
-  const saveL=()=>{
+  const saveL=async()=>{
     const a=+lF.amountLoaned||0;
     const p={...lF,amountLoaned:a,processingFeePaid:+lF.processingFeePaid||Math.round(procFee(a)),amountPaid:+lF.amountPaid||0};
     const mem=members.find(m=>m.id===+lF.memberId);
     if(mem)p.memberName=mem.name;
     if(!p.memberName)return;
-    if(editL)setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));
-    else{const id=Math.max(...loans.map(l=>l.id),0)+1;setLoans(prev=>[...prev,{id,...p}]);}
+    let savedLoan;
+    if(editL){setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));savedLoan={...p,id:editL};}
+    else{const id=Math.max(...loans.map(l=>l.id),0)+1;savedLoan={id,...p};setLoans(prev=>[...prev,savedLoan]);}
     setLModal(false);
+    // Auto-generate loan agreement PDF
+    if(!editL){
+      try{
+        const calc=calcLoan(savedLoan);
+        const blob=await generateLoanPDF(savedLoan,mem,calc);
+        const url=URL.createObjectURL(blob);
+        const anc=document.createElement("a");
+        anc.style.display="none";anc.href=url;
+        anc.download="BIDA_Loan_"+mem.name.replace(/\s+/g,"_")+"_"+savedLoan.id+".pdf";
+        document.body.appendChild(anc);anc.click();document.body.removeChild(anc);
+        setTimeout(()=>URL.revokeObjectURL(url),30000);
+      }catch(e){console.error("Loan PDF error:",e);}
+    }
   };
   const delL=(id)=>{if(window.confirm("Delete this loan?"))setLoans(prev=>prev.filter(l=>l.id!==id));};
   const markPd=(id)=>setLoans(prev=>prev.map(l=>{
@@ -1033,41 +1618,66 @@ export default function App(){
 
   const handlePDF=async(type)=>{
     setPdfGen(type);setSharedPDF(null);
+    const filenames={savings:"BIDA_Savings_Report.pdf",loans:"BIDA_Loans_Report.pdf",expenses:"BIDA_Expenses_Report.pdf",projections:"BIDA_Projections_Report.pdf"};
+    const labels={savings:"Savings Report",loans:"Loans Report",expenses:"Expenses Report",projections:"Projections Report"};
+    const fn=filenames[type], lb=labels[type];
+    // Pre-open window synchronously before async work (avoids popup blocker)
+    const win=window.open("","_blank");
+    if(win){win.document.write("<html><head><title>Generating...</title></head><body style='font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#1a237e;color:#fff;flex-direction:column;gap:12px'><div style='font-size:28px'>⏳</div><div style='font-size:14px;font-weight:700'>Generating "+lb+"...</div></body></html>");win.document.close();}
     try{
-      const filenames={savings:"BIDA_Savings_Report.pdf",loans:"BIDA_Loans_Report.pdf",expenses:"BIDA_Expenses_Report.pdf",projections:"BIDA_Projections_Report.pdf"};
-      const labels={savings:"Savings Report",loans:"Loans Report",expenses:"Expenses Report",projections:"Projections Report"};
       const blob=await generatePDF(type,members,loans,expenses,true);
-      if(!blob)throw new Error("No PDF blob returned");
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.style.display="none";
-      a.href=url;
-      a.download=filenames[type];
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(()=>URL.revokeObjectURL(url),30000);
-      setSharedPDF({blob,filename:filenames[type],label:labels[type],type});
-    }catch(e){console.error("PDF error:",e);alert("PDF error: "+e.message);}
+      if(!blob)throw new Error("PDF generation failed");
+      // Try native share first (works on Android + iOS to save to files)
+      if(navigator.share&&navigator.canShare&&navigator.canShare({files:[new File([blob],fn,{type:"application/pdf"})]})){
+        if(win&&!win.closed)win.close();
+        await navigator.share({files:[new File([blob],fn,{type:"application/pdf"})],title:"BIDA — "+lb});
+        setSharedPDF({blob,filename:fn,label:lb,type});
+        return;
+      }
+      // Desktop / fallback: write download page into pre-opened window
+      const dataUrl=await blobToDataUrl(blob);
+      if(win&&!win.closed){
+        const d=new Date().toLocaleDateString("en-GB");
+        const html="<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>"+lb+"</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#1a237e;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px}.card{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:820px;margin-bottom:12px}.ttl{font-size:17px;font-weight:800;color:#0d3461;margin-bottom:2px}.sub{font-size:11px;color:#888;margin-bottom:14px}.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;border-radius:10px;font-size:15px;font-weight:800;text-decoration:none;margin-bottom:10px;border:none;cursor:pointer}.dl{background:linear-gradient(135deg,#c62828,#b71c1c);color:#fff}.op{background:#e3f2fd;color:#1565c0}.tip{font-size:11px;color:#666;line-height:1.8;text-align:center}iframe{width:100%;height:72vh;border:none;border-radius:8px}</style></head><body><div class='card'><p class='ttl'>📄 "+lb+"</p><p class='sub'>BIDA Co-operative &mdash; "+d+"</p><a class='btn dl' href='"+dataUrl+"' download='"+fn+"'>📥 Download PDF</a><a class='btn op' href='"+dataUrl+"' target='_blank'>🔍 Open / View PDF</a><p class='tip'>💡 <strong>iPhone/iPad:</strong> Tap <em>Open / View PDF</em> → tap the Share icon → <em>Save to Files</em><br><strong>Android:</strong> Tap <em>Download PDF</em> — file saves to Downloads folder<br><strong>Desktop:</strong> PDF previews below — use Download button or Ctrl+S</p></div><div class='card'><iframe src='"+dataUrl+"'></iframe></div></body></html>";
+        win.document.open();win.document.write(html);win.document.close();
+      }
+      setSharedPDF({blob,dataUrl,filename:fn,label:lb,type});
+    }catch(e){
+      console.error("PDF error:",e);
+      if(win&&!win.closed)win.close();
+      alert("PDF failed: "+e.message);
+    }
     finally{setPdfGen(null);}
   };
   const handleMemberPDF=async(m)=>{
     setPdfGen("member_"+m.id);setSharedPDF(null);
+    const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
+    const lb=m.name+" Statement";
+    const win=window.open("","_blank");
+    if(win){win.document.write("<html><head><title>Generating...</title></head><body style='font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#1a237e;color:#fff;flex-direction:column;gap:12px'><div style='font-size:28px'>⏳</div><div style='font-size:14px;font-weight:700'>Generating statement for "+m.name+"...</div></body></html>");win.document.close();}
     try{
-      const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
       const blob=await generateMemberPDF(m,profLoans,members,loans,true);
-      if(!blob)throw new Error("No PDF blob returned");
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.style.display="none";
-      a.href=url;
-      a.download=filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(()=>URL.revokeObjectURL(url),30000);
-      setSharedPDF({blob,filename,label:m.name+" Statement",type:"member",memberId:m.id});
-    }catch(e){console.error("PDF error:",e);alert("PDF error: "+e.message);}
+      if(!blob)throw new Error("PDF generation failed");
+      // Native share (mobile)
+      if(navigator.share&&navigator.canShare&&navigator.canShare({files:[new File([blob],filename,{type:"application/pdf"})]})){
+        if(win&&!win.closed)win.close();
+        await navigator.share({files:[new File([blob],filename,{type:"application/pdf"})],title:"BIDA — "+lb});
+        setSharedPDF({blob,filename,label:lb,type:"member",memberId:m.id});
+        return;
+      }
+      // Desktop fallback
+      const dataUrl=await blobToDataUrl(blob);
+      if(win&&!win.closed){
+        const d=new Date().toLocaleDateString("en-GB");
+        const html="<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>"+lb+"</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#1a237e;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px}.card{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:820px;margin-bottom:12px}.ttl{font-size:17px;font-weight:800;color:#0d3461;margin-bottom:2px}.sub{font-size:11px;color:#888;margin-bottom:14px}.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;border-radius:10px;font-size:15px;font-weight:800;text-decoration:none;margin-bottom:10px;border:none;cursor:pointer}.dl{background:linear-gradient(135deg,#c62828,#b71c1c);color:#fff}.op{background:#e3f2fd;color:#1565c0}.tip{font-size:11px;color:#666;line-height:1.8;text-align:center}iframe{width:100%;height:72vh;border:none;border-radius:8px}</style></head><body><div class='card'><p class='ttl'>📄 "+lb+"</p><p class='sub'>BIDA Co-operative &mdash; "+d+"</p><a class='btn dl' href='"+dataUrl+"' download='"+filename+"'>📥 Download PDF</a><a class='btn op' href='"+dataUrl+"' target='_blank'>🔍 Open / View PDF</a><p class='tip'>💡 <strong>iPhone/iPad:</strong> Tap <em>Open / View PDF</em> → tap the Share icon → <em>Save to Files</em><br><strong>Android:</strong> Tap <em>Download PDF</em><br><strong>Desktop:</strong> PDF previews below</p></div><div class='card'><iframe src='"+dataUrl+"'></iframe></div></body></html>";
+        win.document.open();win.document.write(html);win.document.close();
+      }
+      setSharedPDF({blob,dataUrl,filename,label:lb,type:"member",memberId:m.id});
+    }catch(e){
+      console.error("PDF error:",e);
+      if(win&&!win.closed)win.close();
+      alert("PDF failed: "+e.message);
+    }
     finally{setPdfGen(null);}
   };
 
@@ -1167,18 +1777,100 @@ export default function App(){
 
         <main className="main">
 
-          {/* ── SAVINGS TAB ──────────────────────────────────────────────── */}
+          {/* ── SAVINGS TAB (MAIN DASHBOARD) ─────────────────────────────── */}
           {tab==="savings" && (
             <React.Fragment>
-              <div className="ptitle"><div className="ptdot"/>Member Savings Ledger</div>
+              <div className="ptitle"><div className="ptdot"/>Dashboard — Member Savings Ledger</div>
+
+              {/* ── TOP FINANCIAL SUMMARY ── */}
+              <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:13,padding:"14px 16px",marginBottom:12,color:"#fff"}}>
+                <div style={{fontWeight:800,fontSize:13,marginBottom:10,opacity:.9,letterSpacing:.5,textTransform:"uppercase",fontFamily:"var(--mono)"}}>💳 BIDA Fund Summary</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
+                  {[
+                    ["Total Banked",fmt(savT.total),"#90caf9","All member deposits"],
+                    ["Total Expenses",fmt(totalExpenses),"#ef9a9a","Paid out expenses"],
+                    ["Loan Profit",fmt(lStat.profit),"#a5d6a7","Realised returns"],
+                    ["Cash in Bank",fmt(cashInBank),cashInBank<0?"#ef5350":"#69f0ae","Banked − Expenses"],
+                    ["Outstanding",fmt(lStat.outstanding),"#ffcc80","Active loan balances"],
+                    ["Active Loans",""+lStat.act,"#90caf9",""],
+                  ].map(([l,v,c,sub])=>(
+                    <div key={l} style={{background:"rgba(255,255,255,.1)",borderRadius:9,padding:"9px 11px"}}>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>{l}</div>
+                      <div style={{fontSize:14,fontWeight:900,color:c,fontFamily:"var(--mono)"}}>{v}</div>
+                      {sub&&<div style={{fontSize:9,color:"rgba(255,255,255,.45)",marginTop:2}}>{sub}</div>}
+                    </div>
+                  ))}
+                </div>
+                {cashInBank<0&&<div style={{marginTop:10,background:"rgba(239,83,80,.25)",border:"1px solid rgba(239,83,80,.5)",borderRadius:8,padding:"6px 10px",fontSize:10,color:"#ffcdd2",fontWeight:700}}>⚠️ Cash in bank is negative — expenses exceed total deposits + profit. Review immediately.</div>}
+              </div>
+
+              {/* ── STATS CARDS ── */}
               <div className="stats">
                 <div className="card"><div className="clabel">Members</div><div className="cval">{members.length}</div></div>
                 <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
                 <div className="card"><div className="clabel">Monthly Savings</div><div className="cval">{fmt(savT.monthly)}</div></div>
-                <div className="card"><div className="clabel">Shares</div><div className="cval">{fmt(savT.shares)}</div></div>
                 <div className="card"><div className="clabel">Welfare Pool</div><div className="cval">{fmt(savT.welfare)}</div></div>
-                {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% to members · 60% retained</div></div>}
-                {distributableInterest>0&&<div className="card ck"><div className="clabel">To Distribute (40%)</div><div className="cval ok">{fmt(distributableInterest)}</div></div>}
+                <div className="card cd"><div className="clabel">Total Expenses</div><div className="cval danger">{fmt(totalExpenses)}</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
+                {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% members · 60% pool</div></div>}
+              </div>
+
+              {/* ── SAVINGS/EXPENSES CHART ── */}
+              <SavingsExpensesChart savingsData={SAVINGS_CHART_DATA} expensesData={EXPENSES_CHART_DATA}/>
+
+              {/* ── EXPENSES MINI LEDGER ON DASHBOARD ── */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px 8px",borderBottom:"1px solid var(--bdr)"}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:13,color:"var(--b800)"}}>🧾 Expenses Ledger</div>
+                    <div style={{fontSize:10,color:"var(--tmuted)",marginTop:1}}>Every expense reduces cash in bank in real time</div>
+                  </div>
+                  <div style={{display:"flex",gap:7,alignItems:"center"}}>
+                    <span style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:"#c62828"}}>− {fmt(totalExpenses)}</span>
+                    <button className="btn bp xs" onClick={openAddExp}>＋ Add</button>
+                    <button className="btn bg xs" onClick={()=>setTab("expenses")}>View All</button>
+                  </div>
+                </div>
+                {expenses.length===0?(
+                  <div className="empty" style={{padding:"20px"}}><div className="eico">🧾</div>No expenses yet.</div>
+                ):(
+                  <div style={{padding:"0 16px"}}>
+                    {[...expenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5).map((e,i)=>{
+                      const runningTotal=expenses
+                        .slice()
+                        .sort((a,b)=>new Date(a.date)-new Date(b.date))
+                        .slice(0,expenses.indexOf(e)+1)
+                        .reduce((s,x)=>s+(+x.amount||0),0);
+                      const balAfter=savT.total+lStat.profit-runningTotal;
+                      return (
+                        <div key={e.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:i<4?"1px solid #eef5ff":"none",flexWrap:"wrap"}}>
+                          <div style={{minWidth:65,fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>{fmtD(e.date)}</div>
+                          <div style={{flex:1,minWidth:120}}>
+                            <div style={{fontWeight:700,fontSize:12,color:"var(--b800)"}}>{e.activity}</div>
+                            <div style={{fontSize:10,color:"var(--tmuted)"}}>{e.issuedBy||"—"}{e.category?" · "+e.category:""}</div>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <div style={{fontWeight:900,fontSize:13,color:"#c62828",fontFamily:"var(--mono)"}}>− {fmt(+e.amount||0)}</div>
+                            <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>bal: {fmt(balAfter)}</div>
+                          </div>
+                          <div style={{display:"flex",gap:4}}>
+                            <button className="btn bg xs" onClick={()=>openEditExp(e)}>✏️</button>
+                            <button className="btn bd xs" onClick={()=>delExp(e.id)}>🗑</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {expenses.length>5&&(
+                      <div style={{padding:"8px 0",textAlign:"center"}}>
+                        <button className="btn bg sm" onClick={()=>setTab("expenses")} style={{width:"100%"}}>View all {expenses.length} expenses →</button>
+                      </div>
+                    )}
+                    <div style={{borderTop:"2px solid var(--bdr2)",padding:"10px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--tmuted)",fontWeight:700}}>CASH IN BANK AFTER ALL EXPENSES</span>
+                      <span style={{fontFamily:"var(--mono)",fontSize:14,fontWeight:900,color:cashInBank<0?"#c62828":"#2e7d32"}}>{fmt(cashInBank)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="toolbar">
                 <div className="tl"><span className="ttitle">All Members</span><span className="tcount">{fmems.length}</span></div>
@@ -1299,7 +1991,7 @@ export default function App(){
                   <h3>⚙️ API not connected — follow these steps to enable one-click sending</h3>
                   <ol>
                     <li>Create a free <a href="https://sendgrid.com" target="_blank" rel="noreferrer">SendGrid</a> account → Settings → API Keys → copy key</li>
-                    <li>In <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">Vercel</a> → Settings → Environment Variables, add:<br/><code>SENDGRID_API_KEY</code>, <code>FROM_EMAIL</code> = bidacoop@gmail.com, <code>FROM_NAME</code> = BIDA Cooperative</li>
+                    <li>In <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">Vercel</a> → Settings → Environment Variables, add:<br/><code>SENDGRID_API_KEY</code>, <code>FROM_EMAIL</code> = bidacooperative@gmail.com, <code>FROM_NAME</code> = BIDA Co-operative Multi-Purpose Society</li>
                     <li>Create <a href="https://africastalking.com" target="_blank" rel="noreferrer">Africa's Talking</a> account → add: <code>AT_API_KEY</code>, <code>AT_USERNAME</code>, <code>AT_SENDER_ID</code>=BIDACOOP</li>
                     <li>For WhatsApp API: add <code>WA_TOKEN</code> (Meta WhatsApp Business API token) and <code>WA_PHONE_ID</code></li>
                     <li>Redeploy on Vercel — all channels activate immediately.</li>
@@ -1398,50 +2090,158 @@ export default function App(){
           {tab==="expenses" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>Expenses Register</div>
+
+              {/* Cash in Bank hero card */}
+              <div style={{background:"linear-gradient(135deg,"+(cashInBank<0?"#b71c1c,#c62828":"#1b5e20,#2e7d32")+")",borderRadius:12,padding:"12px 16px",marginBottom:12,color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                <div>
+                  <div style={{fontSize:10,opacity:.75,textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>💳 Cash in Bank (live)</div>
+                  <div style={{fontSize:26,fontWeight:900,fontFamily:"var(--mono)",marginTop:2}}>{fmt(cashInBank)}</div>
+                  <div style={{fontSize:10,opacity:.7,marginTop:3}}>Total Banked {fmt(savT.total)} + Profit {fmt(lStat.profit)} − Expenses {fmt(totalExpenses)}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:10,opacity:.7}}>Transactions</div>
+                  <div style={{fontSize:22,fontWeight:900}}>{expenses.length}</div>
+                </div>
+              </div>
+
               <div className="stats">
-                <div className="card ck"><div className="clabel">Fund Pool</div><div className="cval ok">{fmt(savT.total)}</div></div>
+                <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
                 <div className="card cd"><div className="clabel">Total Expenses</div><div className="cval danger">{fmt(totalExpenses)}</div></div>
                 <div className="card ck"><div className="clabel">Profit Realised</div><div className="cval ok">{fmt(lStat.profit)}</div></div>
-                <div className="card"  style={{borderTop:"3px solid var(--b500)"}}><div className="clabel">Net Cash Balance</div><div className={"cval"+(netCash<0?" danger":"")}>{fmt(netCash)}</div><div className="csub">Pool + Profit − Expenses</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
                 <div className="card cw"><div className="clabel">Transactions</div><div className="cval warn">{expenses.length}</div></div>
               </div>
+
+              {/* ── SERVICE PROVIDERS DIRECTORY ── */}
+              <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:12,padding:"13px 16px",marginBottom:12,color:"#fff"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:8}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:13}}>🏪 BIDA Service Provider Directory</div>
+                    <div style={{fontSize:10,opacity:.7,marginTop:2}}>All payments to providers must go through the approval process — no casual payments.</div>
+                  </div>
+                  <button className="btn sm" style={{background:"rgba(255,255,255,.15)",color:"#fff",border:"1px solid rgba(255,255,255,.3)",fontWeight:700}} onClick={()=>{setEditSp(null);setSpF({isMember:true,memberId:"",companyName:"",tin:"",directorName:"",phone:"",serviceType:"",description:"",registeredDate:new Date().toISOString().split("T")[0],regFee:0,regFeePaid:false,approvalStatus:"pending",approvedByMemberId:"",expiryDate:""});setSpModal(true);}}>＋ Register Provider</button>
+                </div>
+                {/* Policy pills */}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                  {[["👤 BIDA Member","12 months mandate","#a5d6a7"],["🏢 Non-Member","6 months · UGX 25,000 fee","#ffcc80"],["✅ Compliant","Active monthly savings + annual sub","#90caf9"],["⚠ Non-Compliant","Cannot receive new contracts","#ef9a9a"]].map(([l,sub,c])=>(
+                    <div key={l} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",borderRadius:7,padding:"4px 10px",fontSize:9}}>
+                      <span style={{fontWeight:700,color:c}}>{l}</span><span style={{opacity:.6,marginLeft:4}}>{sub}</span>
+                    </div>
+                  ))}
+                </div>
+                {serviceProviders.length===0
+                  ?<div style={{background:"rgba(255,255,255,.08)",borderRadius:8,padding:"10px 12px",fontSize:11,color:"rgba(255,255,255,.6)",textAlign:"center"}}>No providers registered yet. Click + Register Provider to add one.</div>
+                  :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+                    {serviceProviders.map((sp,idx)=>{
+                      const m=sp.isMember?members.find(mb=>mb.id===sp.memberId):null;
+                      const compliant=sp.isMember?(m&&isProviderCompliant(m)):true;
+                      const active=spIsActive(sp);
+                      const expiry=spExpiryDate(sp);
+                      const displayName=sp.companyName||(m?m.name:"Unknown");
+                      return (
+                        <div key={idx} style={{background:active?(compliant?"rgba(255,255,255,.12)":"rgba(255,167,38,.15)"):"rgba(239,83,80,.15)",border:"1px solid "+(active?(compliant?"rgba(255,255,255,.2)":"rgba(255,167,38,.4)"):"rgba(239,83,80,.5)"),borderRadius:9,padding:"10px 11px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                            <div style={{fontWeight:700,fontSize:12,color:"#fff",flex:1}}>{displayName}</div>
+                            <div style={{display:"flex",gap:4}}>
+                              <button type="button" onClick={()=>{setEditSp(idx);setSpF({...sp});setSpModal(true);}} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,padding:0}}>✏️</button>
+                              <button type="button" onClick={()=>{if(window.confirm("Remove "+displayName+"?"))setServiceProviders(prev=>prev.filter((_,i)=>i!==idx));}} style={{background:"none",border:"none",color:"rgba(239,83,80,.7)",cursor:"pointer",fontSize:11,padding:0}}>🗑</button>
+                            </div>
+                          </div>
+                          <div style={{fontSize:9,opacity:.7,marginBottom:3}}>{sp.serviceType}</div>
+                          {sp.directorName&&<div style={{fontSize:9,opacity:.65}}>Dir: {sp.directorName}</div>}
+                          {sp.phone&&<div style={{fontSize:9,opacity:.65}}>📞 {sp.phone}</div>}
+                          {sp.tin&&<div style={{fontSize:9,opacity:.55,fontFamily:"var(--mono)"}}>TIN: {sp.tin}</div>}
+                          <div style={{marginTop:5,display:"flex",gap:4,flexWrap:"wrap"}}>
+                            <span style={{fontSize:8,background:sp.isMember?"rgba(165,214,167,.3)":"rgba(255,204,128,.3)",color:sp.isMember?"#a5d6a7":"#ffcc80",borderRadius:5,padding:"1px 5px",fontWeight:700}}>{sp.isMember?"👤 Member":"🏢 Non-Member"}</span>
+                            <span style={{fontSize:8,background:compliant?"rgba(165,214,167,.2)":"rgba(255,167,38,.2)",color:compliant?"#a5d6a7":"#ffcc80",borderRadius:5,padding:"1px 5px",fontWeight:700}}>{compliant?"✅ Compliant":"⚠ Non-compliant"}</span>
+                            <span style={{fontSize:8,background:active?"rgba(144,202,249,.2)":"rgba(239,83,80,.2)",color:active?"#90caf9":"#ef9a9a",borderRadius:5,padding:"1px 5px",fontWeight:700}}>{active?"● Active":"✕ Expired"}</span>
+                          </div>
+                          {expiry&&<div style={{fontSize:8,opacity:.5,marginTop:3}}>Expires: {expiry.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</div>}
+                          {!sp.isMember&&!sp.regFeePaid&&<div style={{marginTop:4,fontSize:8,color:"#ffcc80",fontWeight:700}}>⚠ UGX 25,000 registration fee not paid</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                }
+              </div>
+
               <div className="toolbar">
-                <div className="tl"><span className="ttitle">Expenses</span><span className="tcount">{expenses.length}</span></div>
+                <div className="tl"><span className="ttitle">Full Ledger</span><span className="tcount">{expenses.length}</span></div>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
                   <button className="btn bpdf sm" onClick={()=>handlePDF("expenses")} disabled={!!pdfGen}>{pdfGen==="expenses"?"⏳...":"📥 PDF"}</button>
                   <button className="btn bp sm" onClick={openAddExp}>＋ Add Expense</button>
                 </div>
               </div>
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"4px 16px"}}>
-                {expenses.length===0&&<div className="empty"><div className="eico">🧾</div>No expenses recorded yet. Click + Add Expense to begin.</div>}
-                {[...expenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(e=>(
-                  <div key={e.id} className="exp-row">
-                    <div className="exp-date">{fmtD(e.date)}</div>
-                    <div className="exp-main">
-                      <div className="exp-activity">{e.activity}</div>
-                      <div className="exp-meta">
-                        {e.purpose&&<span>📌 {e.purpose} &nbsp;</span>}
-                        <span>Issued by: <strong>{e.issuedBy||"—"}</strong> &nbsp;</span>
-                        <span>Approved: <strong>{e.approvedBy||"—"}</strong></span>
-                        <br/>
-                        {e.payMode==="cash"&&<span className="exp-mode mode-cash">💵 Cash</span>}
-                        {e.payMode==="bank"&&<span className="exp-mode mode-bank">🏦 Bank Transfer{e.bankName?" — "+e.bankName:""}{e.bankAccount?" Acct: "+e.bankAccount:""}</span>}
-                        {e.payMode==="mtn"&&<span className="exp-mode mode-mtn">📱 MTN MoMo{e.mobileNumber?" — "+e.mobileNumber:""}</span>}
-                        {e.payMode==="airtel"&&<span className="exp-mode mode-airtel">📱 Airtel Money{e.mobileNumber?" — "+e.mobileNumber:""}</span>}
-                        {e.category&&<span style={{marginLeft:6,fontSize:9,background:"var(--b100)",color:"var(--b700)",borderRadius:7,padding:"1px 6px",fontFamily:"var(--mono)"}}>{e.category}</span>}
-                      </div>
-                    </div>
-                    <div className="exp-amount">− {fmt(+e.amount||0)}</div>
-                    <div className="exp-actions">
-                      <button className="btn bg xs" onClick={()=>openEditExp(e)}>✏️</button>
-                      <button className="btn bd xs" onClick={()=>delExp(e.id)}>🗑</button>
-                    </div>
-                  </div>
-                ))}
+
+              {/* Full ledger table with running balance */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,overflow:"hidden"}}>
+                {expenses.length===0&&<div className="empty" style={{padding:"30px"}}><div className="eico">🧾</div>No expenses recorded yet. Click + Add Expense to begin.</div>}
                 {expenses.length>0&&(
-                  <div style={{borderTop:"2px solid var(--bdr2)",padding:"10px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:"var(--tmuted)"}}>TOTAL EXPENSES</span>
-                    <span style={{fontFamily:"var(--mono)",fontSize:15,fontWeight:900,color:"#c62828"}}>− {fmt(totalExpenses)}</span>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                      <thead>
+                        <tr style={{background:"var(--b50)"}}>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>#</th>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Date</th>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Activity</th>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Issued By</th>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Category</th>
+                          <th style={{padding:"8px 10px",textAlign:"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Amount</th>
+                          <th style={{padding:"8px 10px",textAlign:"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Balance After</th>
+                          <th style={{padding:"8px 10px",textAlign:"center",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(()=>{
+                          // Sort chronologically to compute running balance correctly
+                          const sorted=[...expenses].sort((a,b)=>new Date(a.date)-new Date(b.date));
+                          let running=savT.total+lStat.profit;
+                          const withBal=sorted.map(e=>{running-=(+e.amount||0);return{...e,balAfter:running};});
+                          // Display newest first
+                          return [...withBal].reverse().map((e,i)=>(
+                            <tr key={e.id} style={{borderBottom:"1px solid #eef5ff"}} onMouseOver={ev=>ev.currentTarget.style.background="#f0f7ff"} onMouseOut={ev=>ev.currentTarget.style.background=""}>
+                              <td style={{padding:"8px 10px",fontSize:10,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{sorted.length-i}</td>
+                              <td style={{padding:"8px 10px",fontSize:11,fontFamily:"var(--mono)",color:"var(--tm)",whiteSpace:"nowrap"}}>{fmtD(e.date)}</td>
+                              <td style={{padding:"8px 10px"}}>
+                                <div style={{fontWeight:700,fontSize:12,color:"var(--b800)"}}>{e.activity}</div>
+                                {e.purpose&&<div style={{fontSize:10,color:"var(--tmuted)",marginTop:1}}>📌 {e.purpose}</div>}
+                                <div style={{marginTop:2}}>
+                                  {e.payMode==="cash"&&<span className="exp-mode mode-cash">💵 Cash</span>}
+                                  {e.payMode==="bank"&&<span className="exp-mode mode-bank">🏦 {e.bankName||"Bank"}</span>}
+                                  {e.payMode==="mtn"&&<span className="exp-mode mode-mtn">📱 MTN MoMo</span>}
+                                  {e.payMode==="airtel"&&<span className="exp-mode mode-airtel">📱 Airtel</span>}
+                                </div>
+                              </td>
+                              <td style={{padding:"8px 10px"}}>
+                                <div style={{fontSize:12,fontWeight:600,color:"var(--td)"}}>{e.issuedBy||"—"}</div>
+                                {e.issuedByPhone&&<div style={{fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>{e.issuedByPhone}</div>}
+                                <div style={{fontSize:10,color:"var(--tmuted)"}}>{e.approvedBy?"✓ "+e.approvedBy:""}</div>
+                              </td>
+                              <td style={{padding:"8px 10px"}}>
+                                {e.category&&<span style={{fontSize:9,background:"var(--b100)",color:"var(--b700)",borderRadius:7,padding:"2px 7px",fontFamily:"var(--mono)"}}>{e.category}</span>}
+                              </td>
+                              <td style={{padding:"8px 10px",textAlign:"right",fontWeight:900,fontSize:13,fontFamily:"var(--mono)",color:"#c62828",whiteSpace:"nowrap"}}>− {fmt(+e.amount||0)}</td>
+                              <td style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
+                                <div style={{fontWeight:700,fontSize:12,fontFamily:"var(--mono)",color:e.balAfter<0?"#c62828":"#2e7d32"}}>{fmt(e.balAfter)}</div>
+                                {e.balAfter<0&&<div style={{fontSize:9,color:"#c62828"}}>⚠ Overdraft</div>}
+                              </td>
+                              <td style={{padding:"8px 10px",textAlign:"center"}}>
+                                <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                                  <button className="btn bg xs" onClick={()=>openEditExp(e)}>✏️</button>
+                                  <button className="btn bd xs" onClick={()=>delExp(e.id)}>🗑</button>
+                                </div>
+                              </td>
+                            </tr>
+                          ));
+                        })()}
+                        <tr style={{background:"linear-gradient(to right,var(--b100),var(--b50))"}}>
+                          <td colSpan={5} style={{padding:"10px",fontWeight:700,fontFamily:"var(--mono)",fontSize:10,color:"var(--b800)"}}>TOTAL EXPENSES</td>
+                          <td style={{padding:"10px",textAlign:"right",fontWeight:900,fontSize:14,fontFamily:"var(--mono)",color:"#c62828"}}>− {fmt(totalExpenses)}</td>
+                          <td style={{padding:"10px",textAlign:"right",fontWeight:900,fontSize:14,fontFamily:"var(--mono)",color:cashInBank<0?"#c62828":"#2e7d32"}}>{fmt(cashInBank)}</td>
+                          <td/>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -1458,20 +2258,20 @@ export default function App(){
                 <div style={{fontWeight:800,fontSize:13,marginBottom:5}}>🏗️ Purpose &amp; Liquidity Policy</div>
                 <div style={{fontSize:11,lineHeight:1.7,opacity:.92}}>
                   Investment returns fund <strong>BIDA co-operative projects</strong> — infrastructure, member welfare initiatives, and community development.
-                  <strong style={{color:"#90caf9"}}> Liquidity Rule:</strong> Pool must retain <strong style={{color:"#ffd54f"}}>at least 70%</strong> of total savings at all times. <strong>Maximum investable = 30% of fund pool.</strong>
+                  <strong style={{color:"#90caf9"}}> Liquidity Rule:</strong> Cash in bank must retain <strong style={{color:"#ffd54f"}}>at least 80%</strong> at all times. <strong>Maximum investable = 20% of cash in bank after expenses.</strong>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:7,marginTop:10}}>
                   {(()=>{
-                    const max30=Math.round(savT.total*0.30);
-                    const liq70=Math.round(savT.total*0.70);
-                    const rem=Math.max(0,max30-totalInvested);
-                    const ok=(savT.total-totalInvested)>=liq70;
+                    const cashInBk=savT.total+lStat.profit-totalExpenses;
+                    const maxInv=Math.round(cashInBk*0.20);
+                    const rem=Math.max(0,maxInv-totalInvested);
+                    const ok=cashInBk-totalInvested>=cashInBk*0.80;
                     return [
-                      ["Fund Pool",fmt(savT.total),"#90caf9"],
-                      ["Max Investable (30%)",fmt(max30),"#ffd54f"],
-                      ["Currently Invested",fmt(totalInvested),totalInvested>max30?"#ef9a9a":"#a5d6a7"],
-                      ["Remaining",fmt(rem),rem===0?"#ef9a9a":"#c8e6c9"],
-                      ["Liquidity (70%)",fmt(liq70),ok?"#a5d6a7":"#ef9a9a"],
+                      ["Cash in Bank",fmt(cashInBk),"#90caf9"],
+                      ["Max Investable (20% of cash)",fmt(maxInv),"#ffd54f"],
+                      ["Currently Invested",fmt(totalInvested),totalInvested>maxInv?"#ef9a9a":"#a5d6a7"],
+                      ["Remaining Headroom",fmt(rem),rem===0?"#ef9a9a":"#c8e6c9"],
+                      ["Liquid Reserve (80%)",fmt(Math.round(cashInBk*0.80)),ok?"#a5d6a7":"#ef9a9a"],
                     ].map(([l,v,c])=>(
                       <div key={l} style={{background:"rgba(255,255,255,.1)",borderRadius:8,padding:"7px 10px"}}>
                         <div style={{fontSize:9,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:.5,marginBottom:2}}>{l}</div>
@@ -1497,11 +2297,10 @@ export default function App(){
                 <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 14px"}}>
                   <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>🌍 FX Rates (UGX indicative)</div>
                   <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                    {[["UGX/USD","3,720","+0.4%","#1565c0"],["UGX/KES","28.5","-0.1%","#2e7d32"],["UGX/TZS","0.64","+0.2%","#e65100"],["UGX/EUR","4,050","+0.6%","#6a1b9a"],["UGX/GBP","4,720","+0.3%","#00695c"]].map(([l,r,t,c])=>(
-                      <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid var(--bdr)"}}>
-                        <span style={{fontSize:10,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{l}</span>
-                        <span style={{fontSize:12,fontWeight:800,color:c,fontFamily:"var(--mono)"}}>{r}</span>
-                        <span style={{fontSize:9,color:t.startsWith("+")?"#2e7d32":"#c62828",fontFamily:"var(--mono)"}}>{t}</span>
+                    {fxLoading?<div style={{fontSize:10,color:"var(--tmuted)",padding:"8px 0"}}>⏳ Loading live rates…</div>:FX_RATES.map(({label,rate,color})=>(
+                      <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid var(--bdr)"}}>
+                        <span style={{fontSize:10,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{label}</span>
+                        <span style={{fontSize:12,fontWeight:800,color,fontFamily:"var(--mono)"}}>{rate}</span>
                       </div>
                     ))}
                   </div>
@@ -1580,21 +2379,32 @@ export default function App(){
                 <div className="card"><div className="clabel">Monthly Inflow</div><div className="cval">{fmt(savT.monthly)}</div></div>
                 <div className="card cd"><div className="clabel">Outstanding</div><div className="cval danger">{fmt(lStat.outstanding)}</div></div>
                 <div className="card cd"><div className="clabel">Expenses</div><div className="cval danger">{fmt(totalExpenses)}</div></div>
-                <div className="card ck"><div className="clabel">Net Balance</div><div className="cval ok">{fmt(netCash)}</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div></div>
               </div>
-              {sharedPDF&&sharedPDF.type!=="member"&&(
-                <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:11,padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:13,color:"#1b5e20"}}>✅ {sharedPDF.label} ready</div>
-                    <div style={{fontSize:11,color:"#2e7d32",marginTop:2}}>Downloaded · Share via WhatsApp below</div>
+              {sharedPDF&&sharedPDF.type!=="member"&&sharedPDF.dataUrl&&(
+                <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:11,padding:"14px 16px",marginTop:10}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1b5e20",marginBottom:8}}>✅ {sharedPDF.label} is ready</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                    <a href={sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,textDecoration:"none"}}>📥 Download PDF</a>
+                    <a href={sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:12,textDecoration:"none"}}>🔍 Open in New Tab</a>
+                    <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:8,background:"#25D366",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,sharedPDF.label)}>{WA_SVG} Share via WhatsApp</button>
                   </div>
-                  <button className="btn" style={{background:"#25D366",color:"#fff",fontWeight:700}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,sharedPDF.label)}>
-                    {WA_SVG} Share via WhatsApp
-                  </button>
+                  <div style={{fontSize:10,color:"#2e7d32",marginTop:8,opacity:.8}}>Tip: If "Download" doesn't work in your browser, use "Open in New Tab" then save from there (Ctrl+S or right-click → Save).</div>
                 </div>
               )}
             </React.Fragment>
           )}
+        {/* ── FLOATING PDF READY TOAST — visible on all tabs ── */}
+        {sharedPDF&&sharedPDF.dataUrl&&(
+          <div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"#1b5e20",color:"#fff",borderRadius:12,padding:"12px 18px",boxShadow:"0 8px 32px rgba(0,0,0,.35)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",maxWidth:"92vw",animation:"su .25s ease"}}>
+            <div style={{fontSize:12,fontWeight:700}}>✅ {sharedPDF.label} ready</div>
+            <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+              <a href={sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 14px",borderRadius:7,background:"#fff",color:"#1b5e20",fontWeight:800,fontSize:12,textDecoration:"none"}}>📥 Download</a>
+              <a href={sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 14px",borderRadius:7,background:"rgba(255,255,255,.15)",color:"#fff",fontWeight:700,fontSize:12,textDecoration:"none",border:"1px solid rgba(255,255,255,.3)"}}>🔍 Open</a>
+            </div>
+            <button onClick={()=>setSharedPDF(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>✕</button>
+          </div>
+        )}
         </main>
       </div>
 
@@ -1606,10 +2416,12 @@ export default function App(){
               <div style={{display:"flex",alignItems:"center",gap:9}}><Avatar name={profMember.name} size={34}/><div className="mtitle">{profMember.name}</div></div>
               <div style={{display:"flex",gap:7}}>
                 {!profEdit&&<button className="btn bstmt sm" disabled={!!pdfGen} onClick={()=>handleMemberPDF(profMember)}>{pdfGen===("member_"+profMember.id)?"⏳...":"📄 Statement"}</button>}
-                {!profEdit&&sharedPDF&&sharedPDF.type==="member"&&sharedPDF.memberId===profMember.id&&(
-                  <button className="btn sm" style={{background:"#25D366",color:"#fff",fontWeight:700}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,profMember.name)}>
-                    {WA_SVG} WA
-                  </button>
+                {!profEdit&&sharedPDF&&sharedPDF.type==="member"&&sharedPDF.memberId===profMember.id&&sharedPDF.dataUrl&&(
+                  <React.Fragment>
+                    <a href={sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,textDecoration:"none"}}>📥 PDF</a>
+                    <a href={sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:10,textDecoration:"none"}}>🔍</a>
+                    <button className="btn sm" style={{background:"#25D366",color:"#fff",fontWeight:700}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,profMember.name)}>{WA_SVG} WA</button>
+                  </React.Fragment>
                 )}
                 {!profEdit&&<button className="btn bg sm" onClick={()=>setProfEdit(true)}>✏️ Edit</button>}
                 <button className="mclose" onClick={closeProfile}>✕</button>
@@ -1637,6 +2449,26 @@ export default function App(){
                       :<div style={{fontSize:11,color:"rgba(255,255,255,.4)",marginTop:3,fontFamily:"var(--mono)"}}>No WhatsApp on file</div>
                     }
                     <div className="prof-rank-badge">🏅 Rank #{profRank} of {members.length}</div>
+                    {(()=>{
+                      const spRoles=serviceProviders.filter(sp=>sp.isMember&&sp.memberId===profMember.id&&spIsActive(sp));
+                      if(spRoles.length===0)return null;
+                      return <div style={{marginTop:4,display:"flex",gap:4,flexWrap:"wrap"}}>
+                        {spRoles.map((sp,i)=>(
+                          <div key={i} style={{background:"rgba(255,193,7,.2)",border:"1px solid rgba(255,193,7,.5)",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,color:"#ffd54f"}}>
+                            🏪 Provider: {sp.serviceType}
+                          </div>
+                        ))}
+                      </div>;
+                    })()}
+                    {profMember.referredByMemberId&&(()=>{
+                      const referrer=members.find(m=>m.id===profMember.referredByMemberId);
+                      return referrer?<div style={{marginTop:3,fontSize:10,color:"rgba(255,255,255,.6)"}}>Referred by: <strong style={{color:"#90caf9"}}>{referrer.name}</strong></div>:null;
+                    })()}
+                    {(()=>{
+                      const referred=members.filter(m=>m.referredByMemberId===profMember.id);
+                      if(referred.length>0) return <div style={{marginTop:4,background:"rgba(255,215,0,.2)",border:"1px solid rgba(255,215,0,.4)",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,color:"#ffd54f",display:"inline-block"}}>🎁 {referred.length} referral{referred.length>1?"s":""} · Commission: {fmt(profMember.referralCommission||0)}</div>;
+                      return null;
+                    })()}
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontSize:10,color:"rgba(255,255,255,.6)",marginBottom:2}}>TOTAL BANKED</div>
@@ -1660,6 +2492,129 @@ export default function App(){
                     ))}
                   </div>
                 </div>
+                {/* ── REFERRAL SECTION ── */}
+                {(()=>{
+                  const referred=members.filter(m=>m.referredByMemberId===profMember.id);
+                  const pending=(profMember.pendingCommissions||[]).filter(c=>!c.paid);
+                  const paid=(profMember.pendingCommissions||[]).filter(c=>c.paid);
+                  const today=new Date();
+                  const nowPayable=pending.filter(c=>new Date(c.payableDate)<=today);
+                  const notYet=pending.filter(c=>new Date(c.payableDate)>today);
+                  const totalEarned=profMember.referralCommission||0;
+                  const totalPaid=paid.reduce((s,c)=>s+c.amount,0);
+                  const totalOwed=pending.reduce((s,c)=>s+c.amount,0);
+                  if(referred.length===0&&totalEarned===0) return null;
+                  return (
+                    <div className="prof-section">
+                      <div className="prof-section-title">🎁 Referral Programme</div>
+                      {/* Summary cards */}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:10}}>
+                        <div className="prof-item" style={{background:"#e8f5e9",borderColor:"#a5d6a7"}}>
+                          <div className="prof-item-label">Members Referred</div>
+                          <div className="prof-item-val ok" style={{fontSize:18}}>{referred.length}</div>
+                        </div>
+                        <div className="prof-item" style={{background:"#fff8e1",borderColor:"#ffe082"}}>
+                          <div className="prof-item-label">Total Commission Earned</div>
+                          <div className="prof-item-val" style={{color:"#f57f17"}}>{fmt(totalEarned)}</div>
+                        </div>
+                        <div className="prof-item" style={{background:totalOwed>0?"#fff3e0":"#f1f8e9",borderColor:totalOwed>0?"#ffcc80":"#c5e1a5"}}>
+                          <div className="prof-item-label">Pending Payout</div>
+                          <div className="prof-item-val" style={{color:totalOwed>0?"#e65100":"#2e7d32"}}>{fmt(totalOwed)}</div>
+                        </div>
+                      </div>
+                      {/* Members referred list */}
+                      {referred.length>0&&(
+                        <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
+                          <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Members Introduced to BIDA</div>
+                          {referred.map(m=>{
+                            const comm=(profMember.pendingCommissions||[]).find(c=>c.newMemberId===m.id);
+                            const isPayable=comm&&new Date(comm.payableDate)<=today;
+                            return (
+                              <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--bdr)",flexWrap:"wrap",gap:6}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <Avatar name={m.name} size={28} photoUrl={m.photoUrl}/>
+                                  <div>
+                                    <div style={{fontWeight:700,fontSize:12,color:"var(--b800)"}}>{m.name}</div>
+                                    <div style={{fontSize:10,color:"var(--tmuted)"}}>Joined {m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}</div>
+                                  </div>
+                                </div>
+                                <div style={{textAlign:"right"}}>
+                                  {comm&&<div style={{fontWeight:700,fontSize:11,color:isPayable?"#2e7d32":"#e65100",fontFamily:"var(--mono)"}}>{fmt(comm.amount)}</div>}
+                                  {comm&&<div style={{fontSize:9,color:"var(--tmuted)"}}>
+                                    {comm.paid?"✓ Paid":isPayable?"✅ Payable now":"⏳ Payable "+new Date(comm.payableDate).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}
+                                  </div>}
+                                </div>
+                                {comm&&!comm.paid&&isPayable&&(
+                                  <button className="btn bk xs" onClick={()=>setMembers(prev=>prev.map(mb=>mb.id===profMember.id?{...mb,pendingCommissions:(mb.pendingCommissions||[]).map(c=>c.newMemberId===m.id?{...c,paid:true}:c)}:mb))}>Mark Paid</button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Commission breakdown */}
+                      {(profMember.pendingCommissions||[]).length>0&&(
+                        <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#5d4037",lineHeight:1.7}}>
+                          <strong>💡 How commission is calculated:</strong> 1% of your (Monthly Savings + Welfare) at the time each new member joins. Commission is payable 1 month after the new member's join date.
+                          {nowPayable.length>0&&<div style={{marginTop:4,fontWeight:700,color:"#e65100"}}>⚠ {nowPayable.length} commission{nowPayable.length>1?"s":""} ({fmt(nowPayable.reduce((s,c)=>s+c.amount,0))}) are now due for payment.</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── MONTHLY SAVINGS ENCOURAGEMENT ── */}
+                {(()=>{
+                  const ms=profMember.monthlySavings||0;
+                  const annSub=profMember.annualSub||0;
+                  const welfare=profMember.welfare||0;
+                  const expectedWelfare=Math.round(ms*0.30);
+                  const welfareDiff=expectedWelfare-welfare;
+                  const isLowSaver=ms<10000;
+                  const isGoodSaver=ms>=50000;
+                  const isExcellentSaver=ms>=30000;
+                  const statusColor=isLowSaver?"#c62828":isGoodSaver?"#1b5e20":"#e65100";
+                  const statusBg=isLowSaver?"#ffebee":isGoodSaver?"#e8f5e9":"#fff8e1";
+                  const statusBdr=isLowSaver?"#ffcdd2":isGoodSaver?"#a5d6a7":"#ffe082";
+                  const statusMsg=isLowSaver
+                    ? "⚠️ Below minimum — monthly savings are under UGX 10,000. Please contribute at least UGX 10,000/month to remain in good standing."
+                    : isGoodSaver
+                    ? "✅ Excellent! Consistent monthly savings above UGX 50,000 qualifies you for higher loan limits and referral commissions."
+                    : isExcellentSaver
+                    ? "👍 Good standing. Consider increasing to UGX 50,000/month to unlock maximum benefits."
+                    : "📌 Active contributor. Increasing monthly savings improves your borrowing capacity and fund pool share.";
+                  const borrowBase=ms+welfare;
+                  const borrowRate=Math.round((borrowLimit(profMember,loans)/Math.max(borrowBase,1))*100);
+                  return (
+                    <div className="prof-section">
+                      <div className="prof-section-title">💰 Monthly Savings Status</div>
+                      <div style={{background:statusBg,border:"1.5px solid "+statusBdr,borderRadius:10,padding:"10px 14px",marginBottom:8}}>
+                        <div style={{fontWeight:700,fontSize:12,color:statusColor,marginBottom:4}}>
+                          {isLowSaver?"🔴 Needs Attention":isGoodSaver?"🟢 Excellent Saver":isExcellentSaver?"🟡 Good Standing":"🟡 Active"}
+                        </div>
+                        <div style={{fontSize:11,color:statusColor,lineHeight:1.6}}>{statusMsg}</div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
+                        {[
+                          ["Monthly Savings",fmt(ms),isLowSaver?"danger":"ok"],
+                          ["Annual Subscription",fmt(annSub),annSub>=50000?"ok":"warn"],
+                          ["Welfare (should be 30%)",fmt(welfare),welfareDiff>0?"warn":"ok"],
+                          ["Expected Welfare (30%)",fmt(expectedWelfare),""],
+                          ["Borrow Limit",fmt(borrowLimit(profMember,loans)),"ok"],
+                          ["Savings × Borrow Rate",borrowRate+"%",""],
+                        ].map(([lb,v,cls])=>(
+                          <div key={lb} style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"7px 10px"}}>
+                            <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase",marginBottom:2}}>{lb}</div>
+                            <div style={{fontWeight:700,fontSize:12,color:cls==="ok"?"#2e7d32":cls==="danger"?"#c62828":cls==="warn"?"#e65100":"var(--b700)"}}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {annSub<50000&&<div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:8,padding:"7px 10px",fontSize:10,color:"#e65100",marginBottom:6}}>⚠ Annual subscription is below UGX 50,000 — member will not qualify for referral commissions until this is met.</div>}
+                      {welfareDiff>0&&<div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"7px 10px",fontSize:10,color:"#1565c0"}}>💡 Welfare should be 30% of monthly savings. Suggested welfare top-up: {fmt(welfareDiff)} (30% of UGX {fmt(ms)} = {fmt(expectedWelfare)})</div>}
+                    </div>
+                  );
+                })()}
+
                 <div className="prof-section">
                   <div className="prof-section-title">Pool Contribution vs Peers</div>
                   <div className="prof-bar-wrap">
@@ -1698,7 +2653,7 @@ export default function App(){
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {profMember.email&&<button className="btn bemail sm" disabled={emailSending["sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsEmail(profMember)}>{emailSending["sav_"+profMember.id]==="sending"?"⏳...":"📨 Email"}</button>}
                         {profMember.whatsapp&&<React.Fragment><a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWASavingsMsg(profMember))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
-                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);shareViaPDF(blob,"BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf",profMember.name);}}>{WA_SVG}WA PDF</button>
+                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);const dataUrl=await blobToDataUrl(blob);const a=document.createElement("a");a.href=dataUrl;a.download="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";a.style.cssText="position:fixed;top:-100px;opacity:0";document.body.appendChild(a);a.click();setTimeout(()=>{try{document.body.removeChild(a);}catch(e){}},5000);}}>{WA_SVG}WA PDF</button>
                         <button className="btn bsms sm" disabled={emailSending["sms_sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsSMS(profMember)}>{emailSending["sms_sav_"+profMember.id]==="sending"?"⏳...":"📱 SMS"}</button></React.Fragment>}
                       </div>
                     </div>
@@ -1783,6 +2738,41 @@ export default function App(){
               </div>
               {/* Personal details */}
               <div className="fg ff"><label className="fl">Full Name</label><input className="fi" value={addMF.name} onChange={e=>setAddMF(f=>({...f,name:e.target.value}))} placeholder="e.g. KATUNTU HANNAH"/></div>
+              {/* How did they hear about BIDA */}
+              <div className="fg ff">
+                <label className="fl">How did they hear about BIDA? <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required)</span></label>
+                <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
+                  {[["member","👤 BIDA Member"],["community","🏘 Community"],["word_of_mouth","🗣 Word of Mouth"],["online","🌐 Online"],["other","📋 Other"]].map(([v,lbl])=>(
+                    <button key={v} type="button" onClick={()=>setAddMF(f=>({...f,referralSource:v,referredById:v==="member"?f.referredById:""}))} style={{padding:"7px 12px",borderRadius:9,border:addMF.referralSource===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:addMF.referralSource===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:addMF.referralSource===v?700:400,color:addMF.referralSource===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                  ))}
+                </div>
+                {addMF.referralSource==="member"&&(
+                  <div style={{marginTop:8}}>
+                    <label className="fl" style={{marginBottom:4,display:"block"}}>Which member referred them?</label>
+                    <select className="fi" value={addMF.referredById||""} onChange={e=>setAddMF(f=>({...f,referredById:e.target.value}))}>
+                      <option value="">— Select referring member —</option>
+                      {members.map(m=><option key={m.id} value={m.id}>{m.name} — {fmt(totBanked(m))}</option>)}
+                    </select>
+                    {addMF.referredById&&(()=>{
+                      const ref=members.find(m=>m.id===+addMF.referredById);
+                      const newAnnSub=+addMF.annualSub||0;
+                      const eligible=newAnnSub>=50000;
+                      const commBase=ref?(ref.monthlySavings||0)+(ref.welfare||0):0;
+                      const commission=eligible?Math.round(commBase*0.01):0;
+                      const payDate=new Date(addMF.joinDate||new Date());payDate.setMonth(payDate.getMonth()+1);
+                      return eligible
+                        ? <div style={{marginTop:6,background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:7,padding:"6px 10px",fontSize:10,color:"#1b5e20",lineHeight:1.6}}>
+                          🎉 <strong>{ref?.name}</strong> earns a referral commission of <strong>{fmt(commission)}</strong><br/>
+                        Base: 1% of (monthly savings {fmt(ref?.monthlySavings||0)} + welfare {fmt(ref?.welfare||0)}) = {fmt(commBase)}<br/>
+                        Payable after 1 month: <strong>{payDate.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</strong>
+                        </div>
+                        : <div style={{marginTop:6,background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:7,padding:"6px 10px",fontSize:10,color:"#e65100",lineHeight:1.6}}>
+                          ⚠ <strong>{ref?.name}</strong> will <strong>not</strong> receive a commission — new member must pay an annual subscription of at least UGX 50,000 (currently UGX {(+addMF.annualSub||0).toLocaleString()}).
+                        </div>;
+                    })()}
+                  </div>
+                )}
+              </div>
               <div className="fg"><label className="fl">Telephone</label><input className="fi" type="tel" value={addMF.phone} onChange={e=>setAddMF(f=>({...f,phone:e.target.value}))} placeholder="0772 000 000"/></div>
               <div className="fg"><label className="fl">WhatsApp</label><input className="fi" type="tel" value={addMF.whatsapp} onChange={e=>setAddMF(f=>({...f,whatsapp:e.target.value}))} placeholder="0772 000 000"/><span className="fhint">07XX or 256XX</span></div>
               <div className="fg ff"><label className="fl">Email</label><input className="fi" type="email" value={addMF.email} onChange={e=>setAddMF(f=>({...f,email:e.target.value}))} placeholder="member@example.com"/></div>
@@ -1792,12 +2782,12 @@ export default function App(){
 
               {/* Contributions */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💰 Initial Contributions</div></div>
-              <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"8px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}><strong>📌 Contribution Rules:</strong> Monthly savings: UGX <strong>10,000</strong> (min) – <strong>70,000</strong> (max). <strong>20% auto-allocated to welfare.</strong></div></div>
+              <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"8px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}><strong>📌 Contribution Rules:</strong> Monthly savings minimum: UGX <strong>10,000</strong>. Members may contribute <strong>70,000 or more</strong> per month — no upper cap. <strong>30% of monthly savings is auto-allocated to welfare.</strong></div></div>
               {[["Membership Fee","membership"],["Annual Sub","annualSub"]].map(([lb,k])=>(
                 <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={addMF[k]} onChange={e=>setAddMF(f=>({...f,[k]:e.target.value}))} placeholder="0"/></div>
               ))}
-              <div className="fg"><label className="fl">Monthly Savings (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(10k–70k)</span></label><input className="fi" type="number" value={addMF.monthlySavings} onChange={e=>{const v=Math.min(70000,Math.max(0,+e.target.value||0));setAddMF(f=>({...f,monthlySavings:v,welfare:Math.round(v*0.20)}));}} min={0} max={70000}/></div>
-              <div className="fg"><label className="fl">Welfare (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(auto 20%)</span></label><input className="fi" type="number" value={addMF.welfare} onChange={e=>setAddMF(f=>({...f,welfare:e.target.value}))} placeholder="Auto"/><span className="fhint">20% of monthly savings. Adjust if needed.</span></div>
+              <div className="fg"><label className="fl">Monthly Savings (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(min 10,000)</span></label><input className="fi" type="number" value={addMF.monthlySavings} onChange={e=>{const v=Math.max(0,+e.target.value||0);setAddMF(f=>({...f,monthlySavings:v,welfare:Math.round(v*0.30)}));}} min={0}/></div>
+              <div className="fg"><label className="fl">Welfare (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(auto 30%)</span></label><input className="fi" type="number" value={addMF.welfare} onChange={e=>setAddMF(f=>({...f,welfare:e.target.value}))} placeholder="Auto"/><span className="fhint">30% of monthly savings. Adjust if needed.</span></div>
               {[["Shares","shares"]].map(([lb,k])=>(
                 <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={addMF[k]} onChange={e=>setAddMF(f=>({...f,[k]:e.target.value}))} placeholder="0"/></div>
               ))}
@@ -1836,29 +2826,109 @@ export default function App(){
       {invModal&&(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setInvModal(false)}>
           <div className="modal wide">
-            <div className="mhdr"><div className="mtitle">{editInv?"Update Investment":"Add Investment"}</div><button className="mclose" onClick={()=>setInvModal(false)}>✕</button></div>
+            <div className="mhdr"><div className="mtitle">{editInv?"Update Investment":"Record New Investment"}</div><button className="mclose" onClick={()=>setInvModal(false)}>✕</button></div>
+
+            {/* Approval status banner */}
+            <div style={{background:invF.approvalStatus==="approved"?"#e8f5e9":invF.approvalStatus==="rejected"?"#ffebee":"#fff8e1",border:"1.5px solid "+(invF.approvalStatus==="approved"?"#a5d6a7":invF.approvalStatus==="rejected"?"#ffcdd2":"#ffe082"),borderRadius:9,padding:"8px 12px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+              <div style={{fontWeight:700,fontSize:12,color:invF.approvalStatus==="approved"?"#1b5e20":invF.approvalStatus==="rejected"?"#c62828":"#f57f17"}}>
+                {invF.approvalStatus==="approved"?"✅ Approved — Ready to record":invF.approvalStatus==="rejected"?"❌ Rejected":"⏳ Pending Approval"}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                {[["pending","⏳ Pending"],["approved","✅ Approve"],["rejected","❌ Reject"]].map(([v,lbl])=>(
+                  <button key={v} type="button" onClick={()=>setInvF(f=>({...f,approvalStatus:v}))} style={{padding:"4px 10px",borderRadius:7,border:invF.approvalStatus===v?"2px solid var(--b600)":"1px solid var(--bdr)",background:invF.approvalStatus===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:invF.approvalStatus===v?700:400}}>{lbl}</button>
+                ))}
+              </div>
+            </div>
+
             <div className="fgrid">
+              {/* Investment details */}
               <div className="fg ff"><label className="fl">Platform / Fund Name</label><input className="fi" value={invF.platform} onChange={e=>setInvF(f=>({...f,platform:e.target.value}))} placeholder="e.g. UAP, Britam, Stanbic Treasury Bond"/></div>
               <div className="fg ff"><label className="fl">Investment Type</label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
                   {[["unit_trust","📦 Unit Trust"],["treasury_bond","🏛 Treasury Bond"],["fixed_deposit","🏦 Fixed Deposit"],["money_market","💹 Money Market"],["other","📋 Other"]].map(([v,lbl])=>(
-                    <button key={v} onClick={()=>setInvF(f=>({...f,type:v}))} style={{flex:1,minWidth:110,padding:"7px 6px",borderRadius:9,border:invF.type===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:invF.type===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:invF.type===v?700:400,color:invF.type===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                    <button key={v} type="button" onClick={()=>setInvF(f=>({...f,type:v}))} style={{flex:1,minWidth:110,padding:"7px 6px",borderRadius:9,border:invF.type===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:invF.type===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:invF.type===v?700:400,color:invF.type===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
                   ))}
                 </div>
               </div>
-              <div className="fg"><label className="fl">Amount Invested (UGX)</label><input className="fi" type="number" value={invF.amount} onChange={e=>setInvF(f=>({...f,amount:e.target.value}))} placeholder="0"/></div>
+              <div className="fg">
+                <label className="fl">Investment Year <span style={{fontWeight:400,color:"var(--tmuted)"}}>(annual only)</span></label>
+                <select className="fi" value={invF.investmentYear||new Date().getFullYear()} onChange={e=>setInvF(f=>({...f,investmentYear:+e.target.value}))}>
+                  {[2024,2025,2026,2027,2028].map(y=><option key={y} value={y}>{y}</option>)}
+                </select>
+                <span className="fhint">Investments are annual — one per platform per year.</span>
+              </div>
+              <div className="fg"><label className="fl">Amount Invested (UGX)</label>
+                <input className="fi" type="number" value={invF.amount} onChange={e=>setInvF(f=>({...f,amount:e.target.value}))} placeholder="0"/>
+                {(()=>{
+                  const cashInBk=(savT.total||0)+(lStat.profit||0)-(totalExpenses||0);
+                  const maxInv=Math.round(cashInBk*0.20);
+                  const over=(+invF.amount||0)>maxInv;
+                  return <span className="fhint" style={{color:over?"#c62828":"var(--b500)"}}>Max investable: {fmt(maxInv)} (20% of cash in bank {fmt(cashInBk)}){over?" — ⚠ EXCEEDS LIMIT":""}</span>;
+                })()}
+              </div>
               <div className="fg"><label className="fl">Date Invested</label><input className="fi" type="date" value={invF.dateInvested} onChange={e=>setInvF(f=>({...f,dateInvested:e.target.value}))}/></div>
-              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Interest Earned (UGX)</label><input className="fi" value={invF.interestEarned} onChange={e=>setInvF(f=>({...f,interestEarned:e.target.value}))} placeholder="0" style={{borderColor:"#a5d6a7"}}/><span className="fhint">Update this regularly as returns come in</span></div>
+              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Interest Earned (UGX)</label><input className="fi" value={invF.interestEarned} onChange={e=>setInvF(f=>({...f,interestEarned:e.target.value}))} placeholder="0" style={{borderColor:"#a5d6a7"}}/><span className="fhint">Update as returns come in</span></div>
               <div className="fg"><label className="fl">Last Updated</label><input className="fi" type="date" value={invF.lastUpdated} onChange={e=>setInvF(f=>({...f,lastUpdated:e.target.value}))}/></div>
               <div className="fg ff"><label className="fl">Status</label>
                 <div style={{display:"flex",gap:8,marginTop:4}}>
                   {[["active","● Active"],["closed","◼ Closed"]].map(([v,lbl])=>(
-                    <button key={v} onClick={()=>setInvF(f=>({...f,status:v}))} style={{flex:1,padding:"8px",borderRadius:9,border:invF.status===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:invF.status===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:invF.status===v?700:400}}>{lbl}</button>
+                    <button key={v} type="button" onClick={()=>setInvF(f=>({...f,status:v}))} style={{flex:1,padding:"8px",borderRadius:9,border:invF.status===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:invF.status===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:invF.status===v?700:400}}>{lbl}</button>
                   ))}
                 </div>
               </div>
-              <div className="fg ff"><label className="fl">Notes</label><input className="fi" value={invF.notes} onChange={e=>setInvF(f=>({...f,notes:e.target.value}))} placeholder="e.g. 12-month bond at 17% p.a."/></div>
+              <div className="fg ff"><label className="fl">Notes</label><input className="fi" value={invF.notes} onChange={e=>setInvF(f=>({...f,notes:e.target.value}))} placeholder="e.g. 12-month bond at 17% p.a., maturity date..."/></div>
+
+              {/* ── Approval Section ── */}
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>✅ Approval Details</div></div>
+              <div className="fg ff">
+                <label className="fl">Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(active BIDA member)</span></label>
+                <select className="fi" value={invF.approvedByMemberId||""} onChange={e=>{
+                  const m=members.find(m=>m.id===+e.target.value);
+                  setInvF(f=>({...f,approvedByMemberId:e.target.value,approvedBy:m?m.name:""}));
+                }}>
+                  <option value="">— Select approving member —</option>
+                  {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                {invF.approvedBy&&<div style={{fontSize:10,color:"#1b5e20",marginTop:3}}>✓ Approved by: {invF.approvedBy}</div>}
+              </div>
+              <div className="fg"><label className="fl">Approval Date</label><input className="fi" type="date" value={invF.approvalDate||""} onChange={e=>setInvF(f=>({...f,approvalDate:e.target.value}))}/></div>
+
+              {/* ── Document Upload — stored in BIDA ── */}
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>📎 Supporting Documents (stored in BIDA)</div></div>
+              <div className="fg ff">
+                <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"8px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                  📄 Attach Document
+                  <input type="file" accept="image/*,application/pdf,.doc,.docx" multiple style={{display:"none"}} onChange={e=>{
+                    const files=Array.from(e.target.files||[]);
+                    files.forEach(file=>{
+                      const reader=new FileReader();
+                      reader.onload=r=>{
+                        setInvF(f=>({...f,
+                          documents:[...(f.documents||[]),r.target.result],
+                          docNames:[...(f.docNames||[]),file.name]
+                        }));
+                      };
+                      reader.readAsDataURL(file);
+                    });
+                  }}/>
+                </label>
+                <span className="fhint" style={{marginLeft:8}}>PDFs, images, Word docs. All stored in BIDA records.</span>
+                {(invF.docNames||[]).length>0&&(
+                  <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>
+                    {(invF.docNames||[]).map((name,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:7,padding:"4px 9px",fontSize:10}}>
+                        <span style={{color:"#1b5e20",flex:1}}>📄 {name}</span>
+                        {invF.documents[i]&&invF.documents[i].startsWith("data:image")&&<a href={invF.documents[i]} target="_blank" rel="noreferrer" style={{color:"#1565c0",fontSize:9}}>View</a>}
+                        {invF.documents[i]&&invF.documents[i].startsWith("data:application/pdf")&&<a href={invF.documents[i]} download={name} style={{color:"#1565c0",fontSize:9}}>Download</a>}
+                        <button type="button" onClick={()=>setInvF(f=>({...f,documents:f.documents.filter((_,j)=>j!==i),docNames:f.docNames.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"#c62828",cursor:"pointer",fontSize:11,padding:0}}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(invF.docNames||[]).length===0&&<div style={{marginTop:6,fontSize:10,color:"#c62828",fontStyle:"italic"}}>⚠ No documents attached. Investment approval requires at least one supporting document.</div>}
+              </div>
             </div>
+
             {(+invF.amount>0||+invF.interestEarned>0)&&(
               <React.Fragment>
                 <div className="div"/>
@@ -1869,12 +2939,149 @@ export default function App(){
                   <div className="crow"><span className="cl">Retained in pool (60%)</span><span className="cv">{fmt(Math.round((+invF.interestEarned||0)*0.6))}</span></div>
                   <div className="crow" style={{borderTop:"1px solid var(--bdr)",paddingTop:4,marginTop:3}}><span className="cl">Distributable to members (40%)</span><span className="cv ok" style={{fontWeight:900}}>{fmt(Math.round((+invF.interestEarned||0)*0.4))}</span></div>
                 </div>
-                <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:8,padding:"8px 12px",marginTop:8,fontSize:11,color:"#5d4037"}}>
-                  ⚠️ Recording this investment will deduct <strong>{fmt(+invF.amount||0)}</strong> from the fund pool. Ensure committee approval before proceeding.
-                </div>
               </React.Fragment>
             )}
-            <div className="fa"><button className="btn bg" onClick={()=>setInvModal(false)}>Cancel</button><button className="btn bp" onClick={saveInv}>{editInv?"Save Changes":"Record Investment"}</button></div>
+            <div className="fa">
+              <button className="btn bg" onClick={()=>setInvModal(false)}>Cancel</button>
+              <button className="btn bp" onClick={saveInv} disabled={!editInv&&(invF.docNames||[]).length===0&&invF.approvalStatus!=="approved"}>
+                {editInv?"Save Changes":"Record Investment"}
+              </button>
+              {!editInv&&(invF.docNames||[]).length===0&&<span style={{fontSize:10,color:"#c62828",alignSelf:"center"}}>Attach a document to proceed</span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SERVICE PROVIDER MODAL ── */}
+      {spModal&&(
+        <div className="overlay" onClick={e=>e.target===e.currentTarget&&setSpModal(false)}>
+          <div className="modal wide">
+            <div className="mhdr">
+              <div className="mtitle">{editSp!==null?"Edit Service Provider":"Register Service Provider"}</div>
+              <button className="mclose" onClick={()=>setSpModal(false)}>✕</button>
+            </div>
+
+            {/* Member or Non-Member toggle */}
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              {[[true,"👤 BIDA Member","1 year mandate, must maintain savings"],[false,"🏢 Non-Member","6 months · UGX 25,000 registration fee"]].map(([v,lbl,sub])=>(
+                <button key={String(v)} type="button" onClick={()=>setSpF(f=>({...f,isMember:v,memberId:v?f.memberId:"",regFee:v?0:25000}))}
+                  style={{flex:1,padding:"10px 8px",borderRadius:10,border:spF.isMember===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:spF.isMember===v?"var(--b100)":"#fff",cursor:"pointer",textAlign:"left"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:spF.isMember===v?"var(--b700)":"var(--tm)"}}>{lbl}</div>
+                  <div style={{fontSize:9,color:"var(--tmuted)",marginTop:2}}>{sub}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Policy info based on type */}
+            <div style={{background:spF.isMember?"#e8f5e9":"#fff8e1",border:"1px solid "+(spF.isMember?"#a5d6a7":"#ffe082"),borderRadius:9,padding:"8px 12px",marginBottom:12,fontSize:10,color:spF.isMember?"#1b5e20":"#e65100",lineHeight:1.6}}>
+              {spF.isMember
+                ?"✅ BIDA members get a 12-month mandate to provide services. Must maintain monthly savings and annual subscription ≥ UGX 50,000 to remain compliant. Non-compliance suspends their contract."
+                :"⚠ Non-members pay a non-refundable UGX 25,000 registration fee for a 6-month service mandate. After 6 months they must re-register or become a BIDA member for better terms."}
+            </div>
+
+            <div className="fgrid">
+              {/* If BIDA member — select from list */}
+              {spF.isMember&&(
+                <div className="fg ff">
+                  <label className="fl">BIDA Member</label>
+                  <select className="fi" value={spF.memberId||""} onChange={e=>{
+                    const m=members.find(mb=>mb.id===+e.target.value);
+                    setSpF(f=>({...f,memberId:+e.target.value,directorName:m?m.name:"",phone:m?.phone||m?.whatsapp||"",companyName:f.companyName||""}));
+                  }}>
+                    <option value="">— Select member —</option>
+                    {members.map(m=>{
+                      const c=isProviderCompliant(m);
+                      return <option key={m.id} value={m.id}>{m.name} {c?"✅":"⚠"}</option>;
+                    })}
+                  </select>
+                  {spF.memberId&&(()=>{
+                    const m=members.find(mb=>mb.id===spF.memberId);
+                    if(!m)return null;
+                    const c=isProviderCompliant(m);
+                    return <div style={{marginTop:4,fontSize:10,color:c?"#1b5e20":"#c62828",background:c?"#e8f5e9":"#ffebee",border:"1px solid "+(c?"#a5d6a7":"#ffcdd2"),borderRadius:7,padding:"4px 8px"}}>
+                      {c?"✅ Compliant — 12-month mandate":"⚠ Not compliant: "+[(m.annualSub||0)<50000?"annual sub <50k":"",(m.monthlySavings||0)===0?"no monthly savings":""].filter(Boolean).join(", ")}
+                    </div>;
+                  })()}
+                </div>
+              )}
+
+              {/* Company / Business details */}
+              <div className="fg ff"><label className="fl">Company / Business Name</label><input className="fi" value={spF.companyName} onChange={e=>setSpF(f=>({...f,companyName:e.target.value}))} placeholder="e.g. Kasaka Printers Ltd"/></div>
+              <div className="fg"><label className="fl">TIN (Tax ID)</label><input className="fi" value={spF.tin} onChange={e=>setSpF(f=>({...f,tin:e.target.value}))} placeholder="e.g. 1009876543"/></div>
+              <div className="fg"><label className="fl">Director / Contact Name</label><input className="fi" value={spF.directorName} onChange={e=>setSpF(f=>({...f,directorName:e.target.value}))} placeholder="Full name"/></div>
+              <div className="fg"><label className="fl">Telephone</label><input className="fi" type="tel" value={spF.phone} onChange={e=>setSpF(f=>({...f,phone:e.target.value}))} placeholder="0772 000 000"/></div>
+              <div className="fg ff">
+                <label className="fl">Service Type</label>
+                <select className="fi" value={spF.serviceType} onChange={e=>setSpF(f=>({...f,serviceType:e.target.value}))}>
+                  <option value="">— Select service —</option>
+                  {SERVICE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="fg ff"><label className="fl">Description / Scope of Service</label><input className="fi" value={spF.description} onChange={e=>setSpF(f=>({...f,description:e.target.value}))} placeholder="e.g. Printing BIDA passbooks, receipts and official documents"/></div>
+              <div className="fg"><label className="fl">Registration Date</label><input className="fi" type="date" value={spF.registeredDate} onChange={e=>{
+                const rd=e.target.value;
+                const exp=new Date(rd);exp.setMonth(exp.getMonth()+(spF.isMember?12:6));
+                setSpF(f=>({...f,registeredDate:rd,expiryDate:exp.toISOString().split("T")[0]}));
+              }}/></div>
+              <div className="fg"><label className="fl">Expiry Date <span style={{fontWeight:400,color:"var(--tmuted)"}}>({spF.isMember?"12 months":"6 months"})</span></label>
+                <input className="fi" type="date" value={spF.expiryDate||""} readOnly style={{background:"var(--b50)",color:"var(--tmuted)"}}/>
+              </div>
+
+              {/* Non-member registration fee */}
+              {!spF.isMember&&(
+                <div className="fg ff">
+                  <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:12,color:"#e65100"}}>💳 Registration Fee: UGX 25,000</div>
+                      <div style={{fontSize:10,color:"#795548",marginTop:2}}>Non-refundable. Covers 6-month service mandate.</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <input type="checkbox" id="regFeePaid" checked={!!spF.regFeePaid} onChange={e=>setSpF(f=>({...f,regFeePaid:e.target.checked}))} style={{width:16,height:16}}/>
+                      <label htmlFor="regFeePaid" style={{fontSize:11,fontWeight:700,color:spF.regFeePaid?"#1b5e20":"#e65100",cursor:"pointer"}}>{spF.regFeePaid?"✅ Fee Paid":"☐ Mark as Paid"}</label>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Approval */}
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:6,borderTop:"1px solid var(--bdr)"}}>✅ Approval</div></div>
+              <div className="fg ff">
+                <label className="fl">Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(BIDA member)</span></label>
+                <select className="fi" value={spF.approvedByMemberId||""} onChange={e=>{
+                  const m=members.find(mb=>mb.id===+e.target.value);
+                  setSpF(f=>({...f,approvedByMemberId:+e.target.value||""}));
+                }}>
+                  <option value="">— Select approver —</option>
+                  {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+              <div className="fg ff">
+                <label className="fl">Approval Status</label>
+                <div style={{display:"flex",gap:7,marginTop:4}}>
+                  {[["pending","⏳ Pending"],["approved","✅ Approved"],["rejected","❌ Rejected"]].map(([v,lbl])=>(
+                    <button key={v} type="button" onClick={()=>setSpF(f=>({...f,approvalStatus:v}))} style={{flex:1,padding:"7px",borderRadius:8,border:spF.approvalStatus===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:spF.approvalStatus===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:spF.approvalStatus===v?700:400}}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="fa">
+              <button className="btn bg" onClick={()=>setSpModal(false)}>Cancel</button>
+              <button className="btn bp"
+                disabled={!spF.serviceType||(!spF.isMember&&!spF.companyName)||(!spF.isMember&&!spF.regFeePaid&&editSp===null)}
+                onClick={()=>{
+                  if(editSp!==null){
+                    setServiceProviders(prev=>prev.map((p,i)=>i===editSp?{...spF}:p));
+                  } else {
+                    setServiceProviders(prev=>[...prev,{...spF,id:Date.now()}]);
+                  }
+                  setSpModal(false);
+                  setEditSp(null);
+                }}>
+                {editSp!==null?"Save Changes":"Register Provider"}
+              </button>
+              {!spF.isMember&&!spF.regFeePaid&&editSp===null&&<span style={{fontSize:10,color:"#c62828",alignSelf:"center"}}>Registration fee must be paid first</span>}
+            </div>
           </div>
         </div>
       )}
@@ -1883,6 +3090,9 @@ export default function App(){
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setExpModal(false)}>
           <div className="modal wide">
             <div className="mhdr"><div className="mtitle">{editExp?"Edit Expense":"Record Expense"}</div><button className="mclose" onClick={()=>setExpModal(false)}>✕</button></div>
+            <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:10,color:"#5d4037",lineHeight:1.6}}>
+              <strong>⚠ Expense Policy:</strong> All payments to service providers must be <strong>approved before payment</strong>. Providers must be registered in the BIDA Service Provider Directory. Casual/unregistered payments are not permitted. Ensure "Issued By" and "Approved By" are both active BIDA members.
+            </div>
             <div className="fgrid">
               <div className="fg"><label className="fl">Date</label><input className="fi" type="date" value={expF.date} onChange={e=>setExpF(f=>({...f,date:e.target.value}))}/></div>
               <div className="fg"><label className="fl">Amount (UGX)</label><input className="fi" type="number" value={expF.amount} onChange={e=>setExpF(f=>({...f,amount:e.target.value}))} placeholder="0"/></div>
@@ -1895,14 +3105,53 @@ export default function App(){
                 {expF.category==="other"&&<input className="fi" style={{marginTop:7}} value={expF.categoryCustom} onChange={e=>setExpF(f=>({...f,categoryCustom:e.target.value}))} placeholder="Describe the expense category"/>}
               </div>
 
-              {/* Issued By */}
-              <div className="fg"><label className="fl">Issued / Paid By</label><input className="fi" value={expF.issuedBy} onChange={e=>setExpF(f=>({...f,issuedBy:e.target.value}))} placeholder="Full name of payer"/></div>
-              <div className="fg">
-                <label className="fl" style={{color:"#1b5e20"}}>Approved By</label>
-                <input className="fi" value={expF.approvedBy} onChange={e=>setExpF(f=>({...f,approvedBy:e.target.value}))} placeholder="Name of approving official" style={{borderColor:"#a5d6a7"}}/>
+              {/* Bank Charges toggle */}
+              <div className="fg ff">
+                <div style={{display:"flex",alignItems:"center",gap:10,background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:9,padding:"8px 12px"}}>
+                  <input type="checkbox" id="isBankCharge" checked={expF.category==="banking"} onChange={e=>setExpF(f=>({...f,category:e.target.checked?"banking":f.category==="banking"?"operations":f.category}))} style={{width:16,height:16,cursor:"pointer"}}/>
+                  <label htmlFor="isBankCharge" style={{fontSize:11,fontWeight:700,color:"#1565c0",cursor:"pointer"}}>🏦 This is a Bank Charge — will be logged under Banking category and shown separately in ledger</label>
+                </div>
               </div>
-              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Approver Telephone</label><input className="fi" type="tel" value={expF.approverPhone} onChange={e=>setExpF(f=>({...f,approverPhone:e.target.value}))} placeholder="0772 000 000" style={{borderColor:"#a5d6a7"}}/></div>
-              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Approver NIN</label><input className="fi" value={expF.approverNIN} onChange={e=>setExpF(f=>({...f,approverNIN:e.target.value}))} placeholder="NIN e.g. CM90001234..." style={{borderColor:"#a5d6a7"}}/></div>
+
+              {/* Issued By — must be BIDA member */}
+              <div className="fg ff">
+                <label className="fl">Issued / Paid By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(must be BIDA member)</span></label>
+                <select className="fi" value={expF.issuedById||""} onChange={e=>{
+                  const m=members.find(m=>m.id===+e.target.value);
+                  setExpF(f=>({...f,issuedById:e.target.value,issuedBy:m?m.name:"",issuedByPhone:m?.phone||m?.whatsapp||"",issuedByNIN:m?.nin||""}));
+                }}>
+                  <option value="">— Select member —</option>
+                  {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+              <div className="fg"><label className="fl">Payer Telephone</label><input className="fi" type="tel" value={expF.issuedByPhone||""} onChange={e=>setExpF(f=>({...f,issuedByPhone:e.target.value}))} placeholder="Auto-filled from profile"/></div>
+              <div className="fg"><label className="fl">Payer NIN</label><input className="fi" value={expF.issuedByNIN||""} onChange={e=>setExpF(f=>({...f,issuedByNIN:e.target.value}))} placeholder="Auto-filled from profile"/></div>
+              <div className="fg ff">
+                <label className="fl" style={{color:"#1b5e20"}}>Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(must be active BIDA member)</span></label>
+                <select className="fi" style={{borderColor:"#a5d6a7"}} value={expF.approverMemberId||""} onChange={e=>{
+                  const m=members.find(m=>m.id===+e.target.value);
+                  setExpF(f=>({...f,approverMemberId:e.target.value,approvedBy:m?m.name:"",approverPhone:m?.phone||m?.whatsapp||"",approverNIN:m?.nin||""}));
+                }}>
+                  <option value="">— Select approving member —</option>
+                  {members.map(m=><option key={m.id} value={m.id}>{m.name}{(m.phone||m.nin)?" ✓":""}</option>)}
+                </select>
+                {expF.approvedBy&&<div style={{fontSize:10,color:"#1b5e20",marginTop:3,fontFamily:"var(--mono)"}}>✓ {expF.approvedBy}{expF.approverPhone?" · "+expF.approverPhone:""}{expF.approverNIN?" · "+expF.approverNIN:""}</div>}
+                {expF.issuedById&&(()=>{
+                  const sp=serviceProviders.find(p=>p.memberId===+expF.issuedById&&spIsActive(p));
+                  const m=members.find(m=>m.id===+expF.issuedById);
+                  if(!sp){
+                    const anySp=serviceProviders.find(p=>p.memberId===+expF.issuedById);
+                    if(anySp&&!spIsActive(anySp)) return <div style={{marginTop:4,fontSize:10,color:"#c62828",background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:7,padding:"4px 8px"}}>⚠ This provider's mandate has expired. They must re-register before receiving payments.</div>;
+                    return <div style={{marginTop:4,fontSize:10,color:"#e65100",background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:7,padding:"4px 8px"}}>⚠ Not in provider directory. Register this member as a service provider first, or select a registered provider.</div>;
+                  }
+                  const compliant=m&&isProviderCompliant(m);
+                  return <div style={{marginTop:4,fontSize:10,color:compliant?"#1b5e20":"#c62828",background:compliant?"#e8f5e9":"#ffebee",border:"1px solid "+(compliant?"#a5d6a7":"#ffcdd2"),borderRadius:7,padding:"4px 8px"}}>
+                    {compliant?"✅ Active registered provider — "+sp.serviceType+" · Mandate valid until "+(spExpiryDate(sp)?spExpiryDate(sp).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"):"⚠ Provider not compliant — check their annual sub and monthly savings"}
+                  </div>;
+                })()}
+              </div>
+              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Approver Telephone</label><input className="fi" type="tel" value={expF.approverPhone||""} onChange={e=>setExpF(f=>({...f,approverPhone:e.target.value}))} placeholder="Auto-filled from profile" style={{borderColor:"#a5d6a7"}}/></div>
+              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Approver NIN</label><input className="fi" value={expF.approverNIN||""} onChange={e=>setExpF(f=>({...f,approverNIN:e.target.value}))} placeholder="Auto-filled from profile" style={{borderColor:"#a5d6a7"}}/></div>
 
               {/* Payment mode */}
               <div className="fg ff"><label className="fl">Mode of Payment</label>
@@ -1927,7 +3176,7 @@ export default function App(){
             </div>
             <div className="div"/>
             <div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",marginBottom:8,fontSize:11,color:"#c62828"}}>
-              ⚠️ This expense reduces net cash balance by <strong>{expF.amount?fmt(+expF.amount):"UGX 0"}</strong>. New balance: <strong>{fmt(netCash-(editExp?0:+expF.amount||0))}</strong>
+              ⚠️ This expense reduces cash in bank by <strong>{expF.amount?fmt(+expF.amount):"UGX 0"}</strong>. Cash in bank after: <strong>{fmt(cashInBank-(editExp?0:+expF.amount||0))}</strong>
             </div>
             <div className="fa"><button className="btn bg" onClick={()=>setExpModal(false)}>Cancel</button><button className="btn bp" onClick={saveExp}>{editExp?"Save Changes":"Record Expense"}</button></div>
           </div>
