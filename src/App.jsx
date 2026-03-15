@@ -1,12 +1,63 @@
 import React from "react";
 const { useState, useMemo, useEffect } = React;
 
-const loadScript = (src) => new Promise((res, rej) => {
-  if (document.querySelector(`script[src="${src}"]`)) return res();
-  const s = document.createElement("script");
-  s.src = src; s.onload = res; s.onerror = rej;
-  document.head.appendChild(s);
-});
+// ── SUPABASE ──────────────────────────────────────────────────────────────────
+const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zY3VhdWFpZmdhZWF1enZraWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTU2MzEsImV4cCI6MjA4OTEzMTYzMX0.tsdr1vL7Q5DcrSt-0AMHeWpxfXCWvi4KXuYuYoLblI0";
+const supa = {
+  async get(table) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=id`, {
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+    });
+    return r.json();
+  },
+  async upsert(table, data) {
+    await fetch(`${SUPA_URL}/rest/v1/${table}`, {
+      method: "POST",
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify(data)
+    });
+  },
+  async del(table, id) {
+    await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+    });
+  },
+  async update(table, id, data) {
+    await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+  }
+};
+// Helper — map DB row to app member object
+function dbToMember(r) {
+  return { id:r.id, name:r.name||"", email:r.email||"", whatsapp:r.whatsapp||"", phone:r.phone||"", nin:r.nin||"", address:r.address||"", photo:r.photo||"", membership:+r.membership||0, annualSub:+r.annual_sub||0, monthlySavings:+r.monthly_savings||0, welfare:+r.welfare||0, shares:+r.shares||0, joinDate:r.join_date||"", referrals:+r.referrals||0 };
+}
+function memberToDb(m) {
+  return { id:m.id, name:m.name, email:m.email||"", whatsapp:m.whatsapp||"", phone:m.phone||"", nin:m.nin||"", address:m.address||"", photo:m.photo||"", membership:m.membership||0, annual_sub:m.annualSub||0, monthly_savings:m.monthlySavings||0, welfare:m.welfare||0, shares:m.shares||0, join_date:m.joinDate||"", referrals:m.referrals||0 };
+}
+function dbToLoan(r) {
+  return { id:r.id, memberId:r.member_id, memberName:r.member_name||"", dateBanked:r.date_banked||"", amountLoaned:+r.amount_loaned||0, processingFeePaid:+r.processing_fee_paid||0, datePaid:r.date_paid||"", amountPaid:+r.amount_paid||0, status:r.status||"active", term:+r.term||12, loanType:r.loan_type||"personal", loanPurpose:r.loan_purpose||"", borrowerPhone:r.borrower_phone||"", borrowerAddress:r.borrower_address||"", borrowerNin:r.borrower_nin||"", guarantorName:r.guarantor_name||"", guarantorPhone:r.guarantor_phone||"", guarantorAddress:r.guarantor_address||"", guarantorNin:r.guarantor_nin||"", guarantorMemberId:r.guarantor_member_id||"" };
+}
+function loanToDb(l) {
+  return { member_id:l.memberId, member_name:l.memberName, date_banked:l.dateBanked, amount_loaned:l.amountLoaned||0, processing_fee_paid:l.processingFeePaid||0, date_paid:l.datePaid||null, amount_paid:l.amountPaid||0, status:l.status||"active", term:l.term||12, loan_type:l.loanType||"personal", loan_purpose:l.loanPurpose||"", borrower_phone:l.borrowerPhone||"", borrower_address:l.borrowerAddress||"", borrower_nin:l.borrowerNIN||"", guarantor_name:l.guarantorName||"", guarantor_phone:l.guarantorPhone||"", guarantor_address:l.guarantorAddress||"", guarantor_nin:l.guarantorNIN||"", guarantor_member_id:l.guarantorMemberId||null };
+}
+function dbToExpense(r) {
+  return { id:r.id, date:r.date||"", activity:r.activity||"", amount:+r.amount||0, issuedBy:r.issued_by||"", approvedBy:r.approved_by||"", approverPhone:r.approver_phone||"", approverNIN:r.approver_nin||"", purpose:r.purpose||"", payMode:r.pay_mode||"cash", bankName:r.bank_name||"", bankAccount:r.bank_account||"", depositorName:r.depositor_name||"", mobileNumber:r.mobile_number||"", transactionId:r.transaction_id||"", category:r.category||"", categoryCustom:r.category_custom||"" };
+}
+function expenseToDb(e) {
+  return { date:e.date, activity:e.activity, amount:e.amount||0, issued_by:e.issuedBy||"", approved_by:e.approvedBy||"", approver_phone:e.approverPhone||"", approver_nin:e.approverNIN||"", purpose:e.purpose||"", pay_mode:e.payMode||"cash", bank_name:e.bankName||"", bank_account:e.bankAccount||"", depositor_name:e.depositorName||"", mobile_number:e.mobileNumber||"", transaction_id:e.transactionId||"", category:e.category||"", category_custom:e.categoryCustom||"" };
+}
+function dbToInv(r) {
+  return { id:r.id, platform:r.platform||"", type:r.type||"unit_trust", amount:+r.amount||0, dateInvested:r.date_invested||"", interestEarned:+r.interest_earned||0, lastUpdated:r.last_updated||"", status:r.status||"active", notes:r.notes||"" };
+}
+function invToDb(i) {
+  return { platform:i.platform, type:i.type||"unit_trust", amount:i.amount||0, date_invested:i.dateInvested||"", interest_earned:i.interestEarned||0, last_updated:i.lastUpdated||"", status:i.status||"active", notes:i.notes||"" };
+}
+
 
 const fmt   = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString("en-UG");
 const fmtN  = (n) => n == null ? "0" : Number(n).toLocaleString("en-UG");
@@ -797,11 +848,34 @@ export default function App(){
   const [loans,setLoans]    = useState(INIT_LOANS);
   const [expenses,setExpenses] = useState(INIT_EXPENSES);
   const [receipts,setReceipts] = useState(INIT_RECEIPTS);
-  const [pending,setPending]   = useState(INIT_PENDING); // pending approval queue
-  const [expModal,setExpModal] = useState(false);
-  const [editExp,setEditExp]   = useState(null);
-  const [expF,setExpF]         = useState({...emptyE});
+  const [pending,setPending]   = useState(INIT_PENDING);
   const [investments,setInvestments] = useState(INIT_INVESTMENTS);
+  const [dbLoading,setDbLoading] = useState(true);
+
+  useEffect(function(){
+    async function loadAll(){
+      try {
+        const [mRows,lRows,eRows,iRows] = await Promise.all([
+          supa.get("members"), supa.get("loans"),
+          supa.get("expenses"), supa.get("investments")
+        ]);
+        if(Array.isArray(mRows) && mRows.length>0){
+          setMembers(mRows.map(dbToMember));
+        } else {
+          await Promise.all(INIT_MEMBERS.map(function(m){ return supa.upsert("members",memberToDb(m)); }));
+        }
+        if(Array.isArray(lRows) && lRows.length>0){
+          setLoans(lRows.map(dbToLoan));
+        } else if(INIT_LOANS.length>0){
+          await Promise.all(INIT_LOANS.map(function(l){ return supa.upsert("loans",Object.assign({},loanToDb(l),{id:l.id})); }));
+        }
+        if(Array.isArray(eRows) && eRows.length>0) setExpenses(eRows.map(dbToExpense));
+        if(Array.isArray(iRows) && iRows.length>0) setInvestments(iRows.map(dbToInv));
+      } catch(err){ console.error("Supabase load error:",err); }
+      finally { setDbLoading(false); }
+    }
+    loadAll();
+  },[]);
   const [invModal,setInvModal] = useState(false);
   const [editInv,setEditInv]   = useState(null);
   const [invF,setInvF]         = useState({...emptyInv});
@@ -874,28 +948,37 @@ export default function App(){
   const closeProfile=()=>{setProfId(null);setProfEdit(false);setProfF(null);setConfirmOpt(false);setSharedPDF(null);};
   const saveProfile=()=>{
     if(!profF.name.trim())return;
-    setMembers(prev=>prev.map(m=>m.id===profId?{...m,...profF,phone:profF.phone||"",nin:profF.nin||"",address:profF.address||"",whatsapp:profF.whatsapp||"",membership:+profF.membership||0,annualSub:+profF.annualSub||0,monthlySavings:+profF.monthlySavings||0,welfare:+profF.welfare||0,shares:+profF.shares||0}:m));
+    const updated={...profF,phone:profF.phone||"",nin:profF.nin||"",address:profF.address||"",whatsapp:profF.whatsapp||"",membership:+profF.membership||0,annualSub:+profF.annualSub||0,monthlySavings:+profF.monthlySavings||0,welfare:+profF.welfare||0,shares:+profF.shares||0};
+    setMembers(prev=>prev.map(m=>m.id===profId?{...m,...updated}:m));
+    supa.upsert("members",memberToDb({...updated,id:profId}));
     setProfEdit(false);
   };
   const optOutMember=()=>{
+    supa.del("members",profId);
     setLoans(prev=>prev.filter(l=>l.memberId!==profId));
     setMembers(prev=>prev.filter(m=>m.id!==profId));
     closeProfile();
   };
   const saveInv=()=>{
     if(!invF.platform||!invF.amount)return;
-    const rec={...invF,amount:+invF.amount||0,interestEarned:+invF.interestEarned||0,id:editInv||(investments.length>0?Math.max(...investments.map(i=>i.id||0))+1:1)};
-    if(editInv) setInvestments(prev=>prev.map(i=>i.id===editInv?rec:i));
-    else setInvestments(prev=>[...prev,rec]);
+    const rec={...invF,amount:+invF.amount||0,interestEarned:+invF.interestEarned||0};
+    if(editInv){
+      setInvestments(prev=>prev.map(i=>i.id===editInv?{...i,...rec}:i));
+      supa.update("investments",editInv,invToDb(rec));
+    } else {
+      supa.upsert("investments",invToDb(rec)).then(function(){ supa.get("investments").then(function(rows){ if(Array.isArray(rows))setInvestments(rows.map(dbToInv)); }); });
+    }
     setInvModal(false);setEditInv(null);setInvF({...emptyInv,dateInvested:new Date().toISOString().split("T")[0]});
   };
-  const delInv=(id)=>{if(window.confirm("Delete this investment record?"))setInvestments(prev=>prev.filter(i=>i.id!==id));};
+  const delInv=function(id){ if(window.confirm("Delete this investment record?")){ setInvestments(prev=>prev.filter(i=>i.id!==id)); supa.del("investments",id); } };
   const openAddInv=()=>{setEditInv(null);setInvF({...emptyInv,dateInvested:new Date().toISOString().split("T")[0]});setInvModal(true);};
   const openEditInv=(inv)=>{setEditInv(inv.id);setInvF({...inv});setInvModal(true);};
   const saveAddM=()=>{
     if(!addMF.name.trim())return;
     const id=Math.max(...members.map(m=>m.id),0)+1;
-    setMembers(prev=>[...prev,{id,...addMF,whatsapp:addMF.whatsapp||"",membership:+addMF.membership||0,annualSub:+addMF.annualSub||0,monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0}]);
+    const newM={id,...addMF,whatsapp:addMF.whatsapp||"",membership:+addMF.membership||0,annualSub:+addMF.annualSub||0,monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0};
+    setMembers(prev=>[...prev,newM]);
+    supa.upsert("members",memberToDb(newM));
     setAddMModal(false);
     setAddMF({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
   };
@@ -903,13 +986,14 @@ export default function App(){
   const savePay=()=>{
     if(!payF.amount||!payF.loanId)return;
     const amt=+payF.amount||0;
-    setLoans(prev=>prev.map(l=>{
+    setLoans(prev=>prev.map(function(l){
       if(l.id!==payF.loanId)return l;
       const newPaid=(l.amountPaid||0)+amt;
       const calc=calcLoan({...l,amountPaid:newPaid});
       const nowPaid=calc.balance<=0;
-      return{...l,amountPaid:newPaid,status:nowPaid?"paid":l.status,datePaid:nowPaid?(payF.date||new Date().toISOString().split("T")[0]):l.datePaid,
-        payments:[...(l.payments||[]),{...payF,amount:amt,id:Date.now()}]};
+      const updated={...l,amountPaid:newPaid,status:nowPaid?"paid":l.status,datePaid:nowPaid?(payF.date||new Date().toISOString().split("T")[0]):l.datePaid};
+      supa.update("loans",l.id,loanToDb(updated));
+      return updated;
     }));
     setPayModal(false);setPayF({...emptyPay});
   };
@@ -922,19 +1006,25 @@ export default function App(){
     const mem=members.find(m=>m.id===+lF.memberId);
     if(mem)p.memberName=mem.name;
     if(!p.memberName)return;
-    if(editL)setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));
-    else{const id=Math.max(...loans.map(l=>l.id),0)+1;setLoans(prev=>[...prev,{id,...p}]);}
+    if(editL){
+      setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));
+      supa.update("loans",editL,loanToDb(p));
+    } else {
+      supa.upsert("loans",loanToDb(p)).then(function(){ supa.get("loans").then(function(rows){ if(Array.isArray(rows))setLoans(rows.map(dbToLoan)); }); });
+    }
     setLModal(false);
   };
-  const delL=(id)=>{if(window.confirm("Delete this loan?"))setLoans(prev=>prev.filter(l=>l.id!==id));};
-  const markPd=(id)=>setLoans(prev=>prev.map(l=>{
-    if(l.id!==id)return l;
-    const dp=new Date().toISOString().split("T")[0];
-    const c=calcLoan({...l,datePaid:dp,status:"paid"});
-    return{...l,status:"paid",amountPaid:c.totalDue,datePaid:dp};
-  }));
-
-  // ── Expense handlers ──────────────────────────────────────────────────────
+  const delL=function(id){ if(window.confirm("Delete this loan?")){ setLoans(prev=>prev.filter(l=>l.id!==id)); supa.del("loans",id); } };
+  const markPd=(id)=>{
+    setLoans(prev=>prev.map(function(l){
+      if(l.id!==id)return l;
+      const dp=new Date().toISOString().split("T")[0];
+      const c=calcLoan({...l,datePaid:dp,status:"paid"});
+      const updated={...l,status:"paid",amountPaid:c.totalDue,datePaid:dp};
+      supa.update("loans",id,loanToDb(updated));
+      return updated;
+    }));
+  };
   const openAddExp=()=>{setEditExp(null);setExpF({...emptyE});setExpModal(true);};
   const openEditExp=(e)=>{setEditExp(e.id);setExpF({...e});setExpModal(true);};
   const saveExp=()=>{
@@ -942,15 +1032,15 @@ export default function App(){
     const rec={...expF,amount:+expF.amount||0};
     if(editExp){
       setExpenses(prev=>prev.map(e=>e.id===editExp?{...e,...rec}:e));
+      supa.update("expenses",editExp,expenseToDb(rec));
     } else {
-      const id=(expenses.length>0?Math.max(...expenses.map(e=>e.id||0)):0)+1;
-      setExpenses(prev=>[...prev,{id,...rec}]);
+      supa.upsert("expenses",expenseToDb(rec)).then(function(){ supa.get("expenses").then(function(rows){ if(Array.isArray(rows))setExpenses(rows.map(dbToExpense)); }); });
     }
     setExpModal(false);
     setEditExp(null);
     setExpF({...emptyE,date:new Date().toISOString().split("T")[0]});
   };
-  const delExp=(id)=>{if(window.confirm("Delete this expense?"))setExpenses(prev=>prev.filter(e=>e.id!==id));};
+  const delExp=function(id){ if(window.confirm("Delete this expense?")){ setExpenses(prev=>prev.filter(e=>e.id!==id)); supa.del("expenses",id); } };
 
   // ── Email / WA / SMS dispatch ─────────────────────────────────────────────
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename)=>{
@@ -1089,6 +1179,10 @@ export default function App(){
       )}
 
       {authUser&&<React.Fragment>
+      {dbLoading&&<div style={{position:"fixed",inset:0,background:"linear-gradient(135deg,var(--b900),var(--b700))",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:999}}>
+        <div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #fff",borderRadius:"50%",animation:"sp .8s linear infinite",marginBottom:16}}/>
+        <div style={{color:"#fff",fontSize:14,fontWeight:600,letterSpacing:1}}>Loading BIDA data...</div>
+      </div>}
       <div className="app">
         {/* ── HEADER ─────────────────────────────────────────────────────── */}
         <header className="hdr">
