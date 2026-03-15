@@ -1,63 +1,12 @@
 import React from "react";
 const { useState, useMemo, useEffect } = React;
 
-// ── SUPABASE ──────────────────────────────────────────────────────────────────
-const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
-const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zY3VhdWFpZmdhZWF1enZraWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTU2MzEsImV4cCI6MjA4OTEzMTYzMX0.tsdr1vL7Q5DcrSt-0AMHeWpxfXCWvi4KXuYuYoLblI0";
-const supa = {
-  async get(table) {
-    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=id`, {
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
-    });
-    return r.json();
-  },
-  async upsert(table, data) {
-    await fetch(`${SUPA_URL}/rest/v1/${table}`, {
-      method: "POST",
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify(data)
-    });
-  },
-  async del(table, id) {
-    await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
-      method: "DELETE",
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
-    });
-  },
-  async update(table, id, data) {
-    await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
-      method: "PATCH",
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify(data)
-    });
-  }
-};
-// Helper — map DB row to app member object
-function dbToMember(r) {
-  return { id:r.id, name:r.name||"", email:r.email||"", whatsapp:r.whatsapp||"", phone:r.phone||"", nin:r.nin||"", address:r.address||"", photo:r.photo||"", membership:+r.membership||0, annualSub:+r.annual_sub||0, monthlySavings:+r.monthly_savings||0, welfare:+r.welfare||0, shares:+r.shares||0, joinDate:r.join_date||"", referrals:+r.referrals||0 };
-}
-function memberToDb(m) {
-  return { id:m.id, name:m.name, email:m.email||"", whatsapp:m.whatsapp||"", phone:m.phone||"", nin:m.nin||"", address:m.address||"", photo:m.photo||"", membership:m.membership||0, annual_sub:m.annualSub||0, monthly_savings:m.monthlySavings||0, welfare:m.welfare||0, shares:m.shares||0, join_date:m.joinDate||"", referrals:m.referrals||0 };
-}
-function dbToLoan(r) {
-  return { id:r.id, memberId:r.member_id, memberName:r.member_name||"", dateBanked:r.date_banked||"", amountLoaned:+r.amount_loaned||0, processingFeePaid:+r.processing_fee_paid||0, datePaid:r.date_paid||"", amountPaid:+r.amount_paid||0, status:r.status||"active", term:+r.term||12, loanType:r.loan_type||"personal", loanPurpose:r.loan_purpose||"", borrowerPhone:r.borrower_phone||"", borrowerAddress:r.borrower_address||"", borrowerNin:r.borrower_nin||"", guarantorName:r.guarantor_name||"", guarantorPhone:r.guarantor_phone||"", guarantorAddress:r.guarantor_address||"", guarantorNin:r.guarantor_nin||"", guarantorMemberId:r.guarantor_member_id||"" };
-}
-function loanToDb(l) {
-  return { member_id:l.memberId, member_name:l.memberName, date_banked:l.dateBanked, amount_loaned:l.amountLoaned||0, processing_fee_paid:l.processingFeePaid||0, date_paid:l.datePaid||null, amount_paid:l.amountPaid||0, status:l.status||"active", term:l.term||12, loan_type:l.loanType||"personal", loan_purpose:l.loanPurpose||"", borrower_phone:l.borrowerPhone||"", borrower_address:l.borrowerAddress||"", borrower_nin:l.borrowerNIN||"", guarantor_name:l.guarantorName||"", guarantor_phone:l.guarantorPhone||"", guarantor_address:l.guarantorAddress||"", guarantor_nin:l.guarantorNIN||"", guarantor_member_id:l.guarantorMemberId||null };
-}
-function dbToExpense(r) {
-  return { id:r.id, date:r.date||"", activity:r.activity||"", amount:+r.amount||0, issuedBy:r.issued_by||"", approvedBy:r.approved_by||"", approverPhone:r.approver_phone||"", approverNIN:r.approver_nin||"", purpose:r.purpose||"", payMode:r.pay_mode||"cash", bankName:r.bank_name||"", bankAccount:r.bank_account||"", depositorName:r.depositor_name||"", mobileNumber:r.mobile_number||"", transactionId:r.transaction_id||"", category:r.category||"", categoryCustom:r.category_custom||"" };
-}
-function expenseToDb(e) {
-  return { date:e.date, activity:e.activity, amount:e.amount||0, issued_by:e.issuedBy||"", approved_by:e.approvedBy||"", approver_phone:e.approverPhone||"", approver_nin:e.approverNIN||"", purpose:e.purpose||"", pay_mode:e.payMode||"cash", bank_name:e.bankName||"", bank_account:e.bankAccount||"", depositor_name:e.depositorName||"", mobile_number:e.mobileNumber||"", transaction_id:e.transactionId||"", category:e.category||"", category_custom:e.categoryCustom||"" };
-}
-function dbToInv(r) {
-  return { id:r.id, platform:r.platform||"", type:r.type||"unit_trust", amount:+r.amount||0, dateInvested:r.date_invested||"", interestEarned:+r.interest_earned||0, lastUpdated:r.last_updated||"", status:r.status||"active", notes:r.notes||"" };
-}
-function invToDb(i) {
-  return { platform:i.platform, type:i.type||"unit_trust", amount:i.amount||0, date_invested:i.dateInvested||"", interest_earned:i.interestEarned||0, last_updated:i.lastUpdated||"", status:i.status||"active", notes:i.notes||"" };
-}
-
+const loadScript = (src) => new Promise((res, rej) => {
+  if (document.querySelector(`script[src="${src}"]`)) return res();
+  const s = document.createElement("script");
+  s.src = src; s.onload = res; s.onerror = rej;
+  document.head.appendChild(s);
+});
 
 const fmt   = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString("en-UG");
 const fmtN  = (n) => n == null ? "0" : Number(n).toLocaleString("en-UG");
@@ -110,27 +59,30 @@ function calcLoan(l, _ignored) {
 }
 
 const totBanked   = (m) => (m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0);
-const procFee     = (a) => 50000 + 0.01 * a;
+const procFee     = (a) => 25000 + 0.01 * a;
 
-// ── LOAN SCORE ── must be defined before borrowLimit ──
-function loanScore(m, loans){
-  const base = totBanked(m) < 1000000 ? 1.5 : 2.0;
-  const today = new Date();
-  const hasDefault = (loans||[]).some(function(l){
-    if(l.memberId!==m.id||l.status==="paid")return false;
-    const issued=new Date(l.dateBanked);
-    const dueDate=new Date(issued.getFullYear(),issued.getMonth()+(l.term||12),issued.getDate());
-    const overdueDays=Math.floor((today-dueDate)/(1000*60*60*24));
-    return overdueDays>180;
-  });
-  if(hasDefault) return 0.5;
-  const referralBonus=(m.referrals||0)*0.002;
-  return Math.min(base+referralBonus, base+0.02);
+// ── BORROW LIMIT: strict 60% of (monthlySavings + welfare) ──
+// Defaulters >3 months overdue: principal limit reduced 0.5%/month. >6 months: frozen at 50%.
+function monthsOverdue(l){
+  if(!l||l.status==="paid"||!l.dateBanked) return 0;
+  const issued=new Date(l.dateBanked);
+  const dueDate=new Date(issued.getFullYear(),issued.getMonth()+(l.term||12),issued.getDate());
+  const overdueDays=Math.floor((new Date()-dueDate)/(1000*60*60*24));
+  return overdueDays>0?Math.floor(overdueDays/30):0;
 }
-function effectiveBorrowLimit(m, loans){
-  return Math.round(totBanked(m)*loanScore(m,loans));
+function borrowCapacityRate(m,loans){
+  const maxOD=(loans||[]).filter(l=>l.memberId===m.id&&l.status!=="paid").reduce((mx,l)=>Math.max(mx,monthsOverdue(l)),0);
+  return maxOD>=6?0.50:0.60;
 }
-const borrowLimit = (m, loans) => effectiveBorrowLimit(m, loans||[]);
+function defaultPrincipalPenalty(m,loans){
+  const maxOD=(loans||[]).filter(l=>l.memberId===m.id&&l.status!=="paid").reduce((mx,l)=>Math.max(mx,monthsOverdue(l)),0);
+  return maxOD<=3?0:Math.min((maxOD-3)*0.005,0.20);
+}
+function effectiveBorrowLimit(m,loans){
+  const base=(m.monthlySavings||0)+(m.welfare||0);
+  return Math.round(base*borrowCapacityRate(m,loans||[])*(1-defaultPrincipalPenalty(m,loans||[])));
+}
+const borrowLimit=(m,loans)=>effectiveBorrowLimit(m,loans||[]);
 
 const INIT_MEMBERS = [
   {id:1,name:"LUKULA PATRICK",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:60000,welfare:40000,shares:150000,joinDate:"2024-01-01"},
@@ -199,6 +151,9 @@ const USERS = {
 };
 // Change PINs above before deploying!
 
+const EXP_CATEGORIES = ["Operations","Travel","Office Supplies","Meetings","Banking","Welfare Payouts","Salaries","Other"];
+const INV_TYPE_LABELS = {unit_trust:"Unit Trust",treasury_bond:"Treasury Bond",fixed_deposit:"Fixed Deposit",money_market:"Money Market",other:"Other"};
+
 const emptyInv = {
   id:null, platform:"", type:"unit_trust", amount:"", dateInvested:"",
   interestEarned:0, lastUpdated:"", status:"active", notes:""
@@ -226,7 +181,8 @@ const emptyPay = {
 
 
 
-function Avatar({name,size=40}){
+function Avatar({name,size=40,photoUrl}){
+  if(photoUrl) return React.createElement("div",{style:{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,border:"2px solid var(--bdr2)"}},React.createElement("img",{src:photoUrl,alt:name,style:{width:"100%",height:"100%",objectFit:"cover"}}));
   const w=name.trim().split(" ");
   const ini=(w[0]?.[0]||"")+(w[1]?.[0]||"");
   const hue=Math.abs(name.split("").reduce((a,c)=>a+c.charCodeAt(0),0))%360;
@@ -278,7 +234,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const tM=members.reduce((s,m)=>s+(m.membership||0),0),tA=members.reduce((s,m)=>s+(m.annualSub||0),0),tS=members.reduce((s,m)=>s+(m.monthlySavings||0),0),tW=members.reduce((s,m)=>s+(m.welfare||0),0),tSh=members.reduce((s,m)=>s+(m.shares||0),0),grand=members.reduce((s,m)=>s+totBanked(m),0);
     dH("MEMBER SAVINGS REPORT","Savings & Contributions — "+toStr());
     sB(10,27,42,16,"Members",""+members.length,BLUE);sB(56,27,42,16,"Total Banked",fmt(grand),BLUE);sB(102,27,42,16,"Monthly Savings",fmt(tS),[25,118,210]);sB(148,27,42,16,"Total Shares",fmt(tSh),[30,136,229]);sB(194,27,42,16,"Welfare Pool",fmt(tW),[66,165,245]);sB(240,27,42,16,"Annual Subs",fmt(tA),[100,181,246]);
-    const rows=members.map((m,i)=>[i+1,m.name,fmtN(m.membership),fmtN(m.annualSub),fmtN(m.monthlySavings),fmtN(m.welfare),fmtN(m.shares),fmtN(totBanked(m)),fmt(borrowLimit(m))]);
+    const rows=members.map((m,i)=>[i+1,m.name,fmtN(m.membership),fmtN(m.annualSub),fmtN(m.monthlySavings),fmtN(m.welfare),fmtN(m.shares),fmtN(totBanked(m)),fmt(borrowLimit(m,loans))]);
     rows.push(["","TOTAL",fmtN(tM),fmtN(tA),fmtN(tS),fmtN(tW),fmtN(tSh),fmtN(grand),"—"]);
     doc.autoTable({startY:48,head:[["#","Member Name","Membership","Annual Sub","Monthly Savings","Welfare","Shares","Total Banked","Max Borrow"]],body:rows,styles:{fontSize:7.5,cellPadding:2.5},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center"},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{halign:"center",cellWidth:8},1:{cellWidth:46,fontStyle:"bold"},2:{halign:"right"},3:{halign:"right"},4:{halign:"right"},5:{halign:"right"},6:{halign:"right"},7:{halign:"right",fontStyle:"bold"},8:{halign:"right",textColor:BLUE}},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
     if(returnBlob)return doc.output("blob");doc.save("BIDA_Savings_Report.pdf");
@@ -315,7 +271,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
   }
 }
 
-async function generateMemberPDF(member, memberLoans, allMembers, returnBlob=false){
+async function generateMemberPDF(member, memberLoans, allMembers, allLoans, returnBlob=false){
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
   await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
   const {jsPDF}=window.jspdf;
@@ -332,7 +288,7 @@ async function generateMemberPDF(member, memberLoans, allMembers, returnBlob=fal
   const allTotals=allMembers.map(m=>totBanked(m)).sort((a,b)=>b-a);
   const rank=allTotals.indexOf(tb)+1;
   const pct=((tb/allTotals.reduce((s,v)=>s+v,0))*100).toFixed(1);
-  const lim=borrowLimit(member);
+  const lim=borrowLimit(member, allLoans||[]);
   doc.setFillColor(...BLITE);doc.roundedRect(12,37,W-24,26,3,3,"F");
   doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...NAVY);doc.text(member.name,16,46);
   doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...GREY);
@@ -568,6 +524,26 @@ select.fi{cursor:pointer;}
 .setup-banner h3{font-size:13px;font-weight:800;color:#bf360c;margin-bottom:8px;}
 .setup-banner ol{padding-left:18px;font-size:12px;color:#5d4037;line-height:1.9;}
 .setup-banner code{background:#ffe0b2;border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:11px;color:#bf360c;}
+
+/* ── DUE LOAN ALERTS ── */
+.due-alert{background:#fff3e0;border:1.5px solid #ffb74d;border-radius:11px;padding:12px 14px;margin-bottom:12px;}
+.due-alert-title{font-size:13px;font-weight:800;color:#bf360c;margin-bottom:6px;}
+.due-loan-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffe0b2;gap:8px;flex-wrap:wrap;}
+.due-loan-row:last-child{border-bottom:none;}
+/* ── EXPENSE ROWS ── */
+.exp-row{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid #eef5ff;flex-wrap:wrap;}
+.exp-row:last-child{border-bottom:none;}
+.exp-date{font-size:10px;font-family:var(--mono);color:var(--tmuted);white-space:nowrap;min-width:70px;padding-top:2px;}
+.exp-main{flex:1;min-width:0;}
+.exp-activity{font-size:13px;font-weight:700;color:var(--b800);margin-bottom:3px;}
+.exp-meta{font-size:10px;color:var(--tmuted);line-height:1.6;}
+.exp-amount{font-size:14px;font-weight:900;font-family:var(--mono);color:#c62828;white-space:nowrap;}
+.exp-actions{display:flex;gap:5px;align-items:center;flex-shrink:0;}
+.exp-mode{font-size:9px;border-radius:7px;padding:2px 7px;font-family:var(--mono);display:inline-block;margin-right:4px;}
+.mode-cash{background:#e8f5e9;color:#1b5e20;border:1px solid #a5d6a7;}
+.mode-bank{background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;}
+.mode-mtn{background:#fff8e1;color:#f57f17;border:1px solid #ffe082;}
+.mode-airtel{background:#fce4ec;color:#c62828;border:1px solid #f48fb1;}
 `;
 
 function DueLoanRow({loan, members, emailSending, sendDueEmail, sendDueSMS}){
@@ -650,20 +626,20 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
 }
 
 function TermSelectorButtons({lF, setLF}){
-  const terms = [6,9,12,18,24];
+  const terms = [3,6,9,12,18,24];
   const base = {amountLoaned:+lF.amountLoaned, dateBanked:lF.dateBanked||new Date().toISOString().split("T")[0], status:"active", amountPaid:0};
-  const bestInt = calcLoan({...base, term:6}).totalInterest;
+  const bestInt = calcLoan({...base, term:3}).totalInterest;
   return terms.map(function(t){
     const preview = calcLoan({...base, term:t});
     const isSelected = (+lF.term||12)===t;
     const extraInt = preview.totalInterest - bestInt;
-    const color = t<=6?"#1b5e20":t<=12?"#1565c0":t<=18?"#e65100":"#b71c1c";
+    const color = t<=3?"#1b5e20":t<=6?"#2e7d32":t<=12?"#1565c0":t<=18?"#e65100":"#b71c1c";
     return (
       <button key={t} onClick={function(){setLF(function(f){return {...f,term:t};});}}
-        style={{flex:1,minWidth:88,padding:"8px 5px",borderRadius:9,border:isSelected?"2px solid "+color:"2px solid #e0e0e0",background:isSelected?color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
+        style={{flex:1,minWidth:72,padding:"8px 5px",borderRadius:9,border:isSelected?"2px solid "+color:"2px solid #e0e0e0",background:isSelected?color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
         <div style={{fontSize:13,fontWeight:800,color:isSelected?color:"#555"}}>{t} mo</div>
         <div style={{fontSize:10,fontWeight:700,color:isSelected?color:"#888",marginTop:2,fontFamily:"var(--mono)"}}>{fmt(preview.monthlyPayment)}<span style={{fontWeight:400}}>/mo</span></div>
-        {t>6?<div style={{fontSize:9,color:color,marginTop:1}}>+{fmt(extraInt)} extra</div>:<div style={{fontSize:9,color:"#1b5e20",marginTop:1}}>✓ Best value</div>}
+        {t<=3?<div style={{fontSize:9,color:"#1b5e20",marginTop:1}}>✓ Best value</div>:<div style={{fontSize:9,color:color,marginTop:1}}>+{fmt(extraInt)} extra</div>}
       </button>
     );
   });
@@ -740,7 +716,7 @@ function LoanLimitBadge({memberId, members, amountLoaned}){
 }
 
 function FlatLoanPreview({lFPreview, lF, setLF}){
-  const bestCase = calcLoan({amountLoaned:+lF.amountLoaned, dateBanked:lF.dateBanked||new Date().toISOString().split("T")[0], status:"active", amountPaid:0, term:6});
+  const bestCase = calcLoan({amountLoaned:+lF.amountLoaned, dateBanked:lF.dateBanked||new Date().toISOString().split("T")[0], status:"active", amountPaid:0, term:3});
   const extraInt = lFPreview.totalInterest - bestCase.totalInterest;
   const extraPct = bestCase.totalInterest > 0 ? Math.round((extraInt/bestCase.totalInterest)*100) : 0;
   const term = lFPreview.term;
@@ -848,36 +824,11 @@ export default function App(){
   const [loans,setLoans]    = useState(INIT_LOANS);
   const [expenses,setExpenses] = useState(INIT_EXPENSES);
   const [receipts,setReceipts] = useState(INIT_RECEIPTS);
-  const [pending,setPending]   = useState(INIT_PENDING);
+  const [pending,setPending]   = useState(INIT_PENDING); // pending approval queue
+  const [expModal,setExpModal] = useState(false);
+  const [editExp,setEditExp]   = useState(null);
+  const [expF,setExpF]         = useState({...emptyE});
   const [investments,setInvestments] = useState(INIT_INVESTMENTS);
-  const [dbLoading,setDbLoading] = useState(true);
-const [expModal,setExpModal] = useState(false);
-const [editExp,setEditExp]   = useState(null);
-const [expF,setExpF]         = useState({...emptyE});
-  useEffect(function(){
-    async function loadAll(){
-      try {
-        const [mRows,lRows,eRows,iRows] = await Promise.all([
-          supa.get("members"), supa.get("loans"),
-          supa.get("expenses"), supa.get("investments")
-        ]);
-        if(Array.isArray(mRows) && mRows.length>0){
-          setMembers(mRows.map(dbToMember));
-        } else {
-          await Promise.all(INIT_MEMBERS.map(function(m){ return supa.upsert("members",memberToDb(m)); }));
-        }
-        if(Array.isArray(lRows) && lRows.length>0){
-          setLoans(lRows.map(dbToLoan));
-        } else if(INIT_LOANS.length>0){
-          await Promise.all(INIT_LOANS.map(function(l){ return supa.upsert("loans",Object.assign({},loanToDb(l),{id:l.id})); }));
-        }
-        if(Array.isArray(eRows) && eRows.length>0) setExpenses(eRows.map(dbToExpense));
-        if(Array.isArray(iRows) && iRows.length>0) setInvestments(iRows.map(dbToInv));
-      } catch(err){ console.error("Supabase load error:",err); }
-      finally { setDbLoading(false); }
-    }
-    loadAll();
-  },[]);
   const [invModal,setInvModal] = useState(false);
   const [editInv,setEditInv]   = useState(null);
   const [invF,setInvF]         = useState({...emptyInv});
@@ -896,7 +847,7 @@ const [expF,setExpF]         = useState({...emptyE});
   const [payModal,setPayModal]   = useState(false);
   const [payF,setPayF]           = useState({...emptyPay});
   const [addMModal,setAddMModal] = useState(false);
-  const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
+  const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
 
   const loansCalc = useMemo(()=>loans.map(l=>({...l,...calcLoan(l)})),[loans]);
   const fmems  = useMemo(()=>members.filter(m=>m.name.toLowerCase().includes(search.toLowerCase())),[members,search]);
@@ -950,52 +901,42 @@ const [expF,setExpF]         = useState({...emptyE});
   const closeProfile=()=>{setProfId(null);setProfEdit(false);setProfF(null);setConfirmOpt(false);setSharedPDF(null);};
   const saveProfile=()=>{
     if(!profF.name.trim())return;
-    const updated={...profF,phone:profF.phone||"",nin:profF.nin||"",address:profF.address||"",whatsapp:profF.whatsapp||"",membership:+profF.membership||0,annualSub:+profF.annualSub||0,monthlySavings:+profF.monthlySavings||0,welfare:+profF.welfare||0,shares:+profF.shares||0};
-    setMembers(prev=>prev.map(m=>m.id===profId?{...m,...updated}:m));
-    supa.upsert("members",memberToDb({...updated,id:profId}));
+    setMembers(prev=>prev.map(m=>m.id===profId?{...m,...profF,photoUrl:profF.photoUrl||"",phone:profF.phone||"",nin:profF.nin||"",address:profF.address||"",whatsapp:profF.whatsapp||"",membership:+profF.membership||0,annualSub:+profF.annualSub||0,monthlySavings:+profF.monthlySavings||0,welfare:+profF.welfare||0,shares:+profF.shares||0}:m));
     setProfEdit(false);
   };
   const optOutMember=()=>{
-    supa.del("members",profId);
     setLoans(prev=>prev.filter(l=>l.memberId!==profId));
     setMembers(prev=>prev.filter(m=>m.id!==profId));
     closeProfile();
   };
   const saveInv=()=>{
     if(!invF.platform||!invF.amount)return;
-    const rec={...invF,amount:+invF.amount||0,interestEarned:+invF.interestEarned||0};
-    if(editInv){
-      setInvestments(prev=>prev.map(i=>i.id===editInv?{...i,...rec}:i));
-      supa.update("investments",editInv,invToDb(rec));
-    } else {
-      supa.upsert("investments",invToDb(rec)).then(function(){ supa.get("investments").then(function(rows){ if(Array.isArray(rows))setInvestments(rows.map(dbToInv)); }); });
-    }
+    const rec={...invF,amount:+invF.amount||0,interestEarned:+invF.interestEarned||0,id:editInv||(investments.length>0?Math.max(...investments.map(i=>i.id||0))+1:1)};
+    if(editInv) setInvestments(prev=>prev.map(i=>i.id===editInv?rec:i));
+    else setInvestments(prev=>[...prev,rec]);
     setInvModal(false);setEditInv(null);setInvF({...emptyInv,dateInvested:new Date().toISOString().split("T")[0]});
   };
-  const delInv=function(id){ if(window.confirm("Delete this investment record?")){ setInvestments(prev=>prev.filter(i=>i.id!==id)); supa.del("investments",id); } };
+  const delInv=(id)=>{if(window.confirm("Delete this investment record?"))setInvestments(prev=>prev.filter(i=>i.id!==id));};
   const openAddInv=()=>{setEditInv(null);setInvF({...emptyInv,dateInvested:new Date().toISOString().split("T")[0]});setInvModal(true);};
   const openEditInv=(inv)=>{setEditInv(inv.id);setInvF({...inv});setInvModal(true);};
   const saveAddM=()=>{
     if(!addMF.name.trim())return;
     const id=Math.max(...members.map(m=>m.id),0)+1;
-    const newM={id,...addMF,whatsapp:addMF.whatsapp||"",membership:+addMF.membership||0,annualSub:+addMF.annualSub||0,monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0};
-    setMembers(prev=>[...prev,newM]);
-    supa.upsert("members",memberToDb(newM));
+    setMembers(prev=>[...prev,{id,...addMF,whatsapp:addMF.whatsapp||"",membership:+addMF.membership||0,annualSub:+addMF.annualSub||0,monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0}]);
     setAddMModal(false);
-    setAddMF({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
+    setAddMF({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
   };
   const openPayModal=(loan)=>{setPayF({...emptyPay,loanId:loan.id,date:new Date().toISOString().split("T")[0]});setPayModal(true);};
   const savePay=()=>{
     if(!payF.amount||!payF.loanId)return;
     const amt=+payF.amount||0;
-    setLoans(prev=>prev.map(function(l){
+    setLoans(prev=>prev.map(l=>{
       if(l.id!==payF.loanId)return l;
       const newPaid=(l.amountPaid||0)+amt;
       const calc=calcLoan({...l,amountPaid:newPaid});
       const nowPaid=calc.balance<=0;
-      const updated={...l,amountPaid:newPaid,status:nowPaid?"paid":l.status,datePaid:nowPaid?(payF.date||new Date().toISOString().split("T")[0]):l.datePaid};
-      supa.update("loans",l.id,loanToDb(updated));
-      return updated;
+      return{...l,amountPaid:newPaid,status:nowPaid?"paid":l.status,datePaid:nowPaid?(payF.date||new Date().toISOString().split("T")[0]):l.datePaid,
+        payments:[...(l.payments||[]),{...payF,amount:amt,id:Date.now()}]};
     }));
     setPayModal(false);setPayF({...emptyPay});
   };
@@ -1008,25 +949,19 @@ const [expF,setExpF]         = useState({...emptyE});
     const mem=members.find(m=>m.id===+lF.memberId);
     if(mem)p.memberName=mem.name;
     if(!p.memberName)return;
-    if(editL){
-      setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));
-      supa.update("loans",editL,loanToDb(p));
-    } else {
-      supa.upsert("loans",loanToDb(p)).then(function(){ supa.get("loans").then(function(rows){ if(Array.isArray(rows))setLoans(rows.map(dbToLoan)); }); });
-    }
+    if(editL)setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));
+    else{const id=Math.max(...loans.map(l=>l.id),0)+1;setLoans(prev=>[...prev,{id,...p}]);}
     setLModal(false);
   };
-  const delL=function(id){ if(window.confirm("Delete this loan?")){ setLoans(prev=>prev.filter(l=>l.id!==id)); supa.del("loans",id); } };
-  const markPd=(id)=>{
-    setLoans(prev=>prev.map(function(l){
-      if(l.id!==id)return l;
-      const dp=new Date().toISOString().split("T")[0];
-      const c=calcLoan({...l,datePaid:dp,status:"paid"});
-      const updated={...l,status:"paid",amountPaid:c.totalDue,datePaid:dp};
-      supa.update("loans",id,loanToDb(updated));
-      return updated;
-    }));
-  };
+  const delL=(id)=>{if(window.confirm("Delete this loan?"))setLoans(prev=>prev.filter(l=>l.id!==id));};
+  const markPd=(id)=>setLoans(prev=>prev.map(l=>{
+    if(l.id!==id)return l;
+    const dp=new Date().toISOString().split("T")[0];
+    const c=calcLoan({...l,datePaid:dp,status:"paid"});
+    return{...l,status:"paid",amountPaid:c.totalDue,datePaid:dp};
+  }));
+
+  // ── Expense handlers ──────────────────────────────────────────────────────
   const openAddExp=()=>{setEditExp(null);setExpF({...emptyE});setExpModal(true);};
   const openEditExp=(e)=>{setEditExp(e.id);setExpF({...e});setExpModal(true);};
   const saveExp=()=>{
@@ -1034,15 +969,15 @@ const [expF,setExpF]         = useState({...emptyE});
     const rec={...expF,amount:+expF.amount||0};
     if(editExp){
       setExpenses(prev=>prev.map(e=>e.id===editExp?{...e,...rec}:e));
-      supa.update("expenses",editExp,expenseToDb(rec));
     } else {
-      supa.upsert("expenses",expenseToDb(rec)).then(function(){ supa.get("expenses").then(function(rows){ if(Array.isArray(rows))setExpenses(rows.map(dbToExpense)); }); });
+      const id=(expenses.length>0?Math.max(...expenses.map(e=>e.id||0)):0)+1;
+      setExpenses(prev=>[...prev,{id,...rec}]);
     }
     setExpModal(false);
     setEditExp(null);
     setExpF({...emptyE,date:new Date().toISOString().split("T")[0]});
   };
-  const delExp=function(id){ if(window.confirm("Delete this expense?")){ setExpenses(prev=>prev.filter(e=>e.id!==id)); supa.del("expenses",id); } };
+  const delExp=(id)=>{if(window.confirm("Delete this expense?"))setExpenses(prev=>prev.filter(e=>e.id!==id));};
 
   // ── Email / WA / SMS dispatch ─────────────────────────────────────────────
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename)=>{
@@ -1082,9 +1017,9 @@ const [expF,setExpF]         = useState({...emptyE});
     }catch(e){setEmailSending(s=>({...s,[key]:"err"}));setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),4000);}
   };
 
-  const sendSavingsEmail=async(m)=>{const key="sav_"+m.id;const{subj,body}=buildSavingsEmail(m);const blob=await generateMemberPDF(m,loansCalc.filter(l=>l.memberId===m.id),members,true);await dispatchEmail(key,m.email,subj,body,blob,"BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf");};
-  const sendLoanEmail=async(mem,loan)=>{const key="loan_"+loan.id;const{subj,body}=buildLoanEmail(mem,loan);const blob=await generateMemberPDF(mem,loansCalc.filter(l=>l.memberId===mem.id),members,true);await dispatchEmail(key,mem.email,subj,body,blob,"BIDA_Loan_"+mem.name.replace(/\s+/g,"_")+".pdf");};
-  const sendDueEmail=async(mem,loan)=>{const key="due_"+loan.id;const{subj,body}=buildDueEmail(mem,loan);const blob=await generateMemberPDF(mem,loansCalc.filter(l=>l.memberId===mem.id),members,true);await dispatchEmail(key,mem.email,subj,body,blob,"BIDA_Due_"+mem.name.replace(/\s+/g,"_")+".pdf");};
+  const sendSavingsEmail=async(m)=>{const key="sav_"+m.id;const{subj,body}=buildSavingsEmail(m);const blob=await generateMemberPDF(m,loansCalc.filter(l=>l.memberId===m.id),members,loans,true);await dispatchEmail(key,m.email,subj,body,blob,"BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf");};
+  const sendLoanEmail=async(mem,loan)=>{const key="loan_"+loan.id;const{subj,body}=buildLoanEmail(mem,loan);const blob=await generateMemberPDF(mem,loansCalc.filter(l=>l.memberId===mem.id),members,loans,true);await dispatchEmail(key,mem.email,subj,body,blob,"BIDA_Loan_"+mem.name.replace(/\s+/g,"_")+".pdf");};
+  const sendDueEmail=async(mem,loan)=>{const key="due_"+loan.id;const{subj,body}=buildDueEmail(mem,loan);const blob=await generateMemberPDF(mem,loansCalc.filter(l=>l.memberId===mem.id),members,loans,true);await dispatchEmail(key,mem.email,subj,body,blob,"BIDA_Due_"+mem.name.replace(/\s+/g,"_")+".pdf");};
   const sendSavingsSMS=(m)=>dispatchSMS("sms_sav_"+m.id,m.whatsapp,buildSMSSavingsMsg(m));
   const sendLoanSMS=(mem,loan)=>dispatchSMS("sms_loan_"+loan.id,mem.whatsapp,buildSMSLoanMsg(mem,loan));
   const sendDueSMS=(mem,loan)=>dispatchSMS("sms_due_"+loan.id,mem.whatsapp,buildSMSDueMsg(mem,loan,daysLeft(loan)));
@@ -1102,21 +1037,37 @@ const [expF,setExpF]         = useState({...emptyE});
       const filenames={savings:"BIDA_Savings_Report.pdf",loans:"BIDA_Loans_Report.pdf",expenses:"BIDA_Expenses_Report.pdf",projections:"BIDA_Projections_Report.pdf"};
       const labels={savings:"Savings Report",loans:"Loans Report",expenses:"Expenses Report",projections:"Projections Report"};
       const blob=await generatePDF(type,members,loans,expenses,true);
-      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=filenames[type];a.click();
-      setTimeout(()=>URL.revokeObjectURL(url),5000);
+      if(!blob)throw new Error("No PDF blob returned");
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.style.display="none";
+      a.href=url;
+      a.download=filenames[type];
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),30000);
       setSharedPDF({blob,filename:filenames[type],label:labels[type],type});
-    }catch(e){alert("PDF error: "+e.message);}
+    }catch(e){console.error("PDF error:",e);alert("PDF error: "+e.message);}
     finally{setPdfGen(null);}
   };
   const handleMemberPDF=async(m)=>{
     setPdfGen("member_"+m.id);setSharedPDF(null);
     try{
       const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
-      const blob=await generateMemberPDF(m,profLoans,members,true);
-      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=filename;a.click();
-      setTimeout(()=>URL.revokeObjectURL(url),5000);
+      const blob=await generateMemberPDF(m,profLoans,members,loans,true);
+      if(!blob)throw new Error("No PDF blob returned");
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.style.display="none";
+      a.href=url;
+      a.download=filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),30000);
       setSharedPDF({blob,filename,label:m.name+" Statement",type:"member",memberId:m.id});
-    }catch(e){alert("PDF error: "+e.message);}
+    }catch(e){console.error("PDF error:",e);alert("PDF error: "+e.message);}
     finally{setPdfGen(null);}
   };
 
@@ -1181,10 +1132,6 @@ const [expF,setExpF]         = useState({...emptyE});
       )}
 
       {authUser&&<React.Fragment>
-      {dbLoading&&<div style={{position:"fixed",inset:0,background:"linear-gradient(135deg,var(--b900),var(--b700))",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:999}}>
-        <div style={{width:48,height:48,border:"4px solid rgba(255,255,255,.2)",borderTop:"4px solid #fff",borderRadius:"50%",animation:"sp .8s linear infinite",marginBottom:16}}/>
-        <div style={{color:"#fff",fontSize:14,fontWeight:600,letterSpacing:1}}>Loading BIDA data...</div>
-      </div>}
       <div className="app">
         {/* ── HEADER ─────────────────────────────────────────────────────── */}
         <header className="hdr">
@@ -1256,7 +1203,7 @@ const [expF,setExpF]         = useState({...emptyE});
                         <td className="mc">{fmt(m.welfare)}</td>
                         <td className="mc">{fmt(m.shares)}</td>
                         <td className="mct">{fmt(totBanked(m))}</td>
-                        <td style={{fontFamily:"var(--mono)",fontSize:11,color:"#1565c0",fontWeight:700}}>{fmt(borrowLimit(m))}</td>
+                        <td style={{fontFamily:"var(--mono)",fontSize:11,color:"#1565c0",fontWeight:700}}>{fmt(borrowLimit(m,loans))}</td>
                       </tr>
                     ))}
                     {!search&&<tr className="trow"><td/><td>TOTALS</td><td>{fmt(savT.membership)}</td><td>{fmt(savT.annualSub)}</td><td>{fmt(savT.monthly)}</td><td>{fmt(savT.welfare)}</td><td>{fmt(savT.shares)}</td><td>{fmt(savT.total)}</td><td/></tr>}
@@ -1275,7 +1222,7 @@ const [expF,setExpF]         = useState({...emptyE});
               <div className="int-rule">
                 <span style={{fontSize:18,flexShrink:0}}>📐</span>
                 <div className="int-rule-text">
-                  <strong>Interest Rules (automatic):</strong> Loans under UGX 7,000,000 → 4% flat on original principal/mo, 6–24 month flexible term. Loans UGX 7,000,000+ → 6% reducing balance, fixed 12-month term.
+                  <strong>Interest Rules (automatic):</strong> Loans under UGX 7,000,000 → 4% flat, terms: 3/6/9/12/18/24 months. Loans ≥ UGX 7,000,000 → 6% reducing balance, fixed 12-month term. Processing fee: UGX 25,000 + 1%. Borrow limit: 60% of (monthly savings + welfare).
                 </div>
               </div>
               <div className="stats">
@@ -1504,20 +1451,78 @@ const [expF,setExpF]         = useState({...emptyE});
           {/* ── INVESTMENTS TAB ──────────────────────────────────────────── */}
           {tab==="investments" && (
             <React.Fragment>
-              <div className="ptitle"><div className="ptdot"/>Investment Portfolio</div>
+              <div className="ptitle"><div className="ptdot"/>Investment Portfolio — BIDA Projects Fund</div>
+
+              {/* Liquidity + Purpose Banner */}
+              <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:13,padding:"13px 16px",marginBottom:12,color:"#fff"}}>
+                <div style={{fontWeight:800,fontSize:13,marginBottom:5}}>🏗️ Purpose &amp; Liquidity Policy</div>
+                <div style={{fontSize:11,lineHeight:1.7,opacity:.92}}>
+                  Investment returns fund <strong>BIDA co-operative projects</strong> — infrastructure, member welfare initiatives, and community development.
+                  <strong style={{color:"#90caf9"}}> Liquidity Rule:</strong> Pool must retain <strong style={{color:"#ffd54f"}}>at least 70%</strong> of total savings at all times. <strong>Maximum investable = 30% of fund pool.</strong>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:7,marginTop:10}}>
+                  {(()=>{
+                    const max30=Math.round(savT.total*0.30);
+                    const liq70=Math.round(savT.total*0.70);
+                    const rem=Math.max(0,max30-totalInvested);
+                    const ok=(savT.total-totalInvested)>=liq70;
+                    return [
+                      ["Fund Pool",fmt(savT.total),"#90caf9"],
+                      ["Max Investable (30%)",fmt(max30),"#ffd54f"],
+                      ["Currently Invested",fmt(totalInvested),totalInvested>max30?"#ef9a9a":"#a5d6a7"],
+                      ["Remaining",fmt(rem),rem===0?"#ef9a9a":"#c8e6c9"],
+                      ["Liquidity (70%)",fmt(liq70),ok?"#a5d6a7":"#ef9a9a"],
+                    ].map(([l,v,c])=>(
+                      <div key={l} style={{background:"rgba(255,255,255,.1)",borderRadius:8,padding:"7px 10px"}}>
+                        <div style={{fontSize:9,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:.5,marginBottom:2}}>{l}</div>
+                        <div style={{fontSize:13,fontWeight:900,color:c,fontFamily:"var(--mono)"}}>{v}</div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
+              {/* Stats */}
               <div className="stats">
                 <div className="card ck"><div className="clabel">Total Invested</div><div className="cval ok">{fmt(totalInvested)}</div><div className="csub">Active positions</div></div>
                 <div className="card ck"><div className="clabel">Total Interest Earned</div><div className="cval ok">{fmt(totalInvInterest)}</div></div>
-                <div className="card"><div className="clabel">Retained (60%)</div><div className="cval">{fmt(retainedInterest)}</div><div className="csub">Reinvested in pool</div></div>
+                <div className="card"><div className="clabel">Retained (60%)</div><div className="cval">{fmt(retainedInterest)}</div><div className="csub">BIDA projects</div></div>
                 <div className="card ck"><div className="clabel">To Members (40%)</div><div className="cval ok">{fmt(distributableInterest)}</div><div className="csub">By savings share</div></div>
                 <div className="card"><div className="clabel">Fund Pool</div><div className="cval">{fmt(savT.total)}</div></div>
                 <div className="card"><div className="clabel">Positions</div><div className="cval">{investments.length}</div></div>
               </div>
 
+              {/* FX + MM Rates */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 14px"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>🌍 FX Rates (UGX indicative)</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                    {[["UGX/USD","3,720","+0.4%","#1565c0"],["UGX/KES","28.5","-0.1%","#2e7d32"],["UGX/TZS","0.64","+0.2%","#e65100"],["UGX/EUR","4,050","+0.6%","#6a1b9a"],["UGX/GBP","4,720","+0.3%","#00695c"]].map(([l,r,t,c])=>(
+                      <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid var(--bdr)"}}>
+                        <span style={{fontSize:10,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{l}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:c,fontFamily:"var(--mono)"}}>{r}</span>
+                        <span style={{fontSize:9,color:t.startsWith("+")?"#2e7d32":"#c62828",fontFamily:"var(--mono)"}}>{t}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 14px"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>💹 Money Market Rates (p.a.)</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                    {[["T-Bills 91d","14.2%"],["T-Bills 182d","15.8%"],["T-Bills 364d","16.9%"],["Stanbic MMF","13.5%"],["UAP Old Mutual","14.0%"],["Britam","13.8%"],["DFCU Fixed","12.5%"]].map(([l,r])=>(
+                      <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid var(--bdr)"}}>
+                        <span style={{fontSize:10,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{l}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:"#1b5e20",fontFamily:"var(--mono)"}}>{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               {distributableInterest>0&&(
                 <div style={{background:"linear-gradient(135deg,#1b5e20,#2e7d32)",borderRadius:12,padding:"12px 16px",marginBottom:14,color:"#fff"}}>
                   <div style={{fontWeight:800,fontSize:13,marginBottom:6}}>📊 Member Dividend Distribution (40% of Interest)</div>
-                  <div style={{fontSize:11,opacity:.85,marginBottom:8}}>Each member's share based on their % of total pool. 60% ({fmt(retainedInterest)}) retained to grow the fund.</div>
+                  <div style={{fontSize:11,opacity:.85,marginBottom:8}}>Each member's share based on their % of total pool. 60% ({fmt(retainedInterest)}) retained for BIDA projects.</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6,maxHeight:180,overflowY:"auto"}}>
                     {[...members].sort((a,b)=>totBanked(b)-totBanked(a)).slice(0,10).map(m=>(
                       <div key={m.id} style={{background:"rgba(255,255,255,.15)",borderRadius:8,padding:"6px 10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1613,7 +1618,13 @@ const [expF,setExpF]         = useState({...emptyE});
             {!profEdit?(
               <React.Fragment>
                 <div className="prof-hero">
-                  <Avatar name={profMember.name} size={46}/>
+                  <div style={{position:"relative",flexShrink:0}}>
+                    <Avatar name={profMember.name} size={64} photoUrl={profMember.photoUrl}/>
+                    <label title="Change photo" style={{position:"absolute",bottom:0,right:0,background:"rgba(0,0,0,.6)",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:11}}>
+                      📷
+                      <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=r=>setMembers(prev=>prev.map(m=>m.id===profId?{...m,photoUrl:r.target.result}:m));reader.readAsDataURL(file);}}/>
+                    </label>
+                  </div>
                   <div className="prof-info">
                     <div className="prof-name">{profMember.name}</div>
                     <div className="prof-meta">Since {profMember.joinDate?new Date(profMember.joinDate).toLocaleDateString("en-GB",{month:"long",year:"numeric"}):"—"} · ID #{profMember.id}</div>
@@ -1633,7 +1644,7 @@ const [expF,setExpF]         = useState({...emptyE});
                     <div style={{fontSize:10,color:"rgba(255,255,255,.6)",marginTop:4}}>{profPct}% of pool</div>
                     <div style={{marginTop:8,borderTop:"1px solid rgba(255,255,255,.15)",paddingTop:7}}>
                       <div style={{fontSize:9,color:"rgba(255,255,255,.5)",marginBottom:2,letterSpacing:.5,textTransform:"uppercase"}}>{totBanked(profMember)<1000000?"×1.5 limit":"×2 limit"}</div>
-                      <div style={{fontSize:15,fontWeight:900,color:"#90caf9"}}>{fmt(borrowLimit(profMember))}</div>
+                      <div style={{fontSize:15,fontWeight:900,color:"#90caf9"}}>{fmt(borrowLimit(profMember,loans))}</div>
                       <div style={{fontSize:9,color:"rgba(255,255,255,.4)",marginTop:1}}>max borrow</div>
                     </div>
                   </div>
@@ -1656,7 +1667,7 @@ const [expF,setExpF]         = useState({...emptyE});
                     <div className="prof-bar-track"><div className="prof-bar-fill" style={{width:Math.min(parseFloat(profPct)*4,100)+"%"}}/></div>
                   </div>
                   <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-                    {[["Pool Total",fmt(savT.total)],["Avg/Member",fmt(Math.round(savT.total/members.length))],["Rank","#"+profRank+"/"+members.length],["vs Avg",(totBanked(profMember)>=Math.round(savT.total/members.length)?"+":"")+fmt(totBanked(profMember)-Math.round(savT.total/members.length))],["Max Borrow",fmt(borrowLimit(profMember))]].map(([lb,v])=>(
+                    {[["Pool Total",fmt(savT.total)],["Avg/Member",fmt(Math.round(savT.total/members.length))],["Rank","#"+profRank+"/"+members.length],["vs Avg",(totBanked(profMember)>=Math.round(savT.total/members.length)?"+":"")+fmt(totBanked(profMember)-Math.round(savT.total/members.length))],["Max Borrow",fmt(borrowLimit(profMember,loans))]].map(([lb,v])=>(
                       <div key={lb} className="prof-item" style={{flex:1,minWidth:80}}>
                         <div className="prof-item-label">{lb}</div>
                         <div className="prof-item-val" style={{fontSize:12}}>{v}</div>
@@ -1687,7 +1698,7 @@ const [expF,setExpF]         = useState({...emptyE});
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {profMember.email&&<button className="btn bemail sm" disabled={emailSending["sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsEmail(profMember)}>{emailSending["sav_"+profMember.id]==="sending"?"⏳...":"📨 Email"}</button>}
                         {profMember.whatsapp&&<React.Fragment><a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWASavingsMsg(profMember))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
-                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{const blob=await generateMemberPDF(profMember,profLoans,members,true);shareViaPDF(blob,"BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf",profMember.name);}}>{WA_SVG}WA PDF</button>
+                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);shareViaPDF(blob,"BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf",profMember.name);}}>{WA_SVG}WA PDF</button>
                         <button className="btn bsms sm" disabled={emailSending["sms_sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsSMS(profMember)}>{emailSending["sms_sav_"+profMember.id]==="sending"?"⏳...":"📱 SMS"}</button></React.Fragment>}
                       </div>
                     </div>
@@ -1727,6 +1738,14 @@ const [expF,setExpF]         = useState({...emptyE});
             ):(
               <React.Fragment>
                 <div className="fgrid">
+                  <div className="fg ff" style={{display:"flex",alignItems:"center",gap:14,padding:"10px 12px",background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:10}}>
+                    <Avatar name={profF.name||profMember.name} size={52} photoUrl={profF.photoUrl}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>Member Photo</div>
+                      <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload Photo<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=r=>setProfF(f=>({...f,photoUrl:r.target.result}));reader.readAsDataURL(file);}}/></label>
+                      {profF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"#c62828",cursor:"pointer"}} onClick={()=>setProfF(f=>({...f,photoUrl:""}))}>✕ Remove</button>}
+                    </div>
+                  </div>
                   <div className="fg ff"><label className="fl">Full Name</label><input className="fi" value={profF.name} onChange={e=>setProfF(f=>({...f,name:e.target.value}))}/></div>
                   <div className="fg"><label className="fl">Telephone</label><input className="fi" type="tel" value={profF.phone||""} onChange={e=>setProfF(f=>({...f,phone:e.target.value}))} placeholder="0772 000 000"/></div>
                   <div className="fg"><label className="fl">WhatsApp</label><input className="fi" type="tel" value={profF.whatsapp||""} onChange={e=>setProfF(f=>({...f,whatsapp:e.target.value}))} placeholder="0772 000 000"/></div>
@@ -1754,6 +1773,14 @@ const [expF,setExpF]         = useState({...emptyE});
           <div className="modal wide">
             <div className="mhdr"><div className="mtitle">Add New Member</div><button className="mclose" onClick={()=>setAddMModal(false)}>✕</button></div>
             <div className="fgrid">
+              <div className="fg ff" style={{display:"flex",alignItems:"center",gap:14,padding:"10px 12px",background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:10}}>
+                <Avatar name={addMF.name||"New"} size={52} photoUrl={addMF.photoUrl||""}/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>Member Photo <span style={{fontWeight:400}}>(optional)</span></div>
+                  <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=r=>setAddMF(f=>({...f,photoUrl:r.target.result}));reader.readAsDataURL(file);}}/></label>
+                  {addMF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"#c62828",cursor:"pointer"}} onClick={()=>setAddMF(f=>({...f,photoUrl:""}))}>✕</button>}
+                </div>
+              </div>
               {/* Personal details */}
               <div className="fg ff"><label className="fl">Full Name</label><input className="fi" value={addMF.name} onChange={e=>setAddMF(f=>({...f,name:e.target.value}))} placeholder="e.g. KATUNTU HANNAH"/></div>
               <div className="fg"><label className="fl">Telephone</label><input className="fi" type="tel" value={addMF.phone} onChange={e=>setAddMF(f=>({...f,phone:e.target.value}))} placeholder="0772 000 000"/></div>
@@ -1765,7 +1792,13 @@ const [expF,setExpF]         = useState({...emptyE});
 
               {/* Contributions */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💰 Initial Contributions</div></div>
-              {[["Membership Fee","membership"],["Annual Sub","annualSub"],["Monthly Savings","monthlySavings"],["Welfare","welfare"],["Shares","shares"]].map(([lb,k])=>(
+              <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"8px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}><strong>📌 Contribution Rules:</strong> Monthly savings: UGX <strong>10,000</strong> (min) – <strong>70,000</strong> (max). <strong>20% auto-allocated to welfare.</strong></div></div>
+              {[["Membership Fee","membership"],["Annual Sub","annualSub"]].map(([lb,k])=>(
+                <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={addMF[k]} onChange={e=>setAddMF(f=>({...f,[k]:e.target.value}))} placeholder="0"/></div>
+              ))}
+              <div className="fg"><label className="fl">Monthly Savings (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(10k–70k)</span></label><input className="fi" type="number" value={addMF.monthlySavings} onChange={e=>{const v=Math.min(70000,Math.max(0,+e.target.value||0));setAddMF(f=>({...f,monthlySavings:v,welfare:Math.round(v*0.20)}));}} min={0} max={70000}/></div>
+              <div className="fg"><label className="fl">Welfare (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(auto 20%)</span></label><input className="fi" type="number" value={addMF.welfare} onChange={e=>setAddMF(f=>({...f,welfare:e.target.value}))} placeholder="Auto"/><span className="fhint">20% of monthly savings. Adjust if needed.</span></div>
+              {[["Shares","shares"]].map(([lb,k])=>(
                 <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={addMF[k]} onChange={e=>setAddMF(f=>({...f,[k]:e.target.value}))} placeholder="0"/></div>
               ))}
 
@@ -1915,9 +1948,9 @@ const [expF,setExpF]         = useState({...emptyE});
             <div className="mhdr"><div className="mtitle">{editL?"Edit Loan":"Issue New Loan"}</div><button className="mclose" onClick={()=>setLModal(false)}>✕</button></div>
             <div className="fgrid">
               <div className="fg ff"><label className="fl">Member</label>
-                <select className="fi" value={lF.memberId} onChange={e=>{const m=members.find(m=>m.id===+e.target.value);const lim=m?borrowLimit(m):0;const fee=m?procFee(lim):0;setLF(f=>({...f,memberId:e.target.value,memberName:m?m.name:"",amountLoaned:m?lim:"",processingFeePaid:m?Math.round(fee):"",borrowerPhone:m?.phone||m?.whatsapp||"",borrowerAddress:m?.address||"",borrowerNIN:m?.nin||""}));}}>
+                <select className="fi" value={lF.memberId} onChange={e=>{const m=members.find(m=>m.id===+e.target.value);const lim=m?borrowLimit(m,loans):0;const fee=m?procFee(lim):0;setLF(f=>({...f,memberId:e.target.value,memberName:m?m.name:"",amountLoaned:m?lim:"",processingFeePaid:m?Math.round(fee):"",borrowerPhone:m?.phone||m?.whatsapp||"",borrowerAddress:m?.address||"",borrowerNIN:m?.nin||""}));}}>
                   <option value="">— Select member —</option>
-                  {members.map(m=><option key={m.id} value={m.id}>{m.name} — limit {fmt(borrowLimit(m))}</option>)}
+                  {members.map(m=><option key={m.id} value={m.id}>{m.name} — limit {fmt(borrowLimit(m,loans))}</option>)}
                 </select>
               </div>
               <div className="fg"><label className="fl">Date Issued</label><input className="fi" type="date" value={lF.dateBanked} onChange={e=>setLF(f=>({...f,dateBanked:e.target.value}))}/></div>
@@ -1926,7 +1959,7 @@ const [expF,setExpF]         = useState({...emptyE});
                 <input className="fi" type="number" value={lF.amountLoaned} onChange={e=>onAmt(e.target.value)} placeholder="0"/>
                 <LoanLimitBadge memberId={lF.memberId} members={members} amountLoaned={lF.amountLoaned}/>
               </div>
-              <div className="fg"><label className="fl">Processing Fee</label><input className="fi" type="number" value={lF.processingFeePaid} onChange={e=>setLF(f=>({...f,processingFeePaid:e.target.value}))}/><span className="fhint">Auto: 50,000 + 1%</span></div>
+              <div className="fg"><label className="fl">Processing Fee</label><input className="fi" type="number" value={lF.processingFeePaid} onChange={e=>setLF(f=>({...f,processingFeePaid:e.target.value}))}/><span className="fhint">Auto: 25,000 + 1%</span></div>
               <div className="fg ff"><label className="fl">Loan Type</label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
                   {[["personal","👤 Personal"],["business","💼 Business"],["education","🎓 Education"],["medical","🏥 Medical"],["agriculture","🌾 Agriculture"],["other","📋 Other"]].map(([v,lbl])=>(
