@@ -733,7 +733,7 @@ async function generateLoanPDF(loan, member, calc){
   // Header
   doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
   doc.setFillColor(...BLUE);doc.rect(0,28,W,2,"F");
-  (()=>{const cx=22,cy=15,r=8;doc.setFillColor(...BLUE);const pp=[];for(let i=0;i<6;i++){const a=(Math.PI/180)*(60*i-30);pp.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.polygon(pp.map(p=>({x:p[0],y:p[1]})),"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.44,cy,r*.22,r*.52,"F");doc.rect(cx-r*.12,cy-r*.28,r*.22,r*.80,"F");doc.rect(cx+r*.20,cy-r*.56,r*.22,r*1.08,"F");})();
+  (()=>{const cx=22,cy=15,r=8;doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");})();
   doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("BIDA",36,12);
   doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",36,18);
   doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("LOAN AGREEMENT",W/2,12,{align:"center"});
@@ -855,7 +855,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160],ORANGE=[191,54,12];
   const dH=(title,sub)=>{
     doc.setFillColor(...NAVY);doc.rect(0,0,W,24,"F");doc.setFillColor(...BLUE);doc.rect(0,24,W,2,"F");
-    (()=>{const cx=18,cy=12,r=7;doc.setFillColor(...BLUE);const pp=[];for(let i=0;i<6;i++){const a=(Math.PI/180)*(60*i-30);pp.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.polygon(pp.map(p=>({x:p[0],y:p[1]})),"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.44,cy,r*.22,r*.52,"F");doc.rect(cx-r*.12,cy-r*.28,r*.22,r*.80,"F");doc.rect(cx+r*.20,cy-r*.56,r*.22,r*1.08,"F");})();
+    (()=>{const cx=18,cy=12,r=7;doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");})();
     doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("BIDA",30,10);
     doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",30,16);
     doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text(title,W/2,10,{align:"center"});
@@ -1067,12 +1067,11 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   // BIDA hexagon logo
   const drawLogo=(cx,cy,r)=>{
     doc.setFillColor(...BLUE);
-    const pts=[];for(let i=0;i<6;i++){const a=(Math.PI/180)*(60*i-30);pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
-    doc.polygon(pts.map(p=>({x:p[0],y:p[1]})),"F");
+    doc.rect(cx-r,cy-r,r*2,r*2,"F");
     doc.setFillColor(...WHITE);
-    doc.rect(cx-r*0.44,cy+r*0.0,r*0.22,r*0.52,"F");
-    doc.rect(cx-r*0.12,cy-r*0.28,r*0.22,r*0.80,"F");
-    doc.rect(cx+r*0.20,cy-r*0.56,r*0.22,r*1.08,"F");
+    doc.rect(cx-r*0.42,cy+r*0.02,r*0.20,r*0.50,"F");
+    doc.rect(cx-r*0.10,cy-r*0.26,r*0.20,r*0.78,"F");
+    doc.rect(cx+r*0.22,cy-r*0.54,r*0.20,r*1.06,"F");
   };
 
   // Header
