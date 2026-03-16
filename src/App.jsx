@@ -123,7 +123,7 @@ async function loadAllFromSupabase(){
 const fmt   = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString("en-UG");
 const fmtN  = (n) => n == null ? "0" : Number(n).toLocaleString("en-UG");
 const fmtD  = (d) => d ? new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}) : "—";
-const toStr = () => new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
+const toStr = () => { const n=new Date(); return n.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})+" at "+n.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}); };
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 function monthsElapsed(from, to) {
@@ -170,7 +170,7 @@ function calcLoan(l, _ignored) {
   }
 }
 
-const totBanked   = (m) => (m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0);
+const totBanked   = (m) => (m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0);
 const procFee     = (a) => 25000 + 0.01 * a;
 
 // ── BORROW LIMIT: strict 60% of (monthlySavings + welfare) ──
@@ -257,99 +257,98 @@ const INIT_MEMBERS = [
 const INIT_LOANS = [
   {id:1,memberId:13,memberName:"KATUNTU HANNAH",dateBanked:"2025-09-01",amountLoaned:1000000,processingFeePaid:60000,datePaid:"",amountPaid:0,status:"active",term:12},
   {id:2,memberId:16,memberName:"MUKESI DAVID",dateBanked:"2025-09-01",amountLoaned:550000,processingFeePaid:55500,datePaid:"",amountPaid:0,status:"active",term:12},
-  {id:3,memberId:28,memberName:"KATUKO ZOE",dateBanked:"2025-09-01",amountLoaned:1000000,processingFeePaid:60000,datePaid:"2025-09-30",amountPaid:1040000,status:"paid",term:12},
+  {id:3,memberId:28,memberName:"KATUKO ZOE",dateBanked:"2025-09-01",amountLoaned:1000000,processingFeePaid:60000,datePaid:"2025-09-30",amountPaid:1040000,status:"paid",term:1},
 ];
 
 const INIT_INVESTMENTS = [];
 const SAVINGS_CHART_DATA = [{"month": "2022 Q1", "total": 2850000, "label": "Q1 2022"}, {"month": "2022 Q2", "total": 5200000, "label": "Q2 2022"}, {"month": "2022 Q3", "total": 7100000, "label": "Q3 2022"}, {"month": "2022 Q4", "total": 9800000, "label": "Q4 2022"}, {"month": "2023 Q1", "total": 12400000, "label": "Q1 2023"}, {"month": "2023 Q2", "total": 15600000, "label": "Q2 2023"}, {"month": "2023 Q3", "total": 18200000, "label": "Q3 2023"}, {"month": "2023 Q4", "total": 20500000, "label": "Q4 2023"}, {"month": "2024 Q1", "total": 22800000, "label": "Q1 2024"}, {"month": "2024 Q2", "total": 24500000, "label": "Q2 2024"}, {"month": "2024 Q3", "total": 26100000, "label": "Q3 2024"}, {"month": "2024 Q4", "total": 27400000, "label": "Q4 2024"}, {"month": "2025 Q1", "total": 28100000, "label": "Q1 2025"}, {"month": "2025 Q2", "total": 28500000, "label": "Q2 2025"}, {"month": "2025 Q3", "total": 28760000, "label": "Q3 2025 (Current)"}];
 const EXPENSES_CHART_DATA = [{"month": "2022-02", "total": 20000, "meetings": 0, "transport": 20000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-03", "total": 200000, "meetings": 200000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-04", "total": 585000, "meetings": 60000, "transport": 125000, "printing": 0, "legal_registration": 400000, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-05", "total": 847000, "meetings": 420000, "transport": 0, "printing": 62000, "legal_registration": 150000, "banking": 0, "operations": 122000, "communications": 0, "refunds": 93000}, {"month": "2023-02", "total": 100000, "meetings": 0, "transport": 0, "printing": 100000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-03", "total": 285000, "meetings": 0, "transport": 285000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-04", "total": 390000, "meetings": 120000, "transport": 270000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-06", "total": 320000, "meetings": 0, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 100000, "communications": 20000, "refunds": 200000}, {"month": "2023-07", "total": 895000, "meetings": 105000, "transport": 220000, "printing": 0, "legal_registration": 0, "banking": 270000, "operations": 300000, "communications": 0, "refunds": 0}, {"month": "2023-09", "total": 40000, "meetings": 40000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-11", "total": 150000, "meetings": 150000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-12", "total": 100000, "meetings": 0, "transport": 0, "printing": 100000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-01", "total": 280000, "meetings": 60000, "transport": 100000, "printing": 120000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-02", "total": 1110000, "meetings": 170000, "transport": 125000, "printing": 670000, "legal_registration": 135000, "banking": 0, "operations": 10000, "communications": 0, "refunds": 0}, {"month": "2024-04", "total": 120000, "meetings": 120000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-08", "total": 100000, "meetings": 0, "transport": 100000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-09", "total": 100000, "meetings": 0, "transport": 100000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-03", "total": 2103000, "meetings": 1403000, "transport": 200000, "printing": 0, "legal_registration": 500000, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-04", "total": 250000, "meetings": 250000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-08", "total": 25000, "meetings": 25000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-09", "total": 80000, "meetings": 80000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}];
 const INIT_EXPENSES    = [
-  {id:1,date:"2022-02-15",activity:"TRANSPORT TO PICK CASHFLOW BOOK",amount:20000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:2,date:"2022-03-03",activity:"VENUE AT BISTRONA",amount:100000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:3,date:"2022-03-05",activity:"FACILITATION",amount:100000,issuedBy:"LUBAALE ANGELLA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:4,date:"2022-04-15",activity:"PRINTING OF ALL BIDA DOCUMENTS PLUS TRANSPORT",amount:125000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:5,date:"2022-04-15",activity:"REFUND TO BINNASALI FOR PAYMENT VENUE2/4/2022",amount:60000,issuedBy:"HAJJI BINNASALI",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:6,date:"2022-04-16",activity:"ACCOUNT OPENNING",amount:320000,issuedBy:"MR GANDI FRED",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:7,date:"2022-04-16",activity:"BIDA TRADING LICENCE 24/3/2022",amount:80000,issuedBy:"HAJJI BINNASALI",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:8,date:"2022-05-05",activity:"BIDA SACCO MEETING AT BISTRONA",amount:100000,issuedBy:"BAIRA RICHARD",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:9,date:"2022-05-15",activity:"DESIGNING BI LAWS",amount:100000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:10,date:"2022-05-20",activity:"TIN",amount:50000,issuedBy:"BINNASALI KITAKKULE",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:11,date:"2022-05-20",activity:"ON 16/4/2022 MEETING FACILITATION AT KASAKA",amount:100000,issuedBy:"MWASE PATRICK",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:12,date:"2022-05-20",activity:"1 MINUTE BOOK ON",amount:12000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:13,date:"2022-05-20",activity:"PLASTIC BURNER",amount:70000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:14,date:"2022-05-20",activity:"TEMPORARY BIDA OFFICE",amount:52000,issuedBy:"ME MUTESI",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:15,date:"2022-05-20",activity:"TRANSPORT TO NANSANA MEETING",amount:35000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:16,date:"2022-05-20",activity:"FACILITATION DATA/AIRTIME",amount:50000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:17,date:"2022-05-20",activity:"MARTHER FEES REFUND",amount:93000,issuedBy:"BAFUMBA SARAH",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"refunds",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:18,date:"2022-05-20",activity:"PURCHACEOF COOPERATIVE BOOKS",amount:50000,issuedBy:"NAMULAWA ZABIA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:19,date:"2022-05-20",activity:"3TIMES  MEETING HAJJ AND CHAIR 3/12/22,08/22,18/12/22",amount:135000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:20,date:"2023-02-24",activity:"PHONE AND LINES DESGINING DOCUMENTS",amount:100000,issuedBy:"AIDHA ZIRABA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:21,date:"2023-03-25",activity:"PTINTING AND TRANSPORT",amount:165000,issuedBy:"AIDHA ZIRABA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:22,date:"2023-03-25",activity:"TRANSPORT TO MEET CHAIRMAN TO SIGN BIDA DOCUMENTS",amount:20000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:23,date:"2023-03-27",activity:"TRANSPORTTOBIDA MEMBERS SIGN DOCUMENTS",amount:100000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:24,date:"2023-04-28",activity:"TRANSPORT TP,CHAIRMAN,SECRETARYTREASURER",amount:70000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:25,date:"2023-04-28",activity:"FACILITATION  DURING BIDA MEETING AT KASAKA",amount:120000,issuedBy:"MONICA NANSIKO",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:26,date:"2023-04-28",activity:"MEMBERS FILES AND TRANSPORT",amount:100000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:27,date:"2023-04-28",activity:"TRANSPORT TP TREASUER MARCH AND APRIL 4TIMES",amount:100000,issuedBy:"WANYAN JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:28,date:"2023-06-07",activity:"TRANSP0RT TO BIDA ACTIVITIES",amount:100000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:29,date:"2023-06-17",activity:"REFUND",amount:200000,issuedBy:"ZZABIA NAMULAWA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"refunds",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:30,date:"2023-06-18",activity:"AIRTIME AND DATA",amount:20000,issuedBy:"WANYANA JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"communications",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:31,date:"2023-07-14",activity:"TRANSPORT",amount:30000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:32,date:"2023-07-14",activity:"THE STAMP /TRANSPORT",amount:65000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:33,date:"2023-07-18",activity:"TO TRANSPORT DOCUMENTS TO KAMULI",amount:25000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:34,date:"2023-07-18",activity:"TRANSPORT TO COMMRCIAL OFFICER",amount:100000,issuedBy:"INHENSICO MONICA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:35,date:"2023-07-18",activity:"FACILITATION TO THE COMMERCIAL OFFICER",amount:105000,issuedBy:"INHENSICO MONICA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:36,date:"2023-07-18",activity:"Payment to Zabia Mulawa",amount:300000,issuedBy:"NAMULAWA ZABIA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:37,date:"2023-07-30",activity:"BANK CHARGES",amount:270000,issuedBy:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:38,date:"2023-09-07",activity:"TRANSPORT AND FACILITATION",amount:40000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:39,date:"2023-11-25",activity:"FACILITATION TO THE COMMERCIAL OFFICER",amount:150000,issuedBy:"INHENSICO MONICA",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:40,date:"2023-12-04",activity:"PAYMMENTFOR STAMP",amount:100000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:41,date:"2024-01-11",activity:"Facilitation to treasurer for data and airtime",amount:20000,issuedBy:"WANYAN JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:42,date:"2024-01-11",activity:"FACILITATION DATA/AIRTIME",amount:20000,issuedBy:"Aidah Ziraba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:43,date:"2024-01-11",activity:"Printing headed papers for the coop",amount:120000,issuedBy:"MULAMBA PETER",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:44,date:"2024-01-11",activity:"Mukesi transport to Kamuli to see DCO",amount:60000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:45,date:"2024-01-11",activity:"Robina transport to Kampala to deliver minutes for the AGM for the coop",amount:20000,issuedBy:"Robina Kalinaki",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:46,date:"2024-01-13",activity:"Mukesi transport from Kamuli to kampala after seing the DCO",amount:40000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:47,date:"2024-02-08",activity:"Facilitation to David to see Aidah and Julie to sign board resolution",amount:30000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:48,date:"2024-02-10",activity:"Transport for Mukesi to look Aidah to sign Board resolution",amount:20000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:49,date:"2024-02-10",activity:"Paid David for filing BIDA cooperative returns to URSB",amount:80000,issuedBy:"Daved Kemba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:50,date:"2024-02-10",activity:"Facilitation to lawyer David to change initial wrong board resolution made for t",amount:50000,issuedBy:"Daved Kemba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:51,date:"2024-02-12",activity:"Transport of chair to the bank of Nansana 4 times",amount:75000,issuedBy:"Fred Gandi",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:52,date:"2024-02-21",activity:"Transport facilitation to the Bank to open up coop A/C",amount:30000,issuedBy:"WANYAN JULIET",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:53,date:"2024-02-21",activity:"Transport facilitation to the Bank",amount:30000,issuedBy:"Aidah Ziraba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:54,date:"2024-02-21",activity:"Afidavit by Aidah for wrong signatures",amount:55000,issuedBy:"Aidah Ziraba",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:55,date:"2024-02-22",activity:"Banker-Brian facilitation to open up account",amount:30000,issuedBy:"Fred Gandi",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:56,date:"2024-02-22",activity:"Paid Brian to follow up our cooperative opening of account",amount:10000,issuedBy:"Fred Gandi",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"operations",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:57,date:"2024-02-26",activity:"Spent on printing BIDA Cooperative documents including (50 passbooks, 8 big rece",amount:670000,issuedBy:"Vincent Ntale",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"printing",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:58,date:"2024-02-26",activity:"Transport to town to collect printed books by Peter",amount:30000,issuedBy:"Vincent Ntale",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:59,date:"2024-04-26",activity:"MEALS AND REFRESHMENTS DYRING A MEETING AT KASAKA",amount:120000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:60,date:"2024-08-10",activity:"Transport to Wagabaza for picking letters for certificate",amount:50000,issuedBy:"Musitafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:61,date:"2024-08-30",activity:"Transport to Musitafa for transport to pick final letters for permanent certific",amount:50000,issuedBy:"Musitafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:62,date:"2024-09-10",activity:"Transport and token to Musitafa for delivering permanent certificate",amount:100000,issuedBy:"Musitafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:63,date:"2024-12-31",activity:"Bank Charges — Year 2024",amount:137999,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:64,date:"2025-02-01",activity:"Bank Charges — 2025-02",amount:17483,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:65,date:"2025-03-01",activity:"Bank Charges — 2025-03",amount:1368,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:66,date:"2025-03-20",activity:"Paid transport to inhensiko transport",amount:200000,issuedBy:"Monica",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"transport",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:67,date:"2025-03-20",activity:"Printing charges of AGM documents",amount:215000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:68,date:"2025-03-20",activity:"Paid to AGM extra costs to hotel",amount:58000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:69,date:"2025-03-20",activity:"AGM Arrangement-withrew from account and paid hotel",amount:500000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:70,date:"2025-03-20",activity:"Audit for cooperative paid to Izimba",amount:500000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"legal_registration",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:71,date:"2025-03-20",activity:"AGM arrangement paid to hotel",amount:300000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:72,date:"2025-03-20",activity:"AGM arrangement paid to hotel",amount:200000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:73,date:"2025-03-29",activity:"AGM arrangements hotel",amount:130000,issuedBy:"MUKESI DAVID",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:74,date:"2025-04-01",activity:"Bank Charges — 2025-04",amount:12689,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:75,date:"2025-04-11",activity:"Payment to Sarah Namugoya to facilitate coop training",amount:250000,issuedBy:"Sarah Namugooya",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:76,date:"2025-05-01",activity:"Bank Charges — 2025-05",amount:1490,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:77,date:"2025-06-01",activity:"Bank Charges — 2025-06",amount:1551,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:78,date:"2025-07-01",activity:"Bank Charges — 2025-07",amount:88353,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:79,date:"2025-08-01",activity:"Bank Charges — 2025-08",amount:1198,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:80,date:"2025-08-12",activity:"Musitafa paid for re-writing BIDA coop AGM minutes",amount:25000,issuedBy:"Musitafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:81,date:"2025-09-01",activity:"Bank Charges — 2025-09",amount:1162,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:82,date:"2025-09-16",activity:"Musitafa paid for re-writing BIDA coop AGM minutes",amount:35000,issuedBy:"Mustafa",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:83,date:"2025-09-16",activity:"Refreshmnets for 3 pple (fred, Rogers and Mustafa)",amount:45000,issuedBy:"Fred Gandi",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"meetings",payMode:"cash",bankName:"",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:84,date:"2025-10-01",activity:"Bank Charges — 2025-10",amount:1205,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""},
-  {id:85,date:"2025-11-01",activity:"Bank Charges — 2025-11",amount:11500,issuedBy:"Stanbic Bank",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",category:"banking",payMode:"bank",bankName:"Stanbic Bank",bankAccount:"",purpose:"",categoryCustom:"",depositorName:"",mobileNumber:"",transactionId:""}
-];
+  {id:1,date:"2022-02-15",activity:"Transport to pick cashflow book",amount:20000,issuedBy:"WANYANA JULIET",category:"transport",payMode:"cash",purpose:"Operations",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:2,date:"2022-03-03",activity:"Venue at Bistrona — inaugural meeting",amount:100000,issuedBy:"WANYANA JULIET",category:"meetings",payMode:"cash",purpose:"Meeting",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:3,date:"2022-03-05",activity:"Facilitation payment",amount:100000,issuedBy:"LUBAALE ANGELLA",category:"meetings",payMode:"cash",purpose:"Meeting facilitation",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:4,date:"2022-04-15",activity:"Printing all BIDA documents plus transport",amount:125000,issuedBy:"WANYANA JULIET",category:"printing",payMode:"cash",purpose:"Printing",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:5,date:"2022-04-15",activity:"Refund to Binnasali for venue 2/4/2022",amount:60000,issuedBy:"HAJJI BINNASALI",category:"refunds",payMode:"cash",purpose:"Refund",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:6,date:"2022-04-16",activity:"Bank account opening costs",amount:320000,issuedBy:"GANDI FRED K",category:"banking",payMode:"bank",purpose:"Account opening",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:7,date:"2022-04-16",activity:"BIDA trading licence",amount:80000,issuedBy:"HAJJI BINNASALI",category:"legal_registration",payMode:"cash",purpose:"Legal",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:8,date:"2022-05-05",activity:"BIDA SACCO meeting at Bistrona",amount:100000,issuedBy:"BAIRA RICHARD",category:"meetings",payMode:"cash",purpose:"Meeting",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:9,date:"2022-05-15",activity:"Designing BIDA by-laws",amount:100000,issuedBy:"WANYANA JULIET",category:"legal_registration",payMode:"cash",purpose:"Legal documentation",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:10,date:"2022-05-20",activity:"TIN registration",amount:50000,issuedBy:"BINNASALI KITAKKULE",category:"legal_registration",payMode:"cash",purpose:"Legal",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:11,date:"2022-05-20",activity:"Meeting facilitation at Kasaka 16/4/2022",amount:100000,issuedBy:"MWASE PATRICK",category:"meetings",payMode:"cash",purpose:"Meeting",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:12,date:"2022-05-20",activity:"Minute book purchase",amount:12000,issuedBy:"WANYANA JULIET",category:"printing",payMode:"cash",purpose:"Stationery",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:13,date:"2022-05-20",activity:"Plastic burner purchase",amount:70000,issuedBy:"WANYANA JULIET",category:"operations",payMode:"cash",purpose:"Office equipment",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:14,date:"2022-05-20",activity:"Temporary BIDA office payment",amount:52000,issuedBy:"ME MUTESI",category:"operations",payMode:"cash",purpose:"Office",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:15,date:"2022-05-20",activity:"Transport to Nansana meeting",amount:35000,issuedBy:"WANYANA JULIET",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:16,date:"2022-05-20",activity:"Facilitation data and airtime",amount:50000,issuedBy:"WANYANA JULIET",category:"communications",payMode:"cash",purpose:"Communications",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:17,date:"2022-05-20",activity:"Marther fees refund — Bafumba Sarah",amount:93000,issuedBy:"BAFUMBA SARAH",category:"refunds",payMode:"cash",purpose:"Refund",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:18,date:"2022-05-20",activity:"Purchase of cooperative books",amount:50000,issuedBy:"NAMULAWA ZABIA",category:"printing",payMode:"cash",purpose:"Stationery",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:19,date:"2022-05-20",activity:"3 meetings facilitation — Hajj and Chair (Dec/Aug/2022)",amount:135000,issuedBy:"WANYANA JULIET",category:"meetings",payMode:"cash",purpose:"Meeting facilitation",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:20,date:"2023-02-24",activity:"Phone and lines — designing BIDA documents",amount:100000,issuedBy:"AIDHA ZIRABA",category:"communications",payMode:"cash",purpose:"Communications",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:21,date:"2023-03-25",activity:"Printing and transport",amount:165000,issuedBy:"AIDHA ZIRABA",category:"printing",payMode:"cash",purpose:"Printing",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:22,date:"2023-03-25",activity:"Transport — chairman to sign BIDA documents",amount:20000,issuedBy:"WANYANA JULIET",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:23,date:"2023-03-27",activity:"Transport — BIDA members to sign documents",amount:100000,issuedBy:"MUKESI DAVID",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:24,date:"2023-04-26",activity:"Meals and refreshments during meeting at Kasaka",amount:120000,issuedBy:"MUKESI DAVID",category:"meetings",payMode:"cash",purpose:"Meeting",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:25,date:"2023-04-28",activity:"Transport — chairman, secretary, treasurer",amount:70000,issuedBy:"MUKESI DAVID",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:26,date:"2023-04-28",activity:"Facilitation during BIDA meeting at Kasaka",amount:120000,issuedBy:"MONICA NANSIKO",category:"meetings",payMode:"cash",purpose:"Meeting facilitation",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:27,date:"2023-04-28",activity:"Members files and transport",amount:100000,issuedBy:"MUKESI DAVID",category:"operations",payMode:"cash",purpose:"Operations",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:28,date:"2023-04-28",activity:"Transport to treasurer — March and April (4 trips)",amount:100000,issuedBy:"WANYANA JULIET",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:29,date:"2023-06-17",activity:"Refund — Zabia Namulawa",amount:200000,issuedBy:"NAMULAWA ZABIA",category:"refunds",payMode:"cash",purpose:"Refund",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:30,date:"2023-06-18",activity:"Airtime and data",amount:20000,issuedBy:"WANYANA JULIET",category:"communications",payMode:"cash",purpose:"Communications",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:31,date:"2023-06-07",activity:"Transport to BIDA activities",amount:100000,issuedBy:"MULAMBA PETER",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:32,date:"2023-07-09",activity:"Transport and facilitation",amount:40000,issuedBy:"MULAMBA PETER",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:33,date:"2023-07-14",activity:"Transport payment",amount:30000,issuedBy:"MULAMBA PETER",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:34,date:"2023-07-14",activity:"Stamp and transport",amount:65000,issuedBy:"MULAMBA PETER",category:"operations",payMode:"cash",purpose:"Operations",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:35,date:"2023-07-18",activity:"Transport — deliver documents to Kamuli",amount:25000,issuedBy:"MULAMBA PETER",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:36,date:"2023-07-18",activity:"Transport to Commercial Officer",amount:100000,issuedBy:"INHENSICO MONICA",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:37,date:"2023-07-18",activity:"Facilitation to Commercial Officer",amount:105000,issuedBy:"INHENSICO MONICA",category:"meetings",payMode:"cash",purpose:"Meeting facilitation",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:38,date:"2023-07-18",activity:"Payment to Zabia Mulawa",amount:300000,issuedBy:"NAMULAWA ZABIA",category:"refunds",payMode:"cash",purpose:"Refund",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:39,date:"2023-07-30",activity:"Bank charges 2023 (full year)",amount:270000,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:40,date:"2023-11-25",activity:"Facilitation to Commercial Officer",amount:150000,issuedBy:"INHENSICO MONICA",category:"meetings",payMode:"cash",purpose:"Meeting facilitation",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:41,date:"2023-12-04",activity:"Stamp purchase",amount:100000,issuedBy:"MULAMBA PETER",category:"operations",payMode:"cash",purpose:"Operations",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:42,date:"2024-01-11",activity:"Facilitation to treasurer — data and airtime",amount:20000,issuedBy:"WANYANA JULIET",category:"communications",payMode:"cash",purpose:"Communications",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:43,date:"2024-01-11",activity:"Facilitation data and airtime — Aidah Ziraba",amount:20000,issuedBy:"AIDHA ZIRABA",category:"communications",payMode:"cash",purpose:"Communications",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:44,date:"2024-01-11",activity:"Printing headed papers for the coop",amount:120000,issuedBy:"MULAMBA PETER",category:"printing",payMode:"cash",purpose:"Printing",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:45,date:"2024-01-11",activity:"Mukesi transport to Kamuli to see DCO",amount:60000,issuedBy:"MUKESI DAVID",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:46,date:"2024-01-11",activity:"Robina transport — deliver AGM minutes to Kampala",amount:20000,issuedBy:"ROBINA KALINAKI",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:47,date:"2024-01-13",activity:"Mukesi transport Kamuli to Kampala after DCO",amount:40000,issuedBy:"MUKESI DAVID",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:48,date:"2024-02-08",activity:"Facilitation — David to get Aidah and Julie sign board resolution",amount:30000,issuedBy:"MUKESI DAVID",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:49,date:"2024-02-10",activity:"Transport — Mukesi to get Aidah sign board resolution",amount:20000,issuedBy:"MUKESI DAVID",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:50,date:"2024-02-10",activity:"Filing BIDA cooperative returns to URSB",amount:80000,issuedBy:"DAVID KEMBA",category:"legal_registration",payMode:"cash",purpose:"Legal",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:51,date:"2024-02-10",activity:"Change wrong board resolution — David Kemba lawyer",amount:50000,issuedBy:"DAVID KEMBA",category:"legal_registration",payMode:"cash",purpose:"Legal",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:52,date:"2024-02-12",activity:"Transport — chair to Nansana bank (4 trips)",amount:75000,issuedBy:"GANDI FRED K",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:53,date:"2024-02-21",activity:"Transport — bank to open coop account (Juliet)",amount:30000,issuedBy:"WANYANA JULIET",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:54,date:"2024-02-21",activity:"Transport — bank to open coop account (Aidah)",amount:30000,issuedBy:"AIDHA ZIRABA",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:55,date:"2024-02-21",activity:"Affidavit by Aidah for wrong signatures",amount:55000,issuedBy:"AIDHA ZIRABA",category:"legal_registration",payMode:"cash",purpose:"Legal",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:56,date:"2024-02-22",activity:"Banker Brian facilitation — cooperative account opening",amount:30000,issuedBy:"GANDI FRED K",category:"banking",payMode:"bank",purpose:"Account opening",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:57,date:"2024-02-22",activity:"Follow up — cooperative account opening",amount:10000,issuedBy:"GANDI FRED K",category:"banking",payMode:"bank",purpose:"Account opening",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:58,date:"2024-02-26",activity:"Printing BIDA documents (50 passbooks, receipt books, requisitions etc.)",amount:670000,issuedBy:"VINCENT NTALE",category:"printing",payMode:"cash",purpose:"Stationery",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:59,date:"2024-02-26",activity:"Transport — collect printed books from town",amount:30000,issuedBy:"VINCENT NTALE",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:60,date:"2024-04-11",activity:"Sarah Namugoya — cooperative training facilitation",amount:250000,issuedBy:"SARAH NAMUGOOYA",category:"meetings",payMode:"cash",purpose:"Training",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:61,date:"2024-08-10",activity:"Transport to Wagabaza — pick letters for certificate",amount:50000,issuedBy:"MUSITAFA",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:62,date:"2024-08-30",activity:"Transport — pick final letters for permanent certificate",amount:50000,issuedBy:"MUSITAFA",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:63,date:"2024-09-10",activity:"Transport and token to Musitafa for delivering permanent certificate",amount:100000,issuedBy:"MUSITAFA",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+    {id:64,date:"2025-03-20",activity:"Transport — Inhensiko",amount:200000,issuedBy:"MONICA INHENSIKO",category:"transport",payMode:"cash",purpose:"Transport",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:65,date:"2025-03-20",activity:"Printing charges — AGM documents",amount:215000,issuedBy:"MUKESI DAVID",category:"printing",payMode:"cash",purpose:"AGM printing",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:66,date:"2025-03-20",activity:"AGM extra costs — hotel",amount:58000,issuedBy:"MUKESI DAVID",category:"meetings",payMode:"cash",purpose:"AGM",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:67,date:"2025-03-20",activity:"AGM arrangement — withdrew from account and paid hotel",amount:500000,issuedBy:"MUKESI DAVID",category:"meetings",payMode:"bank",purpose:"AGM",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:68,date:"2025-03-20",activity:"Audit for cooperative — Izimba",amount:500000,issuedBy:"MUKESI DAVID",category:"legal_registration",payMode:"cash",purpose:"Audit",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:69,date:"2025-03-20",activity:"AGM arrangement paid to hotel",amount:300000,issuedBy:"MUKESI DAVID",category:"meetings",payMode:"cash",purpose:"AGM",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:70,date:"2025-03-20",activity:"AGM arrangement paid to hotel (2nd payment)",amount:200000,issuedBy:"MUKESI DAVID",category:"meetings",payMode:"cash",purpose:"AGM",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:71,date:"2025-03-29",activity:"AGM arrangements hotel — final payment",amount:130000,issuedBy:"MUKESI DAVID",category:"meetings",payMode:"cash",purpose:"AGM",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:72,date:"2025-08-12",activity:"Musitafa — re-writing BIDA coop AGM minutes",amount:25000,issuedBy:"MUSITAFA",category:"meetings",payMode:"cash",purpose:"Secretarial",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:73,date:"2025-09-16",activity:"Musitafa — re-writing BIDA coop AGM minutes (2nd payment)",amount:35000,issuedBy:"MUSTAFA",category:"meetings",payMode:"cash",purpose:"Secretarial",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:74,date:"2025-09-16",activity:"Refreshments — Fred, Rogers and Mustafa",amount:45000,issuedBy:"GANDI FRED K",category:"meetings",payMode:"cash",purpose:"Meeting",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:75,date:"2025-02-01",activity:"Bank charges — February 2025",amount:17483,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:76,date:"2025-03-01",activity:"Bank charges — March 2025",amount:1368,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:77,date:"2025-04-01",activity:"Bank charges — April 2025",amount:12689,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:78,date:"2025-05-01",activity:"Bank charges — May 2025",amount:1490,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:79,date:"2025-06-01",activity:"Bank charges — June 2025",amount:1551,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:80,date:"2025-07-01",activity:"Bank charges — July 2025",amount:88353,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:81,date:"2025-08-01",activity:"Bank charges — August 2025",amount:1198,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:82,date:"2025-09-01",activity:"Bank charges — September 2025",amount:1162,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:83,date:"2025-10-01",activity:"Bank charges — October 2025",amount:1205,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
+  {id:84,date:"2025-11-01",activity:"Bank charges — November 2025",amount:11500,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""}
+]
 const INIT_RECEIPTS    = [];
 // Service providers: BIDA members who provide consistent services
 // Must be compliant: active membership, annualSub >= 50,000, monthlySavings > 0
@@ -554,6 +553,10 @@ const riskIndicators=(m,loans)=>{
   return {flags,risk:flags.some(f=>f.level==="high")?"high":flags.length>0?"medium":"low"};
 };
 
+const WELFARE_RATE = 0.40; // 40% of cumulative monthly savings auto-allocated to welfare
+const autoWelfare = (monthlySavings) => Math.round((monthlySavings||0) * WELFARE_RATE);
+const SHARE_UNIT_VALUE = 50000; // UGX 50,000 per share unit
+const shareUnits = (m) => Math.round((m.shares||0)/SHARE_UNIT_VALUE);
 const SERVICE_TYPES = ["Printing & Stationery","Transport","Catering & Meetings","Legal & Registration","IT & Communications","Venue & Facilities","Audit & Accounting","Other"];
 const EXP_CATEGORIES = ["Operations","Meetings","Transport","Printing","Legal & Registration","Banking","Communications","Welfare Payouts","Refunds","Salaries","Other"];
 const INV_TYPE_LABELS = {unit_trust:"Unit Trust",treasury_bond:"Treasury Bond",fixed_deposit:"Fixed Deposit",money_market:"Money Market",other:"Other"};
@@ -662,8 +665,9 @@ async function generateLoanPDF(loan, member, calc){
   // Header
   doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
   doc.setFillColor(...BLUE);doc.rect(0,28,W,2,"F");
-  doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(...WHITE);doc.text("BIDA",14,12);
-  doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",14,18);
+  (()=>{const cx=22,cy=15,r=8;doc.setFillColor(...BLUE);const pp=[];for(let i=0;i<6;i++){const a=(Math.PI/180)*(60*i-30);pp.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.lines(pp.map((p,i)=>{const n=pp[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pp[0][0],pp[0][1],null,null,"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.44,cy,r*.22,r*.52,"F");doc.rect(cx-r*.12,cy-r*.28,r*.22,r*.80,"F");doc.rect(cx+r*.20,cy-r*.56,r*.22,r*1.08,"F");})();
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("BIDA",36,12);
+  doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",36,18);
   doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("LOAN AGREEMENT",W/2,12,{align:"center"});
   doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(187,222,251);doc.text("Official Loan Disbursement Record — Confidential",W/2,19,{align:"center"});
   doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Date: "+toStr(),W-12,12,{align:"right"});doc.text("Loan Ref: #"+loan.id,W-12,18,{align:"right"});
@@ -781,7 +785,15 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
   const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160],ORANGE=[191,54,12];
-  const dH=(title,sub)=>{doc.setFillColor(...NAVY);doc.rect(0,0,W,22,"F");doc.setFillColor(...BLUE);doc.rect(0,22,W,2,"F");doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",12,10);doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",12,16);doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text(title,W/2,10,{align:"center"});doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(187,222,251);doc.text(sub,W/2,16,{align:"center"});doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Generated: "+toStr(),W-10,10,{align:"right"});doc.text("Confidential",W-10,16,{align:"right"});};
+  const dH=(title,sub)=>{
+    doc.setFillColor(...NAVY);doc.rect(0,0,W,24,"F");doc.setFillColor(...BLUE);doc.rect(0,24,W,2,"F");
+    (()=>{const cx=18,cy=12,r=7;doc.setFillColor(...BLUE);const pp=[];for(let i=0;i<6;i++){const a=(Math.PI/180)*(60*i-30);pp.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.lines(pp.map((p,i)=>{const n=pp[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pp[0][0],pp[0][1],null,null,"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.44,cy,r*.22,r*.52,"F");doc.rect(cx-r*.12,cy-r*.28,r*.22,r*.80,"F");doc.rect(cx+r*.20,cy-r*.56,r*.22,r*1.08,"F");})();
+    doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("BIDA",30,10);
+    doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",30,16);
+    doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text(title,W/2,10,{align:"center"});
+    doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(187,222,251);doc.text(sub,W/2,17,{align:"center"});
+    doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Generated: "+toStr(),W-10,10,{align:"right"});doc.text("Confidential",W-10,17,{align:"right"});
+  };
   const dF=(n)=>{doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("BIDA Co-operative Multi-Purpose Society — Confidential",10,H-4);doc.text("Page "+n,W/2,H-4,{align:"center"});doc.text(toStr(),W-10,H-4,{align:"right"});};
   const sB=(x,y,w,h,lb,v,c)=>{doc.setFillColor(...BLITE);doc.roundedRect(x,y,w,h,2,2,"F");doc.setFillColor(...(c||BLUE));doc.roundedRect(x,y,3,h,1,1,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text(lb.toUpperCase(),x+6,y+5);doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(...NAVY);doc.text(v,x+6,y+11);};
 
@@ -984,47 +996,69 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160];
 
-  // ── Header ──
-  doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
-  doc.setFillColor(...BLUE);doc.rect(0,28,W,2,"F");
-  doc.setFont("helvetica","bold");doc.setFontSize(15);doc.setTextColor(...WHITE);doc.text("BIDA",14,12);
-  doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(144,202,249);doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",14,18);
-  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,11,{align:"center"});
-  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(187,222,251);doc.text("Individual Financial Summary — Confidential",W/2,18,{align:"center"});
-  doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Generated: "+toStr(),W-12,11,{align:"right"});
-  doc.text("bidacooperative@gmail.com",W-12,17,{align:"right"});
+  // BIDA hexagon logo
+  const drawLogo=(cx,cy,r)=>{
+    doc.setFillColor(...BLUE);
+    const pts=[];for(let i=0;i<6;i++){const a=(Math.PI/180)*(60*i-30);pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],null,null,"F");
+    doc.setFillColor(...WHITE);
+    doc.rect(cx-r*0.44,cy+r*0.0,r*0.22,r*0.52,"F");
+    doc.rect(cx-r*0.12,cy-r*0.28,r*0.22,r*0.80,"F");
+    doc.rect(cx+r*0.20,cy-r*0.56,r*0.22,r*1.08,"F");
+  };
 
-  // ── Member hero block ──
+  // Header
+  doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
+  doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
+  drawLogo(22,16,9);
+  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",36,13);
+  doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);
+  doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",36,19);
+  doc.text("bidacooperative@gmail.com",36,25);
+  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);
+  doc.text("MEMBER STATEMENT",W/2,13,{align:"center"});
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);
+  doc.text("Individual Financial Summary — Confidential",W/2,20,{align:"center"});
+  doc.setFontSize(6.5);doc.setTextColor(187,222,251);
+  doc.text("Generated: "+toStr(),W-10,13,{align:"right"});
+
+  // Stats banner
   const tb=totBanked(member);
   const allTotals=allMembers.map(m=>totBanked(m)).sort((a,b)=>b-a);
   const rank=allTotals.indexOf(tb)+1;
   const poolTotal=allTotals.reduce((s,v)=>s+v,0);
   const pct=poolTotal>0?((tb/poolTotal)*100).toFixed(1):"0.0";
   const lim=borrowLimit(member,allLoans||[]);
-  const avgTotal=Math.round(poolTotal/allMembers.length);
+  const avgTotal=allMembers.length>0?Math.round(poolTotal/allMembers.length):0;
   const diff=tb-avgTotal;
+  const boxY=37,boxH=18,bGap=3,bW=(W-24)/4;
+  const sBox=(x,label,val,col)=>{
+    doc.setFillColor(...BLITE);doc.roundedRect(x,boxY,bW,boxH,2,2,"F");
+    doc.setFillColor(...col);doc.roundedRect(x,boxY,3,boxH,1,1,"F");
+    doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);doc.text(label.toUpperCase(),x+5,boxY+5.5);
+    doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text(val,x+5,boxY+13,{maxWidth:bW-7});
+  };
+  sBox(12,"Total Banked",fmt(tb),BLUE);
+  sBox(12+bW+bGap,"Max Borrow",fmt(lim),GREEN);
+  sBox(12+2*(bW+bGap),"Rank","#"+rank+" / "+allMembers.length,NAVY);
+  sBox(12+3*(bW+bGap),"Pool Share",pct+"% of pool",BLUE);
 
-  doc.setFillColor(...BLITE);doc.roundedRect(10,34,W-20,30,3,3,"F");
-  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...NAVY);doc.text(member.name,14,43);
-  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(...GREY);
-  doc.text("Member ID: #"+member.id,14,49);
-  doc.text("Joined: "+(member.joinDate?new Date(member.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}):"—"),14,54);
-  if(member.phone||member.whatsapp) doc.text("Phone: "+(member.phone||member.whatsapp),14,59);
-  if(member.nin) doc.text("NIN: "+member.nin,80,59);
-  if(member.address) doc.text("Address: "+member.address,14,64);
+  // Member detail card
+  const cY=boxY+boxH+4;
+  doc.setFillColor(248,252,255);doc.roundedRect(10,cY,W-20,22,2,2,"F");
+  doc.setDrawColor(...BLUE);doc.roundedRect(10,cY,W-20,22,2,2,"S");
+  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text(member.name,14,cY+8);
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+  const c2=W/2+2;
+  doc.text("Member ID: #"+member.id,14,cY+14);
+  doc.text("Joined: "+(member.joinDate?new Date(member.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}):"—"),14,cY+19);
+  if(member.phone||member.whatsapp) doc.text("Phone: "+(member.phone||member.whatsapp),c2,cY+14);
+  if(member.nin) doc.text("NIN: "+member.nin,c2,cY+19);
 
-  doc.setFont("helvetica","bold");doc.setFontSize(16);doc.setTextColor(...BLUE);doc.text(fmt(tb),W-12,43,{align:"right"});
-  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(...GREY);doc.text("TOTAL BANKED",W-12,49,{align:"right"});
-  doc.setFontSize(7.5);doc.setTextColor(GREEN[0],GREEN[1],GREEN[2]);doc.text("Max Borrow: "+fmt(lim),W-12,54,{align:"right"});
-  doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Rank: #"+rank+"/"+allMembers.length+" · "+pct+"% of pool",W-12,59,{align:"right"});
-  const diffColor=diff>=0?GREEN:RED;
-  doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(...diffColor);
-  doc.text((diff>=0?"▲ +":"▼ ")+fmt(Math.abs(diff))+" vs avg",W-12,64,{align:"right"});
-
-  // ── Savings breakdown ──
-  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",12,72);
-  doc.autoTable({
-    startY:75,
+  // Savings breakdown
+  const sY=cY+27;
+  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",12,sY);
+  doc.autoTable({startY:sY+3,
     head:[["Category","Amount (UGX)","% of Total"]],
     body:[
       ["Membership Fee",fmtN(member.membership),tb>0?((member.membership/tb)*100).toFixed(1)+"%":"—"],
@@ -1034,49 +1068,67 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
       ["Shares",fmtN(member.shares),tb>0?((member.shares/tb)*100).toFixed(1)+"%":"—"],
       ["TOTAL BANKED",fmtN(tb),"100.0%"],
     ],
-    styles:{fontSize:9,cellPadding:3},
-    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
-    columnStyles:{0:{cellWidth:90},1:{halign:"right",fontStyle:"bold",cellWidth:40},2:{halign:"center",cellWidth:30}},
+    styles:{fontSize:9,cellPadding:2.8},
+    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:8.5},
+    columnStyles:{0:{cellWidth:100},1:{halign:"right",fontStyle:"bold",cellWidth:46},2:{halign:"center",cellWidth:26}},
+    didParseCell:(d)=>{if(d.row.index===5&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
+    margin:{left:12,right:12}
+  });
+
+  // Borrowing capacity
+  const bRate=Math.round(borrowCapacityRate(member,allLoans||[])*100);
+  const bBase=(member.monthlySavings||0)+(member.welfare||0);
+  const bPenalty=defaultPrincipalPenalty(member,allLoans||[]);
+  const limY=doc.lastAutoTable.finalY+5;
+  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("BORROWING CAPACITY",12,limY);
+  doc.autoTable({startY:limY+3,
+    body:[["Savings + Welfare base",fmt(bBase),""],["Capacity rate",bRate+"%"+(bPenalty>0?" (penalty applied)":""),""],["Maximum loan limit",fmt(lim),"Up to this amount available"]],
+    styles:{fontSize:8.5,cellPadding:2.5},
+    columnStyles:{0:{cellWidth:80,fontStyle:"bold"},1:{halign:"right",cellWidth:46},2:{cellWidth:46,fontSize:7}},
+    didParseCell:(d)=>{if(d.row.index===2&&d.section==="body"){d.cell.styles.fillColor=[232,245,233];d.cell.styles.textColor=GREEN;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
+    margin:{left:12,right:12}
+  });
+
+  // Pool standing & peer comparison
+  const psY=doc.lastAutoTable.finalY+5;
+  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("POOL STANDING & PEER COMPARISON",12,psY);
+  doc.autoTable({startY:psY+3,
+    head:[["Metric","Value","Note"]],
+    body:[
+      ["Total pool (all "+allMembers.length+" members)",fmt(poolTotal),"Combined savings of all members"],
+      ["Pool average per member",fmt(avgTotal),"Average contribution"],
+      ["Your total banked",fmt(tb),pct+"% of the entire pool"],
+      [diff>=0?"Above pool average":"Below pool average",fmt(Math.abs(diff)),diff>=0?"▲ You are above average":"▼ You are below average"],
+      ["Your rank","#"+rank+" of "+allMembers.length,rank===1?"🏅 Top contributor":rank<=3?"Top 3":"By total amount banked"],
+    ],
+    styles:{fontSize:8.5,cellPadding:2.5},
+    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:8.5},
+    columnStyles:{0:{cellWidth:78,fontStyle:"bold"},1:{halign:"right",cellWidth:44},2:{cellWidth:50,fontSize:7.5}},
     didParseCell:(d)=>{
-      if(d.row.index===5&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}
+      if(d.section==="body"){
+        if(d.row.index===2){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;}
+        if(d.row.index===3){d.cell.styles.textColor=diff>=0?GREEN:RED;d.cell.styles.fontStyle="bold";}
+        if(d.row.index===4){d.cell.styles.fillColor=[232,245,233];d.cell.styles.textColor=GREEN;d.cell.styles.fontStyle="bold";}
+      }
     },
     margin:{left:12,right:12}
   });
 
-  // ── Borrow limit breakdown ──
-  const bRate=Math.round(borrowCapacityRate(member,allLoans||[])*100);
-  const bBase=(member.monthlySavings||0)+(member.welfare||0);
-  const bPenalty=defaultPrincipalPenalty(member,allLoans||[]);
-  const limY=doc.lastAutoTable.finalY+6;
-  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("BORROWING CAPACITY",12,limY);
-  doc.autoTable({
-    startY:limY+3,
-    body:[
-      ["Base (Monthly Savings + Welfare)",fmt(bBase)],
-      ["Capacity Rate",bRate+"%"+(bPenalty>0?" (penalty applied)":"")],
-      ["Maximum Borrow",fmt(lim)],
-    ],
-    styles:{fontSize:8.5,cellPadding:2.5},
-    columnStyles:{0:{cellWidth:110,fontStyle:"bold"},1:{halign:"right"}},
-    didParseCell:(d)=>{if(d.row.index===2&&d.section==="body"){d.cell.styles.fillColor=[232,245,233];d.cell.styles.textColor=GREEN;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
-    margin:{left:12,right:12},tableWidth:160
-  });
-
-  // ── Loan history ──
+  // Loan history
   if(memberLoans&&memberLoans.length>0){
-    const lY=doc.lastAutoTable.finalY+6;
-    doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("LOAN HISTORY ("+memberLoans.length+" loan"+(memberLoans.length>1?"s":"")+")",12,lY);
+    const lY=doc.lastAutoTable.finalY+5;
+    doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);
+    doc.text("LOAN HISTORY ("+memberLoans.length+" loan"+(memberLoans.length>1?"s":"")+")",12,lY);
     const lRows=memberLoans.map(l=>{
       const c=l.method?l:calcLoan(l);
-      return [fmtD(l.dateBanked||l.dateIssued),fmtN(l.amountLoaned),c.method==="reducing"?"6% RB":"4% Flat",(l.term||12)+"mo",fmtN(c.monthlyPayment),fmtN(c.totalInterest),fmtN(c.totalDue),fmtN(l.amountPaid),l.balance>0||c.balance>0?"("+fmtN(l.balance||c.balance)+")":"✓ CLEAR",l.status==="paid"?"✓ PAID":"● ACTIVE"];
+      return [fmtD(l.dateBanked||l.dateIssued),fmtN(l.amountLoaned),c.method==="reducing"?"6% RB":"4% Flat",(l.term||12)+"mo",fmtN(c.monthlyPayment),fmtN(c.totalInterest),fmtN(c.totalDue),fmtN(l.amountPaid||0),(l.balance>0||c.balance>0)?"("+fmtN(l.balance||c.balance)+")":"✓ CLEAR",l.status==="paid"?"✓ PAID":"● ACTIVE"];
     });
-    doc.autoTable({
-      startY:lY+3,
-      head:[["Issued","Principal","Method","Term","Monthly","Interest","Total Due","Paid","Balance","Status"]],
+    doc.autoTable({startY:lY+3,
+      head:[["Issued","Principal","Rate","Term","Monthly","Interest","Total Due","Paid","Balance","Status"]],
       body:lRows,
-      styles:{fontSize:8,cellPadding:2.5},
-      headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:7.5},
-      columnStyles:{9:{halign:"center",fontStyle:"bold"}},
+      styles:{fontSize:7.5,cellPadding:2.2},
+      headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:7},
+      columnStyles:{0:{cellWidth:18,halign:"center"},1:{cellWidth:24,halign:"right"},2:{cellWidth:14,halign:"center"},3:{cellWidth:10,halign:"center"},4:{cellWidth:22,halign:"right"},5:{cellWidth:22,halign:"right"},6:{cellWidth:22,halign:"right"},7:{cellWidth:22,halign:"right"},8:{cellWidth:18,halign:"right"},9:{cellWidth:14,halign:"center",fontStyle:"bold"}},
       didParseCell:(d)=>{
         if(d.column.index===9&&d.section==="body"){d.cell.styles.textColor=d.cell.raw==="✓ PAID"?GREEN:RED;}
         if(d.column.index===8&&d.section==="body"&&d.cell.raw&&d.cell.raw.startsWith("("))d.cell.styles.textColor=RED;
@@ -1085,14 +1137,15 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     });
   }
 
-  // ── Footer ──
+  // Footer
   const pageCount=doc.internal.getNumberOfPages();
-  for(let i=1;i<=pageCount;i++){
-    doc.setPage(i);
+  for(let pg=1;pg<=pageCount;pg++){
+    doc.setPage(pg);
     doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
-    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
-    doc.text("BIDA Co-operative Multi-Purpose Society — Member Confidential Statement",12,H-4);
-    doc.text("Page "+i+"/"+pageCount+" · "+toStr(),W-12,H-4,{align:"right"});
+    doc.setFillColor(...BLUE);doc.rect(0,H-10,W,0.8,"F");
+    doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+    doc.text("BIDA Co-operative Multi-Purpose Society — Confidential Member Statement",12,H-4);
+    doc.text("Page "+pg+" of "+pageCount+"  ·  "+toStr(),W-12,H-4,{align:"right"});
   }
   if(returnBlob)return doc.output("blob");
   doc.save("BIDA_Statement_"+member.name.replace(/\s+/g,"_")+".pdf");
@@ -1195,9 +1248,9 @@ th.hi,td.hi{background:rgba(21,101,192,.04);}
 .mcd{font-family:var(--mono);font-weight:700;color:#bf360c;}
 .sn{font-family:var(--mono);font-size:10px;color:var(--tmuted);}
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;font-family:var(--mono);white-space:nowrap;}
-.bpaid{background:var(--okbg);color:var(--ok);}
+.bpaid{background:#c8e6c9;color:#1b5e20;font-weight:800;}
 .bactive{background:var(--wbg);color:var(--warn);}
-.bover{background:#fce4ec;color:#c62828;}
+.bover{background:#ffcdd2;color:#b71c1c;font-weight:800;}
 .bp-pos{color:#2e7d32;font-family:var(--mono);font-weight:600;}
 .bp-neg{color:var(--danger);font-family:var(--mono);font-weight:600;}
 .abtn{display:flex;gap:3px;}
@@ -1253,6 +1306,7 @@ select.fi{cursor:pointer;}
 .method-toggle-label{font-size:10px;font-weight:700;font-family:var(--mono);color:var(--tmuted);text-transform:uppercase;letter-spacing:.6px;}
 .spin{display:inline-block;animation:sp .7s linear infinite;}
 @keyframes sp{to{transform:rotate(360deg)}}
+@keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}
 
 /* ── PROFILE ── */
 .prof-hero{background:linear-gradient(135deg,var(--b800),var(--b600));border-radius:13px;padding:14px 16px;margin-bottom:14px;color:#fff;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;}
@@ -1274,8 +1328,9 @@ select.fi{cursor:pointer;}
 .prof-bar-track{height:6px;background:var(--b100);border-radius:3px;overflow:hidden;}
 .prof-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--b500),var(--b400));}
 .prof-loan-card{background:#fff;border:1.5px solid var(--bdr);border-radius:11px;padding:12px;margin-bottom:9px;}
-.prof-loan-card.lactive{border-color:#ffcc80;}
-.prof-loan-card.loverdue{border-color:#ef9a9a;}
+.prof-loan-card.lactive{border-color:#ffcc80;background:#fffde7;}
+.prof-loan-card.loverdue{border-color:#ef9a9a;background:#ffebee;}
+.prof-loan-card.lpaid{border-color:#66bb6a;background:#f1f8e9;border-width:2px;}
 
 /* ── REMINDERS ── */
 .email-section{background:#fff;border:1px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:12px;}
@@ -1362,7 +1417,7 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
   ];
   const dates = [["Issued",fmtD(l.dateBanked)],["Months",l.months+"mo"],["Settled",l.datePaid?fmtD(l.datePaid):"—"]];
   return (
-    <div className={"prof-loan-card"+(l.status!=="paid"?ov?" loverdue":" lactive":"")}>
+    <div className={"prof-loan-card"+(l.status==="paid"?" lpaid":ov?" loverdue":" lactive")}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <div>
           <span style={{fontWeight:800,color:"var(--b800)",fontSize:13}}>{fmt(l.amountLoaned)}</span>
@@ -1370,7 +1425,9 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           <span style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:l.method==="reducing"?"#1565c0":"#37474f",background:l.method==="reducing"?"#e3f2fd":"#eceff1",borderRadius:9,padding:"2px 7px"}}>{l.method==="reducing"?"6% Reducing":"4% Flat"}</span>
-          <span className={"badge "+(l.status==="paid"?"bpaid":l.months>l.term?"bover":"bactive")}>{l.status==="paid"?"✓ Paid":l.months>l.term?"⚠ Overdue":"● Active"}</span>
+          <span className={"badge "+(l.status==="paid"?"bpaid":l.months>l.term?"bover":"bactive")}>
+            {l.status==="paid"?"✅ Cleared":l.months>l.term?"🔴 Overdue":"🟡 Active"}
+          </span>
           {(()=>{const as=APPROVAL_STATUS[l.approvalStatus];return as&&l.approvalStatus!=="approved"?<span style={{fontSize:8,padding:"2px 6px",borderRadius:5,background:as.bg,color:as.color,fontWeight:700,marginLeft:3}}>{as.label}</span>:null;})()}
           {(()=>{const d=classifyLoan(l);return d.class!=="performing"?<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:5,background:d.color+"22",color:d.color,marginLeft:2}}>{d.label}</span>:null;})()}
         </div>
@@ -1656,10 +1713,13 @@ function SavingsExpensesChart({savingsData, expensesData}){
 export default function App(){
   const [tab,setTab]        = useState("savings");
   const [authUser,setAuthUser] = useState(null); // null = logged out
+  const SESSION_MINUTES = 10;
 
   const [loginPin,setLoginPin] = useState("");
   const [loginRole,setLoginRole] = useState("treasurer");
   const [loginErr,setLoginErr]   = useState("");
+  const [loginAttempts,setLoginAttempts] = useState(0);
+  const [loginLockedUntil,setLoginLockedUntil] = useState(null);
   const [members,setMembers]= useState(INIT_MEMBERS);
   const [loans,setLoans]    = useState(INIT_LOANS);
   const [expenses,setExpenses] = useState(INIT_EXPENSES);
@@ -1713,11 +1773,29 @@ export default function App(){
   const [payModal,setPayModal]   = useState(false);
   const [payF,setPayF]           = useState({...emptyPay});
   const [addMModal,setAddMModal] = useState(false);
-  const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:"",initialPaymentReceived:false,initialPaymentNote:""});
+  const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,shareUnitsInput:0,voluntaryDeposit:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:"",initialPaymentReceived:false,initialPaymentNote:""});
 
   // ── Live FX rates ──
   const [fxRates,setFxRates]=useState(null);
   const [fxLoading,setFxLoading]=useState(true);
+  const [liveTime,setLiveTime]=useState(new Date());
+
+  // ── Live clock — ticks every second ──
+  useEffect(()=>{
+    const t=setInterval(()=>setLiveTime(new Date()),1000);
+    return ()=>clearInterval(t);
+  },[]);
+
+  // ── Session timeout: auto-logout after 10 min idle ──
+  useEffect(()=>{
+    if(!authUser) return;
+    let timer;
+    const reset=()=>{ clearTimeout(timer); timer=setTimeout(()=>{ setAuthUser(null); alert("Your session expired after "+SESSION_MINUTES+" minutes of inactivity. Please log in again."); }, SESSION_MINUTES*60*1000); };
+    const events=["mousedown","mousemove","keydown","touchstart","scroll","click"];
+    events.forEach(e=>window.addEventListener(e,reset,{passive:true}));
+    reset();
+    return ()=>{ clearTimeout(timer); events.forEach(e=>window.removeEventListener(e,reset)); };
+  },[authUser]);
 
   // ── Load all data from Supabase on first mount ──
   useEffect(()=>{
@@ -1793,15 +1871,21 @@ export default function App(){
   // True cash in bank = all deposits + loan profit realised - all expenses paid out
   // (outstanding loans are already deployed as cash, not deducted from bank)
   const cashInBank     = useMemo(()=>{
-    const deposits      = savT.total;                                                              // all member savings banked
-    const repayments    = loans.reduce((s,l)=>s+(+l.amountPaid||0),0);                            // cash returned from borrowers
-    const disbursed     = loans.filter(l=>l.approvalStatus==="approved"||!l.approvalStatus)
-                               .reduce((s,l)=>s+(+l.amountLoaned||0),0);                          // cash given out as loans
-    const invMade       = investments.reduce((s,i)=>s+(+i.amount||0),0);                          // cash deployed to investments
-    const invReturns    = investments.reduce((s,i)=>s+(+i.interestEarned||0),0);                  // cash received from investments
-    const expensesPaid  = totalExpenses;                                                           // cash paid out as expenses
-    return deposits + repayments + invReturns - disbursed - expensesPaid - invMade;
-  },[savT.total,loans,investments,totalExpenses]);
+    // BIDA Coop Income = all member savings - all expenses (bank charges already included in expenses)
+    const bidaIncome    = savT.total - totalExpenses;
+    // Subtract loans still outstanding (principal not yet recovered)
+    const outstanding   = loans
+      .filter(l=>l.status!=="paid")
+      .reduce((s,l)=>s+(+l.amountLoaned||0),0);
+    // Add interest actually earned on fully repaid loans
+    const interestEarned = loans
+      .filter(l=>l.status==="paid")
+      .reduce((s,l)=>s+calcLoan(l).profit,0);
+    // Add investment returns if any
+    const invReturns    = investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+    const invMade       = investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0);
+    return bidaIncome - outstanding + interestEarned + invReturns - invMade;
+  },[savT.total,totalExpenses,loans,investments]);
   const netCash        = cashInBank; // alias kept for compatibility
   const totalInvested  = useMemo(()=>investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0),[investments]);
   const totalInvInterest = useMemo(()=>investments.reduce((s,i)=>s+(+i.interestEarned||0),0),[investments]);
@@ -1867,7 +1951,7 @@ export default function App(){
     // Store referral info on the new member record
     const newMember={id,...addMF,photoUrl:addMF.photoUrl||"",whatsapp:addMF.whatsapp||"",
       membership:+addMF.membership||0,annualSub:+addMF.annualSub||0,
-      monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0,
+      monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0,voluntaryDeposit:+addMF.voluntaryDeposit||0,
       referredByMemberId:addMF.referralSource==="member"?+addMF.referredById||null:null,
       referralSource:addMF.referralSource||"",
     };
@@ -2250,15 +2334,16 @@ export default function App(){
     {value:"auditor",label:"Auditor"},
   ];
   const doLogin=()=>{
-    const users=buildUsers(); // always use latest saved PINs
-    const u=users[loginRole];
-    const savedPin=getSavedPin(loginRole);
+    if(loginLockedUntil&&Date.now()<loginLockedUntil){const mins=Math.ceil((loginLockedUntil-Date.now())/60000);setLoginErr("🔒 Too many failed attempts. Try again in "+mins+" minute"+(mins>1?"s":"")+".");return;}
+    const users=buildUsers();const u=users[loginRole];const savedPin=getSavedPin(loginRole);
     if(u&&loginPin===savedPin){
-      const authedUser={...u};
-      setAuthUser(authedUser);setLoginErr("");setLoginPin("");
+      setLoginAttempts(0);setLoginLockedUntil(null);setAuthUser({...u});setLoginErr("");setLoginPin("");
       setTimeout(()=>postAudit([mkAudit("login","system","session",null,{role:u.role},u.role,u.name)]),100);
+    } else {
+      const na=loginAttempts+1;setLoginAttempts(na);
+      if(na>=5){setLoginLockedUntil(Date.now()+15*60*1000);setLoginAttempts(0);setLoginErr("🔒 5 failed attempts. Locked for 15 minutes.");}
+      else{setLoginErr("Wrong PIN. "+(5-na)+" attempt"+(5-na!==1?"s":"")+" remaining before lockout.");}
     }
-    else{setLoginErr("Wrong PIN. Try again.");}
   };
 
   return (
@@ -2346,6 +2431,29 @@ export default function App(){
           {/* ── SAVINGS TAB (MAIN DASHBOARD) ─────────────────────────────── */}
           {tab==="savings" && (
             <React.Fragment>
+              {/* ── LIVE DATE & TIME BANNER ── */}
+              <div style={{background:"linear-gradient(135deg,#0a1931,#0d3461)",borderRadius:13,padding:"13px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:10,height:10,borderRadius:"50%",background:"#69f0ae",boxShadow:"0 0 8px #69f0ae",animation:"pu 1.5s ease-in-out infinite",flexShrink:0}}/>
+                  <div>
+                    <div style={{fontSize:9,fontWeight:600,color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>BIDA Co-operative Management System · Live</div>
+                    <div style={{fontSize:15,fontWeight:800,color:"#fff",lineHeight:1.2}}>
+                      {liveTime.toLocaleDateString("en-GB",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}
+                    </div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,.4)",marginTop:3}}>
+                      {authUser?.name} · {(authUser?.role||"").replace(/_/g," ").toUpperCase()}
+                    </div>
+                  </div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:32,fontWeight:900,color:"#90caf9",fontFamily:"var(--mono)",letterSpacing:3,lineHeight:1}}>
+                    {liveTime.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+                  </div>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,.35)",marginTop:4,fontFamily:"var(--mono)"}}>
+                    {liveTime.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}
+                  </div>
+                </div>
+              </div>
               <div className="ptitle"><div className="ptdot"/>Dashboard — Member Savings Ledger</div>
 
               {/* ── TOP FINANCIAL SUMMARY ── */}
@@ -2354,11 +2462,11 @@ export default function App(){
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
                   {[
                     ["Total Banked",fmt(savT.total),"#90caf9","All member deposits"],
-                    ["Total Expenses",fmt(totalExpenses),"#ef9a9a","Paid out expenses"],
+                    ["Operational Expenses",fmt(expenses.filter(e=>e.category!=="banking").reduce((s,e)=>s+(+e.amount||0),0)),"#ef9a9a","Excl. bank charges"],
+                    ["Bank Charges",fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0)),"#ffcc80","Separate from ops"],
                     ["Loan Profit",fmt(lStat.profit),"#a5d6a7","Realised returns"],
-                    ["Cash in Bank",fmt(cashInBank),cashInBank<0?"#ef5350":"#69f0ae","Banked − Expenses"],
-                    ["Outstanding",fmt(lStat.outstanding),"#ffcc80","Active loan balances"],
-                    ["Active Loans",""+lStat.act,"#90caf9",""],
+                    ["Cash in Bank",fmt(cashInBank),cashInBank<0?"#ef5350":"#69f0ae","Net position"],
+                    ["Outstanding",fmt(lStat.outstanding),"#ce93d8","Active loan balances"],
                   ].map(([l,v,c,sub])=>(
                     <div key={l} style={{background:"rgba(255,255,255,.1)",borderRadius:9,padding:"9px 11px"}}>
                       <div style={{fontSize:9,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>{l}</div>
@@ -2376,7 +2484,11 @@ export default function App(){
                 <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
                 <div className="card"><div className="clabel">Monthly Savings</div><div className="cval">{fmt(savT.monthly)}</div></div>
                 <div className="card"><div className="clabel">Welfare Pool</div><div className="cval">{fmt(savT.welfare)}</div></div>
-                <div className="card cd"><div className="clabel">Total Expenses</div><div className="cval danger">{fmt(totalExpenses)}</div></div>
+                <div className="card cd" title="Includes operational costs + bank transactional charges">
+                  <div className="clabel">Total Expenses</div>
+                  <div className="cval danger">{fmt(totalExpenses)}</div>
+                  <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
+                </div>
                 <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
                 {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% members · 60% pool</div></div>}
               </div>
@@ -2505,8 +2617,9 @@ export default function App(){
                     {floans.length===0&&<tr><td colSpan={15}><div className="empty"><div className="eico">📭</div>No loans.</div></td></tr>}
                     {floans.map((l,i)=>{
                       const ov=l.status!=="paid"&&l.months>l.term;
+                      const rowBg=l.status==="paid"?"#f1f8e9":ov?"#ffebee":undefined;
                       return (
-                        <tr key={l.id}>
+                        <tr key={l.id} style={{background:rowBg}}>
                           <td className="sn">{i+1}</td>
                           <td>
                             <span className="nc" onClick={()=>{const m=members.find(m=>m.id===l.memberId);if(m){setTab("savings");setTimeout(()=>openProfile(m),50);}}}>{l.memberName}</span>
@@ -3127,7 +3240,11 @@ export default function App(){
 
               <div className="stats">
                 <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
-                <div className="card cd"><div className="clabel">Total Expenses</div><div className="cval danger">{fmt(totalExpenses)}</div></div>
+                <div className="card cd" title="Includes operational costs + bank transactional charges">
+                  <div className="clabel">Total Expenses</div>
+                  <div className="cval danger">{fmt(totalExpenses)}</div>
+                  <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
+                </div>
                 <div className="card ck"><div className="clabel">Profit Realised</div><div className="cval ok">{fmt(lStat.profit)}</div></div>
                 <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
                 <div className="card cw"><div className="clabel">Transactions</div><div className="cval warn">{expenses.length}</div></div>
@@ -3880,7 +3997,10 @@ export default function App(){
               <div className="fg ff"><label className="fl">Full Name</label><input className="fi" value={addMF.name} onChange={e=>setAddMF(f=>({...f,name:e.target.value}))} placeholder="e.g. KATUNTU HANNAH"/></div>
               {/* How did they hear about BIDA */}
               {/* Initial Payment Section */}
-              <div className="fg ff">
+              <div className="fg"><label className="fl">Voluntary Extra Deposit <span style={{fontSize:9,fontWeight:400,color:"var(--b500)"}}>— optional top-up savings</span></label>
+                  <input className="fi" type="number" value={addMF.voluntaryDeposit||""} onChange={e=>setAddMF(f=>({...f,voluntaryDeposit:+e.target.value||0}))} placeholder="0 — member may deposit extra savings beyond regular contributions"/>
+                </div>
+                <div className="fg ff">
                 <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:10,padding:"10px 14px",marginBottom:4}}>
                   <div style={{fontWeight:700,fontSize:12,color:"#1b5e20",marginBottom:6}}>💳 Initial Payments — Member pays INTO BIDA</div>
                   <div style={{fontSize:11,color:"#2e7d32",marginBottom:8,lineHeight:1.6}}>
@@ -3955,11 +4075,31 @@ export default function App(){
               {[["Membership Fee","membership"],["Annual Sub","annualSub"]].map(([lb,k])=>(
                 <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={addMF[k]} onChange={e=>setAddMF(f=>({...f,[k]:e.target.value}))} placeholder="0"/></div>
               ))}
-              <div className="fg"><label className="fl">Monthly Savings (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(min 10,000)</span></label><input className="fi" type="number" value={addMF.monthlySavings} onChange={e=>{const v=Math.max(0,+e.target.value||0);setAddMF(f=>({...f,monthlySavings:v,welfare:Math.round(v*0.30)}));}} min={0}/></div>
-              <div className="fg"><label className="fl">Welfare (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(auto 30%)</span></label><input className="fi" type="number" value={addMF.welfare} onChange={e=>setAddMF(f=>({...f,welfare:e.target.value}))} placeholder="Auto"/><span className="fhint">30% of monthly savings. Adjust if needed.</span></div>
-              {[["Shares","shares"]].map(([lb,k])=>(
-                <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={addMF[k]} onChange={e=>setAddMF(f=>({...f,[k]:e.target.value}))} placeholder="0"/></div>
-              ))}
+              <div className="fg"><label className="fl">Monthly Savings (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(min 10,000)</span></label><input className="fi" type="number" value={addMF.monthlySavings} onChange={e=>{const v=Math.max(0,+e.target.value||0);setAddMF(f=>({...f,monthlySavings:v,welfare:autoWelfare(v)}));}} min={0}/></div>
+              <div className="fg"><label className="fl">Welfare (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(auto 40% of monthly)</span></label><input className="fi" type="number" value={addMF.welfare} onChange={e=>setAddMF(f=>({...f,welfare:+e.target.value||0}))} placeholder="Auto-calculated"/><span className="fhint">40% of monthly savings auto-allocated to welfare pool. Adjust if needed.</span></div>
+
+              {/* Shares — unit selector */}
+              <div className="fg ff">
+                <label className="fl">Share Units <span style={{fontWeight:400,color:"var(--b500)",fontSize:9}}>— UGX 50,000 per unit (equity in the cooperative)</span></label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+                  {[0,1,2,3,4,5,6].map(u=>(
+                    <button key={u} type="button"
+                      onClick={()=>setAddMF(f=>({...f,shares:u*SHARE_UNIT_VALUE,shareUnitsInput:u}))}
+                      style={{padding:"7px 11px",borderRadius:8,border:(addMF.shareUnitsInput||0)===u?"2px solid var(--b600)":"1.5px solid var(--bdr)",background:(addMF.shareUnitsInput||0)===u?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:(addMF.shareUnitsInput||0)===u?700:400,color:(addMF.shareUnitsInput||0)===u?"var(--b700)":"var(--tm)",textAlign:"center"}}>
+                      <div>{u===0?"None":u+" unit"+(u>1?"s":"")}</div>
+                      <div style={{fontSize:9,color:(addMF.shareUnitsInput||0)===u?"var(--b600)":"var(--tmuted)",fontFamily:"var(--mono)"}}>{u===0?"—":fmt(u*SHARE_UNIT_VALUE)}</div>
+                    </button>
+                  ))}
+                </div>
+                {(addMF.shares||0)>0&&<div style={{fontSize:10,color:"var(--b600)",marginTop:4,fontFamily:"var(--mono)",fontWeight:600}}>Share capital: {fmt(addMF.shares||0)}</div>}
+              </div>
+
+              {/* Voluntary extra deposit */}
+              <div className="fg ff">
+                <label className="fl">Extra Voluntary Deposit <span style={{fontWeight:400,color:"var(--tmuted)",fontSize:9}}>(optional top-up beyond regular contributions)</span></label>
+                <input className="fi" type="number" value={addMF.voluntaryDeposit||""} onChange={e=>setAddMF(f=>({...f,voluntaryDeposit:+e.target.value||0}))} placeholder="0"/>
+                <span className="fhint">Member can deposit any extra amount at any time. This is counted in their total savings.</span>
+              </div>
 
               {/* Payment method for initial contribution */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 6px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💳 Mode of Initial Payment</div></div>
