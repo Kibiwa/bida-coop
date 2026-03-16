@@ -8,6 +8,118 @@ const loadScript = (src) => new Promise((res, rej) => {
   document.head.appendChild(s);
 });
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SUPABASE — Persistent storage + real-time sync across all devices
+// ══════════════════════════════════════════════════════════════════════════════
+const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
+let SUPA_KEY = ""; // Set via Settings tab — never hardcode in production
+
+// Load Supabase key from localStorage (set once by treasurer in Settings)
+function getSupaKey(){ return localStorage.getItem("bida_supa_key")||""; }
+function setSupaKey(k){ localStorage.setItem("bida_supa_key",k); SUPA_KEY=k; }
+SUPA_KEY = getSupaKey();
+
+// Simple fetch wrapper for Supabase REST API
+async function supa(method, table, body=null, query=""){
+  const key=SUPA_KEY||getSupaKey();
+  if(!key) throw new Error("Supabase API key not set. Go to Settings tab to enter it.");
+  const url=SUPA_URL+"/rest/v1/"+table+(query?"?"+query:"");
+  const headers={"Content-Type":"application/json","apikey":key,"Authorization":"Bearer "+key,"Prefer":method==="POST"?"resolution=merge-duplicates":"return=representation"};
+  const res=await fetch(url,{method,headers,body:body?JSON.stringify(body):undefined});
+  if(!res.ok){const err=await res.text();throw new Error("Supabase "+method+" "+table+": "+err);}
+  if(method==="DELETE"||res.status===204) return [];
+  return res.json();
+}
+
+// Upsert array of records into a table
+async function supaUpsert(table, rows){
+  if(!rows||!rows.length) return;
+  await supa("POST", table, rows);
+}
+
+// Fetch all rows from a table
+async function supaFetch(table){ 
+  try{ return await supa("GET", table, null, "order=id"); }
+  catch(e){ console.warn("supaFetch("+table+") failed:",e.message); return []; }
+}
+
+// Delete a record by id
+async function supaDelete(table, id){ return supa("DELETE", table, null, "id=eq."+id); }
+
+// Offline queue — operations done while offline, replayed when back online
+const OFFLINE_Q_KEY="bida_offline_q";
+function offlineQ(){ try{return JSON.parse(localStorage.getItem(OFFLINE_Q_KEY)||"[]");}catch{return[];} }
+function saveOfflineQ(q){ localStorage.setItem(OFFLINE_Q_KEY,JSON.stringify(q)); }
+function queueOp(op){ const q=offlineQ(); q.push({...op,ts:Date.now()}); saveOfflineQ(q); }
+
+// Replay offline queue when back online
+async function replayOfflineQueue(setSync){
+  const q=offlineQ();
+  if(!q.length) return;
+  setSync("syncing");
+  const failed=[];
+  for(const op of q){
+    try{
+      if(op.type==="upsert") await supaUpsert(op.table,[op.row]);
+      if(op.type==="delete") await supaDelete(op.table,op.id);
+    }catch(e){ failed.push(op); console.warn("Offline replay failed:",op,e); }
+  }
+  saveOfflineQ(failed);
+  setSync(failed.length?"error":"synced");
+}
+
+// Save one record — tries Supabase, queues if offline
+async function saveRecord(table, row, setSync){
+  const key=getSupaKey();
+  if(!key) return; // No key configured — skip silently, data still in React state
+  try{
+    await supaUpsert(table,[row]);
+    setSync("synced");
+  }catch(e){
+    if(!navigator.onLine){
+      queueOp({type:"upsert",table,row});
+      setSync("offline");
+    } else {
+      console.error("Save failed ("+table+"):",e.message);
+      setSync("error");
+    }
+  }
+}
+
+// Delete one record — tries Supabase, queues if offline
+async function deleteRecord(table, id, setSync){
+  const key=getSupaKey();
+  if(!key) return; // No key — skip silently
+  try{
+    await supaDelete(table,id);
+    setSync("synced");
+  }catch(e){
+    if(!navigator.onLine){
+      queueOp({type:"delete",table,id});
+      setSync("offline");
+    } else {
+      console.error("Delete failed ("+table+"):",e.message);
+      setSync("error");
+    }
+  }
+}
+
+// Load all data from Supabase on startup
+async function loadAllFromSupabase(){
+  const [members,loans,expenses,investments,providers,receipts,ledger,auditLog]=await Promise.all([
+    supaFetch("members"),
+    supaFetch("loans"),
+    supaFetch("expenses"),
+    supaFetch("investments"),
+    supaFetch("service_providers"),
+    supaFetch("receipts").catch(()=>[]),
+    supaFetch("ledger").catch(()=>[]),
+    supaFetch("audit_log").catch(()=>[]),
+  ]);
+  return {members,loans,expenses,investments,serviceProviders:providers,receipts,ledger,auditLog};
+}
+
 const fmt   = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString("en-UG");
 const fmtN  = (n) => n == null ? "0" : Number(n).toLocaleString("en-UG");
 const fmtD  = (d) => d ? new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}) : "—";
@@ -245,11 +357,202 @@ const INIT_SERVICE_PROVIDERS = [];
 const INIT_PENDING     = []; // pending approvals queue
 
 // ── AUTH — two users only ──
-const USERS = {
-  treasurer:     { role:"treasurer",     name:"Treasurer",       pin:"1234" },
-  financemanager:{ role:"financemanager",name:"Finance Manager", pin:"5678" }
+// PINs managed in USERS block below
+
+
+// ══════════════════════════════════════════════════════════════════════
+// FINTECH LAYER — Role-based access, ledger, audit trail, risk controls
+// ══════════════════════════════════════════════════════════════════════
+
+// ROLES with permission matrix
+const ROLES = {
+  admin:        { label:"Administrator",  can:["all"] },
+  treasurer:    { label:"Treasurer",      can:["view","savings","loans","expenses","investments","reports","settings","approve","disburse"] },
+  loan_officer: { label:"Loan Officer",   can:["view","loans","reports"] },
+  auditor:      { label:"Auditor",        can:["view","reports","audit"] },
+  finance_mgr:  { label:"Finance Manager",can:["view","savings","loans","expenses","investments","reports"] },
+  member:       { label:"Member",         can:["view","own_profile"] },
 };
-// Change PINs above before deploying!
+
+// ══════════════════════════════════════════════════════════════
+// 4-STEP APPROVAL WORKFLOW
+// Step 1: Treasurer initiates
+// Step 2: Finance Manager reviews numbers
+// Step 3: Administrator approves governance
+// Step 4: Auditor gives final stamp → PDF generated
+// ══════════════════════════════════════════════════════════════
+
+const APPROVAL_STEPS = [
+  { step:1, role:"treasurer",     label:"Treasurer",        action:"Initiated",  verb:"Initiate"  },
+  { step:2, role:"finance_mgr",   label:"Finance Manager",  action:"Reviewed",   verb:"Review"    },
+  { step:3, role:"admin",         label:"Administrator",    action:"Approved",   verb:"Approve"   },
+  { step:4, role:"auditor",       label:"Auditor",          action:"Stamped",    verb:"Final Stamp"},
+];
+
+const APPROVAL_STATUS = {
+  draft:        { label:"Draft",              color:"#757575", bg:"#f5f5f5"  },
+  step1_done:   { label:"Pending Finance",    color:"#1565c0", bg:"#e3f2fd"  },
+  step2_done:   { label:"Pending Admin",      color:"#e65100", bg:"#fff3e0"  },
+  step3_done:   { label:"Pending Audit",      color:"#6a1b9a", bg:"#f3e5f5"  },
+  approved:     { label:"✅ Fully Approved",  color:"#1b5e20", bg:"#e8f5e9"  },
+  rejected:     { label:"❌ Rejected",        color:"#c62828", bg:"#ffebee"  },
+};
+
+// Get next step info for a given current status
+const getNextStep = (status) => {
+  const map = { draft:1, step1_done:2, step2_done:3, step3_done:4 };
+  const stepNum = map[status];
+  if(!stepNum) return null;
+  return APPROVAL_STEPS.find(s=>s.step===stepNum)||null;
+};
+
+// Can this user act on this item?
+const canActOn = (authUser, item) => {
+  if(!authUser||!item) return false;
+  const next = getNextStep(item.approvalStatus||"draft");
+  if(!next) return false;
+  return authUser.role === next.role;
+};
+
+// Build an approval record
+const mkApprovalStep = (step, actor, decision, note) => ({
+  step,
+  role: actor.role,
+  name: actor.name,
+  decision,   // "approved" | "rejected"
+  note: note||"",
+  ts: new Date().toISOString(),
+  date: new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),
+  time: new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}),
+});
+
+// Advance status after approval
+const advanceStatus = (currentStatus) => {
+  const map = { draft:"step1_done", step1_done:"step2_done", step2_done:"step3_done", step3_done:"approved" };
+  return map[currentStatus]||currentStatus;
+};
+
+const canDo=(user,action)=>{if(!user)return false;const r=ROLES[user.role];if(!r)return false;return r.can.includes("all")||r.can.includes(action);};
+
+// Extended USERS with roles (keeps existing PINs)
+// Default PINs — immediately overridden by any saved PINs from Settings
+const DEFAULT_PINS = {
+  treasurer:"1234", financemanager:"5678", admin:"9999", auditor:"7777"
+};
+const USER_DEFS = {
+  treasurer:     { role:"treasurer",     name:"Treasurer"        },
+  financemanager:{ role:"finance_mgr",   name:"Finance Manager"  },
+  admin:         { role:"admin",         name:"Administrator"    },
+  auditor:       { role:"auditor",       name:"Auditor"          },
+};
+// Load saved PINs from localStorage (set by Admin in Settings)
+function loadSavedPins(){
+  try{ return JSON.parse(localStorage.getItem("bida_pins")||"{}"); }
+  catch{ return {}; }
+}
+function getSavedPin(role){
+  const saved=loadSavedPins();
+  return saved[role]||DEFAULT_PINS[role]||"";
+}
+function savePin(role,pin){
+  const saved=loadSavedPins();
+  saved[role]=pin;
+  localStorage.setItem("bida_pins",JSON.stringify(saved));
+}
+function isPinDefault(role){
+  return !loadSavedPins()[role];
+}
+// Build USERS object with current PINs
+function buildUsers(){
+  return Object.fromEntries(
+    Object.entries(USER_DEFS).map(([key,u])=>([key,{...u,pin:getSavedPin(key)}]))
+  );
+}
+const USERS = buildUsers(); // initial build — refreshed on login
+
+// Loan delinquency classification
+const classifyLoan=(l)=>{
+  const c=calcLoan(l);
+  if(l.status==="paid") return {class:"performing",label:"Paid",color:"#2e7d32"};
+  const missedMonths=c.months - Math.floor((l.amountPaid||0)/Math.max(c.monthlyPayment,1));
+  if(missedMonths<=0) return {class:"performing",label:"Performing",color:"#2e7d32"};
+  if(missedMonths<=1) return {class:"watch",label:"Watch",color:"#f57f17"};
+  if(missedMonths<=3) return {class:"substandard",label:"Substandard",color:"#e65100"};
+  if(missedMonths<=6) return {class:"doubtful",label:"Doubtful",color:"#c62828"};
+  return {class:"loss",label:"Loss",color:"#b71c1c"};
+};
+
+// Liquidity check before loan approval
+const liquidityCheck=(amount,cashInBank,totalInvested)=>{
+  const reserve=cashInBank*0.30; // must keep 30% liquid
+  const available=cashInBank-totalInvested-reserve;
+  return {ok:available>=amount,available:Math.max(0,available),reserve,shortfall:Math.max(0,amount-available)};
+};
+
+// Double-entry ledger entry builder
+const mkEntry=(type,refId,description,debit,credit,account,actorRole,actorName)=>({
+  id:Date.now()+Math.random(),
+  ts:new Date().toISOString(),
+  type,       // "savings_deposit"|"loan_disbursement"|"loan_repayment"|"expense"|"investment"|"reversal"
+  refId,      // reference to parent record
+  description,
+  debit:debit||0,
+  credit:credit||0,
+  account,    // "savings_pool"|"loan_book"|"expense_account"|"investment_account"|"welfare_pool"
+  actorRole:actorRole||"system",
+  actorName:actorName||"System",
+  immutable:true,
+});
+
+// Audit trail entry builder
+const mkAudit=(action,entity,entityId,before,after,actorRole,actorName)=>({
+  id:Date.now()+Math.random(),
+  ts:new Date().toISOString(),
+  action,    // "create"|"edit"|"delete"|"approve"|"reject"|"login"|"config_change"
+  entity,    // "member"|"loan"|"expense"|"investment"
+  entityId,
+  before:before?JSON.stringify(before):null,
+  after:after?JSON.stringify(after):null,
+  actorRole:actorRole||"system",
+  actorName:actorName||"System",
+});
+
+// Dividend calculation engine
+const calcDividends=(members,loans,expenses,investments,surplusOverride)=>{
+  const totalPool=members.reduce((s,m)=>s+totBanked(m),0);
+  const totalExpenses=expenses.reduce((s,e)=>s+(+e.amount||0),0);
+  const loanProfit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
+  const invReturns=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+  const grossSurplus=loanProfit+invReturns*0.4; // 40% of inv returns distributable
+  const statutory=Math.round(grossSurplus*0.20); // 20% statutory reserve
+  const operational=Math.round(grossSurplus*0.10); // 10% operational reserve
+  const distributable=surplusOverride!=null?surplusOverride:Math.max(0,grossSurplus-statutory-operational);
+  const totalShares=members.reduce((s,m)=>s+(m.shares||0),0);
+  const perMember=members.map(m=>{
+    const shareRatio=totalShares>0?(m.shares||0)/totalShares:0;
+    const savingsRatio=totalPool>0?totBanked(m)/totalPool:0;
+    const shareDividend=Math.round(distributable*0.60*shareRatio);
+    const savingsDividend=Math.round(distributable*0.40*savingsRatio);
+    return {...m,shareDividend,savingsDividend,totalDividend:shareDividend+savingsDividend};
+  });
+  return {grossSurplus,statutory,operational,distributable,perMember,totalShares};
+};
+
+// Risk indicators
+const riskIndicators=(m,loans)=>{
+  const mLoans=loans.filter(l=>l.memberId===m.id);
+  const active=mLoans.filter(l=>l.status!=="paid");
+  const totalOwed=active.reduce((s,l)=>s+calcLoan(l).balance,0);
+  const savingsBase=(m.monthlySavings||0)+(m.welfare||0);
+  const exposureRatio=savingsBase>0?totalOwed/savingsBase:0;
+  const hasDelinquent=active.some(l=>classifyLoan(l).class!=="performing");
+  const flags=[];
+  if(exposureRatio>3) flags.push({level:"high",msg:"Exposure ratio "+exposureRatio.toFixed(1)+"x savings base"});
+  if(hasDelinquent) flags.push({level:"high",msg:"Has delinquent loan(s)"});
+  if(mLoans.length>2) flags.push({level:"medium",msg:"Multiple loan history ("+mLoans.length+")"});
+  if((m.annualSub||0)<50000) flags.push({level:"medium",msg:"Annual sub below threshold"});
+  return {flags,risk:flags.some(f=>f.level==="high")?"high":flags.length>0?"medium":"low"};
+};
 
 const SERVICE_TYPES = ["Printing & Stationery","Transport","Catering & Meetings","Legal & Registration","IT & Communications","Venue & Facilities","Audit & Accounting","Other"];
 const EXP_CATEGORIES = ["Operations","Meetings","Transport","Printing","Legal & Registration","Banking","Communications","Welfare Payouts","Refunds","Salaries","Other"];
@@ -275,7 +578,7 @@ const emptyL = {
   loanType:"personal", loanPurpose:"",
   borrowerPhone:"", borrowerAddress:"", borrowerNIN:"",
   guarantorName:"", guarantorPhone:"", guarantorAddress:"", guarantorNIN:"", guarantorMemberId:"",
-  approvalStatus:"pending_treasurer", initiatedBy:"", approvedBy:"",
+  approvalStatus:"draft", approvalTrail:[], initiatedBy:"", approvedBy:"",
 };
 const emptyPay = {
   loanId:null, amount:"", date: new Date().toISOString().split("T")[0],
@@ -413,15 +716,56 @@ async function generateLoanPDF(loan, member, calc){
       margin:{left:14,right:14}
     });
   }
-  // Signature block
-  const sigY=Math.min(doc.lastAutoTable?doc.lastAutoTable.finalY+12:200, H-55);
-  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("ACKNOWLEDGEMENT & SIGNATURES",14,sigY);
+  // Full approval trail in PDF
+  const trail=loan.approvalTrail||[];
+  const trailY=Math.min(doc.lastAutoTable?doc.lastAutoTable.finalY+10:190, H-100);
+  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);
+  doc.text("APPROVAL TRAIL & SIGNATURES",14,trailY);
+  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,60,60);
+  doc.text("This loan has been reviewed and approved through the BIDA 4-step approval process.",14,trailY+6);
+
+  // Approval step boxes
+  const steps=[
+    {step:1,role:"Treasurer",      label:"Initiated"},
+    {step:2,role:"Finance Manager",label:"Reviewed"},
+    {step:3,role:"Administrator",  label:"Approved"},
+    {step:4,role:"Auditor",        label:"Final Stamp"},
+  ];
+  const boxW=(W-28)/4;
+  steps.forEach((s,i)=>{
+    const bx=14+i*boxW, by=trailY+12;
+    const done=trail.find(t=>t.step===s.step&&t.decision==="approved");
+    doc.setFillColor(...(done?[232,245,233]:[245,245,245]));
+    doc.roundedRect(bx,by,boxW-3,28,2,2,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(7);
+    doc.setTextColor(...(done?GREEN:GREY));
+    doc.text("Step "+s.step+": "+s.label,bx+2,by+6);
+    doc.setFont("helvetica","normal");doc.setFontSize(6.5);
+    if(done){
+      doc.setTextColor(30,60,30);
+      doc.text(done.name,bx+2,by+12,{maxWidth:boxW-5});
+      doc.text(done.date+" "+done.time,bx+2,by+18,{maxWidth:boxW-5});
+      if(done.note) doc.text('"'+done.note.substring(0,25)+'"',bx+2,by+23,{maxWidth:boxW-5});
+    } else {
+      doc.setTextColor(...GREY);
+      doc.text("Pending",bx+2,by+12);
+    }
+  });
+
+  // Borrower signature line
+  const sigY2=trailY+48;
   doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(60,60,60);
-  doc.text("I, the borrower, confirm receipt of "+fmt(loan.amountLoaned)+" and agree to repay as stated above.",14,sigY+7);
+  doc.text("I, "+member.name+", confirm receipt of "+fmt(loan.amountLoaned)+" and agree to repay as stated.",14,sigY2);
   doc.setDrawColor(150,150,150);
-  doc.line(14,sigY+22,85,sigY+22);doc.line(105,sigY+22,W-14,sigY+22);
+  doc.line(14,sigY2+14,90,sigY2+14);doc.line(105,sigY2+14,W-14,sigY2+14);
   doc.setFontSize(7);doc.setTextColor(...GREY);
-  doc.text("Borrower Signature & Date",14,sigY+27);doc.text("BIDA Authorised Signatory & Date",105,sigY+27);
+  doc.text("Borrower Signature & Date",14,sigY2+19);
+  doc.text("BIDA Auditor Signature & Date",105,sigY2+19);
+  const finalApproval=trail.find(t=>t.step===4&&t.decision==="approved");
+  if(finalApproval){
+    doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...GREEN);
+    doc.text("✓ FULLY APPROVED — "+finalApproval.date+" "+finalApproval.time,W/2,sigY2+28,{align:"center"});
+  }
   // Footer
   doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
   doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
@@ -1027,6 +1371,8 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           <span style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:l.method==="reducing"?"#1565c0":"#37474f",background:l.method==="reducing"?"#e3f2fd":"#eceff1",borderRadius:9,padding:"2px 7px"}}>{l.method==="reducing"?"6% Reducing":"4% Flat"}</span>
           <span className={"badge "+(l.status==="paid"?"bpaid":l.months>l.term?"bover":"bactive")}>{l.status==="paid"?"✓ Paid":l.months>l.term?"⚠ Overdue":"● Active"}</span>
+          {(()=>{const as=APPROVAL_STATUS[l.approvalStatus];return as&&l.approvalStatus!=="approved"?<span style={{fontSize:8,padding:"2px 6px",borderRadius:5,background:as.bg,color:as.color,fontWeight:700,marginLeft:3}}>{as.label}</span>:null;})()}
+          {(()=>{const d=classifyLoan(l);return d.class!=="performing"?<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:5,background:d.color+"22",color:d.color,marginLeft:2}}>{d.label}</span>:null;})()}
         </div>
       </div>
       <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
@@ -1052,7 +1398,9 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
         })}
       </div>
       {l.status!=="paid"&&<div style={{display:"flex",gap:6}}>
-        <button className="btn bk sm" onClick={function(){markPd(l.id);}}>✓ Settle</button>
+        {(l.approvalStatus==="approved"||!l.approvalStatus)
+          ?<button className="btn bk sm" onClick={function(){markPd(l.id);}}>✓ Settle</button>
+          :<button className="btn bg sm" disabled style={{opacity:.5}} title="Awaiting full approval">⏳ Pending Approval</button>}
         <button className="btn bg sm" onClick={function(){closeProfile();openEditL(l);}}>✏️ Edit</button>
       </div>}
     </div>
@@ -1308,6 +1656,7 @@ function SavingsExpensesChart({savingsData, expensesData}){
 export default function App(){
   const [tab,setTab]        = useState("savings");
   const [authUser,setAuthUser] = useState(null); // null = logged out
+
   const [loginPin,setLoginPin] = useState("");
   const [loginRole,setLoginRole] = useState("treasurer");
   const [loginErr,setLoginErr]   = useState("");
@@ -1315,6 +1664,17 @@ export default function App(){
   const [loans,setLoans]    = useState(INIT_LOANS);
   const [expenses,setExpenses] = useState(INIT_EXPENSES);
   const [serviceProviders,setServiceProviders] = useState(INIT_SERVICE_PROVIDERS);
+  // Sync state: "idle" | "loading" | "synced" | "syncing" | "offline" | "error"
+  const [syncStatus,setSyncStatus] = useState("idle");
+  const [supaKeyInput,setSupaKeyInput] = useState(getSupaKey());
+  const [pinMgmt,setPinMgmt]         = useState({});
+  const [approvalQueue,setApprovalQueue] = useState([]); // pending items across all workflows
+  const [rejectNote,setRejectNote]       = useState("");
+  const [rejectTarget,setRejectTarget]   = useState(null);     // role->newPin input
+  const [pinMsg,setPinMsg]           = useState({});      // role->success/error message
+  const [pinConfirm,setPinConfirm]   = useState({});      // role->confirmPin input
+  const [showPins,setShowPins]       = useState({});      // role->bool show/hide
+  const [dbLoaded,setDbLoaded] = useState(false);
   const [spModal,setSpModal] = useState(false);
   const [spF,setSpF] = useState({
     isMember:true, memberId:"",
@@ -1330,6 +1690,11 @@ export default function App(){
   const [editExp,setEditExp]   = useState(null);
   const [expF,setExpF]         = useState({...emptyE});
   const [investments,setInvestments] = useState(INIT_INVESTMENTS);
+  const [ledger,setLedger]           = useState([]); // double-entry ledger
+  const [auditLog,setAuditLog]       = useState([]); // immutable audit trail
+  const [schedules,setSchedules]     = useState({}); // repayment schedules keyed by loanId
+  const [dividendRun,setDividendRun] = useState(null); // last dividend calculation
+
   const [invModal,setInvModal] = useState(false);
   const [editInv,setEditInv]   = useState(null);
   const [invF,setInvF]         = useState({...emptyInv});
@@ -1348,11 +1713,39 @@ export default function App(){
   const [payModal,setPayModal]   = useState(false);
   const [payF,setPayF]           = useState({...emptyPay});
   const [addMModal,setAddMModal] = useState(false);
-  const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
+  const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:"",initialPaymentReceived:false,initialPaymentNote:""});
 
   // ── Live FX rates ──
   const [fxRates,setFxRates]=useState(null);
   const [fxLoading,setFxLoading]=useState(true);
+
+  // ── Load all data from Supabase on first mount ──
+  useEffect(()=>{
+    const key=getSupaKey();
+    if(!key||dbLoaded) return;
+    setSyncStatus("loading");
+    loadAllFromSupabase()
+      .then(data=>{
+        if(data.members&&Array.isArray(data.members)&&data.members.length>0) setMembers(data.members);
+        if(data.loans&&Array.isArray(data.loans)&&data.loans.length>0) setLoans(data.loans);
+        if(data.expenses&&Array.isArray(data.expenses)&&data.expenses.length>0) setExpenses(data.expenses);
+        if(data.investments&&Array.isArray(data.investments)&&data.investments.length>0) setInvestments(data.investments);
+        if(data.serviceProviders&&Array.isArray(data.serviceProviders)&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
+        if(data.ledger&&Array.isArray(data.ledger)&&data.ledger.length>0) setLedger(data.ledger);
+        if(data.auditLog&&Array.isArray(data.auditLog)&&data.auditLog.length>0) setAuditLog(data.auditLog);
+        setDbLoaded(true); setSyncStatus("synced");
+        replayOfflineQueue(setSyncStatus);
+      })
+      .catch(e=>{ console.error("Supabase load failed:",e.message); setSyncStatus("idle"); });
+  },[supaKeyInput]);
+
+  // ── Replay offline queue when internet returns ──
+  useEffect(()=>{
+    const h=()=>replayOfflineQueue(setSyncStatus);
+    window.addEventListener("online",h);
+    return ()=>window.removeEventListener("online",h);
+  },[]);
+
   useEffect(()=>{
     fetch("https://open.er-api.com/v6/latest/UGX")
       .then(r=>r.json())
@@ -1399,7 +1792,16 @@ export default function App(){
   const totalExpenses  = useMemo(()=>expenses.reduce((s,e)=>s+(+e.amount||0),0),[expenses]);
   // True cash in bank = all deposits + loan profit realised - all expenses paid out
   // (outstanding loans are already deployed as cash, not deducted from bank)
-  const cashInBank     = useMemo(()=>savT.total+lStat.profit-totalExpenses,[savT.total,lStat.profit,totalExpenses]);
+  const cashInBank     = useMemo(()=>{
+    const deposits      = savT.total;                                                              // all member savings banked
+    const repayments    = loans.reduce((s,l)=>s+(+l.amountPaid||0),0);                            // cash returned from borrowers
+    const disbursed     = loans.filter(l=>l.approvalStatus==="approved"||!l.approvalStatus)
+                               .reduce((s,l)=>s+(+l.amountLoaned||0),0);                          // cash given out as loans
+    const invMade       = investments.reduce((s,i)=>s+(+i.amount||0),0);                          // cash deployed to investments
+    const invReturns    = investments.reduce((s,i)=>s+(+i.interestEarned||0),0);                  // cash received from investments
+    const expensesPaid  = totalExpenses;                                                           // cash paid out as expenses
+    return deposits + repayments + invReturns - disbursed - expensesPaid - invMade;
+  },[savT.total,loans,investments,totalExpenses]);
   const netCash        = cashInBank; // alias kept for compatibility
   const totalInvested  = useMemo(()=>investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0),[investments]);
   const totalInvInterest = useMemo(()=>investments.reduce((s,i)=>s+(+i.interestEarned||0),0),[investments]);
@@ -1435,7 +1837,11 @@ export default function App(){
   const closeProfile=()=>{setProfId(null);setProfEdit(false);setProfF(null);setConfirmOpt(false);setSharedPDF(null);};
   const saveProfile=()=>{
     if(!profF.name.trim())return;
-    setMembers(prev=>prev.map(m=>m.id===profId?{...m,...profF,photoUrl:profF.photoUrl||"",phone:profF.phone||"",nin:profF.nin||"",address:profF.address||"",whatsapp:profF.whatsapp||"",membership:+profF.membership||0,annualSub:+profF.annualSub||0,monthlySavings:+profF.monthlySavings||0,welfare:+profF.welfare||0,shares:+profF.shares||0}:m));
+    const before=members.find(m=>m.id===profId);
+    const updated={...before||{},...profF,photoUrl:profF.photoUrl||"",phone:profF.phone||"",nin:profF.nin||"",address:profF.address||"",whatsapp:profF.whatsapp||"",membership:+profF.membership||0,annualSub:+profF.annualSub||0,monthlySavings:+profF.monthlySavings||0,welfare:+profF.welfare||0,shares:+profF.shares||0};
+    setMembers(prev=>prev.map(m=>m.id===profId?updated:m));
+    postAudit(mkAudit("edit","member",profId,before,updated,authUser?.role,authUser?.name));
+    saveRecord("members",updated,setSyncStatus);
     setProfEdit(false);
   };
   const optOutMember=()=>{
@@ -1448,9 +1854,10 @@ export default function App(){
     const rec={...invF,amount:+invF.amount||0,interestEarned:+invF.interestEarned||0,id:editInv||(investments.length>0?Math.max(...investments.map(i=>i.id||0))+1:1)};
     if(editInv) setInvestments(prev=>prev.map(i=>i.id===editInv?rec:i));
     else setInvestments(prev=>[...prev,rec]);
+    saveRecord("investments",rec,setSyncStatus);
     setInvModal(false);setEditInv(null);setInvF({...emptyInv,dateInvested:new Date().toISOString().split("T")[0]});
   };
-  const delInv=(id)=>{if(window.confirm("Delete this investment record?"))setInvestments(prev=>prev.filter(i=>i.id!==id));};
+  const delInv=(id)=>{if(window.confirm("Delete this investment record?")){setInvestments(prev=>prev.filter(i=>i.id!==id));deleteRecord("investments",id,setSyncStatus);}};
   const openAddInv=()=>{setEditInv(null);setInvF({...emptyInv,dateInvested:new Date().toISOString().split("T")[0]});setInvModal(true);};
   const openEditInv=(inv)=>{setEditInv(inv.id);setInvF({...inv});setInvModal(true);};
   const saveAddM=()=>{
@@ -1493,7 +1900,22 @@ export default function App(){
         }:m);
       }
     }
-    setMembers(updatedMembers);
+    // Add approval trail to new member
+    const memberWithTrail=updatedMembers.find(m=>m.id===id);
+    if(memberWithTrail){
+      const trail=[mkApprovalStep(1,authUser||{role:"treasurer",name:"Treasurer"},"approved","Member registration initiated")];
+      const updatedWithTrail=updatedMembers.map(m=>m.id===id?{...m,approvalStatus:"step1_done",approvalTrail:trail}:m);
+      setMembers(updatedWithTrail);
+    } else {
+      setMembers(updatedMembers);
+    }
+    // Sync new member and updated referrer to Supabase
+    const newM=updatedMembers.find(m=>m.id===id);
+    if(newM) saveRecord("members",newM,setSyncStatus);
+    if(addMF.referralSource==="member"&&addMF.referredById){
+      const updated=updatedMembers.find(m=>m.id===+addMF.referredById);
+      if(updated) saveRecord("members",updated,setSyncStatus);
+    }
     setAddMModal(false);
     setAddMF({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
   };
@@ -1521,22 +1943,22 @@ export default function App(){
     if(mem)p.memberName=mem.name;
     if(!p.memberName)return;
     let savedLoan;
-    if(editL){setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));savedLoan={...p,id:editL};}
-    else{const id=Math.max(...loans.map(l=>l.id),0)+1;savedLoan={id,...p};setLoans(prev=>[...prev,savedLoan]);}
-    setLModal(false);
-    // Auto-generate loan agreement PDF
-    if(!editL){
-      try{
-        const calc=calcLoan(savedLoan);
-        const blob=await generateLoanPDF(savedLoan,mem,calc);
-        const url=URL.createObjectURL(blob);
-        const anc=document.createElement("a");
-        anc.style.display="none";anc.href=url;
-        anc.download="BIDA_Loan_"+mem.name.replace(/\s+/g,"_")+"_"+savedLoan.id+".pdf";
-        document.body.appendChild(anc);anc.click();document.body.removeChild(anc);
-        setTimeout(()=>URL.revokeObjectURL(url),30000);
-      }catch(e){console.error("Loan PDF error:",e);}
+    if(editL){
+      setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));
+      savedLoan={...p,id:editL};
+      postAudit([mkAudit("edit","loan",editL,loans.find(l=>l.id===editL),savedLoan,authUser?.role,authUser?.name)]);
+    } else {
+      const id=Math.max(...loans.map(l=>l.id),0)+1;
+      // Treasurer initiates: step 1 auto-applied
+      const trail=[mkApprovalStep(1,authUser||{role:"treasurer",name:"Treasurer"},"approved","Initiated by Treasurer")];
+      savedLoan={id,...p,approvalStatus:"step1_done",approvalTrail:trail,initiatedBy:authUser?.name||"Treasurer"};
+      setLoans(prev=>[...prev,savedLoan]);
+      postLoanLedger(savedLoan,authUser);
+      postAudit([mkAudit("create","loan",id,null,savedLoan,authUser?.role,authUser?.name)]);
     }
+    setLModal(false);
+    // Note: loan PDF is generated ONLY after full 4-step approval
+    // When Auditor approves (step 4), PDF auto-generates — see handleApprove
   };
   const delL=(id)=>{if(window.confirm("Delete this loan?"))setLoans(prev=>prev.filter(l=>l.id!==id));};
   const markPd=(id)=>setLoans(prev=>prev.map(l=>{
@@ -1554,15 +1976,18 @@ export default function App(){
     const rec={...expF,amount:+expF.amount||0};
     if(editExp){
       setExpenses(prev=>prev.map(e=>e.id===editExp?{...e,...rec}:e));
+      postAudit([mkAudit("edit","expense",editExp,expenses.find(e=>e.id===editExp),rec,authUser?.role,authUser?.name)]);
     } else {
       const id=(expenses.length>0?Math.max(...expenses.map(e=>e.id||0)):0)+1;
-      setExpenses(prev=>[...prev,{id,...rec}]);
+      const newRec={id,...rec};
+      setExpenses(prev=>[...prev,newRec]);
+      postExpenseLedger(newRec,authUser);
     }
     setExpModal(false);
     setEditExp(null);
     setExpF({...emptyE,date:new Date().toISOString().split("T")[0]});
   };
-  const delExp=(id)=>{if(window.confirm("Delete this expense?"))setExpenses(prev=>prev.filter(e=>e.id!==id));};
+  const delExp=(id)=>{if(window.confirm("Delete this expense?")){setExpenses(prev=>prev.filter(e=>e.id!==id));deleteRecord("expenses",id,setSyncStatus);}};
 
   // ── Email / WA / SMS dispatch ─────────────────────────────────────────────
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename)=>{
@@ -1620,66 +2045,189 @@ export default function App(){
     setPdfGen(type);setSharedPDF(null);
     const filenames={savings:"BIDA_Savings_Report.pdf",loans:"BIDA_Loans_Report.pdf",expenses:"BIDA_Expenses_Report.pdf",projections:"BIDA_Projections_Report.pdf"};
     const labels={savings:"Savings Report",loans:"Loans Report",expenses:"Expenses Report",projections:"Projections Report"};
-    const fn=filenames[type], lb=labels[type];
-    // Pre-open window synchronously before async work (avoids popup blocker)
-    const win=window.open("","_blank");
-    if(win){win.document.write("<html><head><title>Generating...</title></head><body style='font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#1a237e;color:#fff;flex-direction:column;gap:12px'><div style='font-size:28px'>⏳</div><div style='font-size:14px;font-weight:700'>Generating "+lb+"...</div></body></html>");win.document.close();}
     try{
+      // Step 1: trigger download via jsPDF doc.save() — uses FileSaver.js internally
+      await generatePDF(type,members,loans,expenses,false);
+      // Step 2: also get blob for native share (iOS share sheet)
       const blob=await generatePDF(type,members,loans,expenses,true);
-      if(!blob)throw new Error("PDF generation failed");
-      // Try native share first (works on Android + iOS to save to files)
-      if(navigator.share&&navigator.canShare&&navigator.canShare({files:[new File([blob],fn,{type:"application/pdf"})]})){
-        if(win&&!win.closed)win.close();
-        await navigator.share({files:[new File([blob],fn,{type:"application/pdf"})],title:"BIDA — "+lb});
-        setSharedPDF({blob,filename:fn,label:lb,type});
-        return;
-      }
-      // Desktop / fallback: write download page into pre-opened window
-      const dataUrl=await blobToDataUrl(blob);
-      if(win&&!win.closed){
-        const d=new Date().toLocaleDateString("en-GB");
-        const html="<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>"+lb+"</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#1a237e;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px}.card{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:820px;margin-bottom:12px}.ttl{font-size:17px;font-weight:800;color:#0d3461;margin-bottom:2px}.sub{font-size:11px;color:#888;margin-bottom:14px}.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;border-radius:10px;font-size:15px;font-weight:800;text-decoration:none;margin-bottom:10px;border:none;cursor:pointer}.dl{background:linear-gradient(135deg,#c62828,#b71c1c);color:#fff}.op{background:#e3f2fd;color:#1565c0}.tip{font-size:11px;color:#666;line-height:1.8;text-align:center}iframe{width:100%;height:72vh;border:none;border-radius:8px}</style></head><body><div class='card'><p class='ttl'>📄 "+lb+"</p><p class='sub'>BIDA Co-operative &mdash; "+d+"</p><a class='btn dl' href='"+dataUrl+"' download='"+fn+"'>📥 Download PDF</a><a class='btn op' href='"+dataUrl+"' target='_blank'>🔍 Open / View PDF</a><p class='tip'>💡 <strong>iPhone/iPad:</strong> Tap <em>Open / View PDF</em> → tap the Share icon → <em>Save to Files</em><br><strong>Android:</strong> Tap <em>Download PDF</em> — file saves to Downloads folder<br><strong>Desktop:</strong> PDF previews below — use Download button or Ctrl+S</p></div><div class='card'><iframe src='"+dataUrl+"'></iframe></div></body></html>";
-        win.document.open();win.document.write(html);win.document.close();
-      }
-      setSharedPDF({blob,dataUrl,filename:fn,label:lb,type});
-    }catch(e){
-      console.error("PDF error:",e);
-      if(win&&!win.closed)win.close();
-      alert("PDF failed: "+e.message);
-    }
+      setSharedPDF({blob,filename:filenames[type],label:labels[type],type,show:true});
+    }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
     finally{setPdfGen(null);}
   };
   const handleMemberPDF=async(m)=>{
     setPdfGen("member_"+m.id);setSharedPDF(null);
-    const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
-    const lb=m.name+" Statement";
-    const win=window.open("","_blank");
-    if(win){win.document.write("<html><head><title>Generating...</title></head><body style='font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#1a237e;color:#fff;flex-direction:column;gap:12px'><div style='font-size:28px'>⏳</div><div style='font-size:14px;font-weight:700'>Generating statement for "+m.name+"...</div></body></html>");win.document.close();}
     try{
+      const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
+      // Step 1: trigger download via jsPDF doc.save()
+      await generateMemberPDF(m,profLoans,members,loans,false);
+      // Step 2: get blob for native share
       const blob=await generateMemberPDF(m,profLoans,members,loans,true);
-      if(!blob)throw new Error("PDF generation failed");
-      // Native share (mobile)
-      if(navigator.share&&navigator.canShare&&navigator.canShare({files:[new File([blob],filename,{type:"application/pdf"})]})){
-        if(win&&!win.closed)win.close();
-        await navigator.share({files:[new File([blob],filename,{type:"application/pdf"})],title:"BIDA — "+lb});
-        setSharedPDF({blob,filename,label:lb,type:"member",memberId:m.id});
-        return;
-      }
-      // Desktop fallback
-      const dataUrl=await blobToDataUrl(blob);
-      if(win&&!win.closed){
-        const d=new Date().toLocaleDateString("en-GB");
-        const html="<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>"+lb+"</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#1a237e;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px}.card{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:820px;margin-bottom:12px}.ttl{font-size:17px;font-weight:800;color:#0d3461;margin-bottom:2px}.sub{font-size:11px;color:#888;margin-bottom:14px}.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;border-radius:10px;font-size:15px;font-weight:800;text-decoration:none;margin-bottom:10px;border:none;cursor:pointer}.dl{background:linear-gradient(135deg,#c62828,#b71c1c);color:#fff}.op{background:#e3f2fd;color:#1565c0}.tip{font-size:11px;color:#666;line-height:1.8;text-align:center}iframe{width:100%;height:72vh;border:none;border-radius:8px}</style></head><body><div class='card'><p class='ttl'>📄 "+lb+"</p><p class='sub'>BIDA Co-operative &mdash; "+d+"</p><a class='btn dl' href='"+dataUrl+"' download='"+filename+"'>📥 Download PDF</a><a class='btn op' href='"+dataUrl+"' target='_blank'>🔍 Open / View PDF</a><p class='tip'>💡 <strong>iPhone/iPad:</strong> Tap <em>Open / View PDF</em> → tap the Share icon → <em>Save to Files</em><br><strong>Android:</strong> Tap <em>Download PDF</em><br><strong>Desktop:</strong> PDF previews below</p></div><div class='card'><iframe src='"+dataUrl+"'></iframe></div></body></html>";
-        win.document.open();win.document.write(html);win.document.close();
-      }
-      setSharedPDF({blob,dataUrl,filename,label:lb,type:"member",memberId:m.id});
-    }catch(e){
-      console.error("PDF error:",e);
-      if(win&&!win.closed)win.close();
-      alert("PDF failed: "+e.message);
-    }
+      setSharedPDF({blob,filename,label:m.name+" Statement",type:"member",memberId:m.id,show:true});
+    }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
     finally{setPdfGen(null);}
   };
+
+
+  // ── Supabase sync helpers ──
+  const syncMember=(m)=>saveRecord("members",m,setSyncStatus);
+  const syncLedgerEntry=(e)=>saveRecord("ledger",{...e,id:String(e.id)},setSyncStatus);
+  const syncAuditEntry=(e)=>saveRecord("audit_log",{...e,id:String(e.id)},setSyncStatus);
+  const syncLoan=(l)=>saveRecord("loans",l,setSyncStatus);
+  const syncExpense=(e)=>saveRecord("expenses",e,setSyncStatus);
+  const syncInvestment=(i)=>saveRecord("investments",i,setSyncStatus);
+  const syncSP=(sp)=>saveRecord("service_providers",{...sp,id:sp.id||String(sp.memberId||"")+sp.serviceType},setSyncStatus);
+  const delMember=(id)=>{setMembers(p=>p.filter(m=>m.id!==id));deleteRecord("members",id,setSyncStatus);};
+  const delLoanR=(id)=>{setLoans(p=>p.filter(l=>l.id!==id));deleteRecord("loans",id,setSyncStatus);};
+  const delExpR=(id)=>{setExpenses(p=>p.filter(e=>e.id!==id));deleteRecord("expenses",id,setSyncStatus);};
+  const delInvR=(id)=>{setInvestments(p=>p.filter(i=>i.id!==id));deleteRecord("investments",id,setSyncStatus);};
+
+
+  // ── Fintech helpers ──
+  const postLedger=(entries)=>setLedger(p=>[...p,...(Array.isArray(entries)?entries:[entries])]);
+  const postAudit=(entries)=>setAuditLog(p=>[...p,...(Array.isArray(entries)?entries:[entries])]);
+
+  // Build repayment schedule for a loan
+  const buildSchedule=(loan)=>{
+    const c=calcLoan(loan);
+    const schedule=[];
+    let balance=loan.amountLoaned;
+    const start=new Date(loan.dateBanked);
+    for(let i=1;i<=c.term;i++){
+      const dueDate=new Date(start.getFullYear(),start.getMonth()+i,start.getDate());
+      const interest=loan.method==="reducing"?Math.round(balance*0.06):Math.round(loan.amountLoaned*0.04);
+      const principal=loan.method==="reducing"?Math.round(c.monthlyPayment-interest):Math.round(loan.amountLoaned/c.term);
+      balance=Math.max(0,balance-principal);
+      schedule.push({
+        installment:i,
+        dueDate:dueDate.toISOString().split("T")[0],
+        principal,interest,
+        payment:c.monthlyPayment,
+        balance,
+        status:"pending",
+      });
+    }
+    return schedule;
+  };
+
+  // Post ledger entry when new loan is issued
+  const postLoanLedger=(loan,actor)=>{
+    postLedger([
+      mkEntry("loan_disbursement",loan.id,"Loan disbursed to "+loan.memberName,loan.amountLoaned,0,"loan_book",actor?.role,actor?.name),
+      mkEntry("loan_disbursement",loan.id,"Loan proceeds from pool",0,loan.amountLoaned,"savings_pool",actor?.role,actor?.name),
+    ]);
+    postAudit(mkAudit("create","loan",loan.id,null,loan,actor?.role,actor?.name));
+    setSchedules(p=>({...p,[loan.id]:buildSchedule(loan)}));
+  };
+
+  // Post ledger entry when expense is recorded
+  const postExpenseLedger=(exp,actor)=>{
+    postLedger(mkEntry("expense",exp.id,exp.activity,+exp.amount,0,"expense_account",actor?.role,actor?.name));
+    postAudit(mkAudit("create","expense",exp.id,null,exp,actor?.role,actor?.name));
+  };
+
+  // Post ledger entry for savings deposit
+  const postSavingsLedger=(member,amount,actor)=>{
+    postLedger(mkEntry("savings_deposit",member.id,"Savings deposit — "+member.name,0,amount,"savings_pool",actor?.role,actor?.name));
+  };
+
+  // Reversal (compensating transaction — never edits original)
+  const postReversal=(originalEntryId,reason,actor)=>{
+    postLedger(mkEntry("reversal",originalEntryId,"REVERSAL: "+reason,0,0,"savings_pool",actor?.role,actor?.name));
+    postAudit(mkAudit("reversal","ledger",originalEntryId,null,{reason},actor?.role,actor?.name));
+  };
+
+
+  // ── Approval workflow handlers ──────────────────────────────────────────
+
+  const handleApprove = async(entityType, entityId, currentStatus, note) => {
+    const next = getNextStep(currentStatus);
+    if(!next || !authUser) return;
+    const newStatus = advanceStatus(currentStatus);
+    const step = mkApprovalStep(next.step, authUser, "approved", note||"");
+    const isFinal = newStatus === "approved";
+
+    if(entityType === "loan") {
+      let finalLoan = null;
+      setLoans(prev=>prev.map(l=>{
+        if(l.id!==entityId) return l;
+        const trail=[...(l.approvalTrail||[]),step];
+        const updated={...l,approvalStatus:newStatus,approvalTrail:trail};
+        if(isFinal) { updated.status="active"; finalLoan=updated; }
+        saveRecord("loans",updated,setSyncStatus);
+        return updated;
+      }));
+      postAudit([mkAudit("approve","loan",entityId,{status:currentStatus},{status:newStatus,step},authUser.role,authUser.name)]);
+      // AUTO-GENERATE LOAN AGREEMENT PDF when Auditor gives final stamp
+      if(isFinal && finalLoan){
+        const mem = members.find(m=>m.id===finalLoan.memberId);
+        if(mem){
+          try{
+            await generatePDF("loans",members,loans.map(l=>l.id===entityId?finalLoan:l),expenses,false);
+            alert("✅ Loan fully approved! Loan Agreement PDF has been generated.");
+          }catch(e){console.error("PDF error:",e);}
+        }
+      }
+    }
+    if(entityType === "member") {
+      setMembers(prev=>prev.map(m=>{
+        if(m.id!==entityId) return m;
+        const trail=[...(m.approvalTrail||[]),step];
+        const updated={...m,approvalStatus:newStatus,approvalTrail:trail};
+        saveRecord("members",updated,setSyncStatus);
+        return updated;
+      }));
+      postAudit([mkAudit("approve","member",entityId,{status:currentStatus},{status:newStatus,step},authUser.role,authUser.name)]);
+    }
+  };
+
+  const handleReject = (entityType, entityId, currentStatus, note) => {
+    if(!authUser || !note) return;
+    const next = getNextStep(currentStatus);
+    const step = mkApprovalStep(next?.step||0, authUser, "rejected", note);
+
+    if(entityType === "loan") {
+      setLoans(prev=>prev.map(l=>{
+        if(l.id!==entityId) return l;
+        const trail=[...(l.approvalTrail||[]),step];
+        const updated={...l,approvalStatus:"rejected",approvalTrail:trail};
+        saveRecord("loans",updated,setSyncStatus);
+        return updated;
+      }));
+    }
+    if(entityType === "member") {
+      setMembers(prev=>prev.map(m=>{
+        if(m.id!==entityId) return m;
+        const trail=[...(m.approvalTrail||[]),step];
+        const updated={...m,approvalStatus:"rejected",approvalTrail:trail};
+        saveRecord("members",updated,setSyncStatus);
+        return updated;
+      }));
+    }
+    postAudit([mkAudit("reject",entityType,entityId,{status:currentStatus},{note},authUser.role,authUser.name)]);
+    setRejectTarget(null); setRejectNote("");
+  };
+
+  // Items waiting for THIS user's action
+  const myPendingItems = useMemo(()=>{
+    if(!authUser) return [];
+    const items = [];
+    loans.forEach(l=>{
+      const next=getNextStep(l.approvalStatus||"draft");
+      if(next && next.role===authUser.role) {
+        const mem=members.find(m=>m.id===l.memberId);
+        items.push({type:"loan",id:l.id,label:"Loan — "+(mem?.name||l.memberName),amount:l.amountLoaned,status:l.approvalStatus,item:l,memberName:mem?.name||l.memberName});
+      }
+    });
+    members.forEach(m=>{
+      if(m.id && m.approvalStatus && m.approvalStatus!=="approved" && m.approvalStatus!=="rejected") {
+        const next=getNextStep(m.approvalStatus);
+        if(next && next.role===authUser.role) {
+          items.push({type:"member",id:m.id,label:"New Member — "+m.name,amount:null,status:m.approvalStatus,item:m,memberName:m.name});
+        }
+      }
+    });
+    return items;
+  },[authUser,loans,members]);
 
   const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();
 
@@ -1695,10 +2243,22 @@ export default function App(){
   // ── Status badge helper ───────────────────────────────────────────────────
   const ESt=({k})=>{const s=emailSending[k];return s==="ok"?<span className="estatus-ok">✓ Sent</span>:s==="sms_ok"?<span className="estatus-sms-ok">✓ SMS</span>:s==="err"?<span className="estatus-err">✗ Failed</span>:s==="nosetup"?<span className="estatus-nosetup">⚠ Setup</span>:s==="sending"?<span className="estatus-sending">⏳</span>:null;};
 
+  const loginRoleOptions=[
+    {value:"treasurer",label:"Treasurer"},
+    {value:"financemanager",label:"Finance Manager"},
+    {value:"admin",label:"Administrator"},
+    {value:"auditor",label:"Auditor"},
+  ];
   const doLogin=()=>{
-    const u=USERS[loginRole];
-    if(u&&loginPin===u.pin){setAuthUser({...u});setLoginErr("");setLoginPin("");}
-    else{setLoginErr("Incorrect PIN. Try again.");}
+    const users=buildUsers(); // always use latest saved PINs
+    const u=users[loginRole];
+    const savedPin=getSavedPin(loginRole);
+    if(u&&loginPin===savedPin){
+      const authedUser={...u};
+      setAuthUser(authedUser);setLoginErr("");setLoginPin("");
+      setTimeout(()=>postAudit([mkAudit("login","system","session",null,{role:u.role},u.role,u.name)]),100);
+    }
+    else{setLoginErr("Wrong PIN. Try again.");}
   };
 
   return (
@@ -1725,7 +2285,7 @@ export default function App(){
             <div style={{marginBottom:14}}>
               <label style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6}}>Sign in as</label>
               <div style={{display:"flex",gap:8}}>
-                {[["treasurer","🏦 Treasurer"],["financemanager","✅ Finance Manager"]].map(([r,lbl])=>(
+                {[["treasurer","🏦 Treasurer"],["financemanager","💼 Finance Mgr"],["admin","🔑 Admin"],["auditor","🔍 Auditor"]].map(([r,lbl])=>(
                   <button key={r} onClick={()=>setLoginRole(r)} style={{flex:1,padding:"10px",borderRadius:10,border:loginRole===r?"2px solid var(--b600)":"2px solid var(--bdr)",background:loginRole===r?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:loginRole===r?700:400,color:loginRole===r?"var(--b700)":"var(--tm)"}}>{lbl}</button>
                 ))}
               </div>
@@ -1771,6 +2331,12 @@ export default function App(){
               <button className={"nbtn"+(tab==="expenses"?" on":"")} onClick={()=>{setTab("expenses");setSearch("");}}>🧾 Expenses</button>
               <button className={"nbtn"+(tab==="investments"?" on":"")} onClick={()=>{setTab("investments");setSearch("");}}>📈 Invest</button>
               <button className={"nbtn"+(tab==="reports"?" on":"")} onClick={()=>{setTab("reports");setSearch("");}}>📄 Reports</button>
+              <button className={"nbtn"+(tab==="approvals"?" on":"")} onClick={()=>{setTab("approvals");setSearch("");}} style={{position:"relative"}}>
+                ✅ Approvals
+                {myPendingItems.length>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#e65100",color:"#fff",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:9}}>{myPendingItems.length}</span>}
+              </button>
+              <button className={"nbtn"+(tab==="audit"?" on":"")} onClick={()=>{setTab("audit");setSearch("");}}>🔒 Audit</button>
+              <button className={"nbtn"+(tab==="settings"?" on":"")} onClick={()=>{setTab("settings");setSearch("");}}>⚙️ Settings</button>
             </nav>
           </div>
         </header>
@@ -1944,7 +2510,7 @@ export default function App(){
                           <td className="sn">{i+1}</td>
                           <td>
                             <span className="nc" onClick={()=>{const m=members.find(m=>m.id===l.memberId);if(m){setTab("savings");setTimeout(()=>openProfile(m),50);}}}>{l.memberName}</span>
-                            {l.status!=="paid"&&<button className="btn bk xs" style={{marginLeft:6,fontSize:9}} onClick={()=>openPayModal(l)}>+ Pay</button>}
+                            {l.status!=="paid"&&(l.approvalStatus==="approved"||!l.approvalStatus)&&<button className="btn bk xs" style={{marginLeft:6,fontSize:9}} onClick={()=>openPayModal(l)}>+ Pay</button>}
                           </td>
                           <td className="mc">{fmtD(l.dateBanked)}</td>
                           <td className="mc">{fmt(l.amountLoaned)}</td>
@@ -1959,8 +2525,13 @@ export default function App(){
                           <td className={l.balance>0?"bp-neg":"bp-pos"}>{fmt(l.balance)}</td>
                           <td><span className={"badge "+(l.status==="paid"?"bpaid":ov?"bover":"bactive")}>{l.status==="paid"?"✓ Paid":ov?"⚠ Overdue":"● Active"}</span></td>
                           <td><div className="abtn">
-                            <button className="btn bg xs" onClick={()=>openEditL(l)}>✏️</button>
-                            {l.status!=="paid"&&<button className="btn bk xs" onClick={()=>markPd(l.id)}>✓</button>}
+                            {l.approvalStatus==="approved"||!l.approvalStatus
+                              ?<React.Fragment>
+                                <button className="btn bg xs" onClick={()=>openEditL(l)}>✏️</button>
+                                {l.status!=="paid"&&<button className="btn bk xs" onClick={()=>markPd(l.id)}>✓</button>}
+                              </React.Fragment>
+                              :<span style={{fontSize:9,color:"#e65100",fontFamily:"var(--mono)"}}>⏳ Pending</span>
+                            }
                             <button className="btn bd xs" onClick={()=>delL(l.id)}>🗑</button>
                           </div></td>
                         </tr>
@@ -1981,7 +2552,457 @@ export default function App(){
             </React.Fragment>
           )}
 
-          {/* ── REMINDERS TAB ────────────────────────────────────────────── */}
+          {/* ── APPROVALS TAB ─────────────────────────────────────────── */}
+          {tab==="approvals" && (
+            <React.Fragment>
+              <div className="ptitle"><div className="ptdot"/>✅ Approval Queue</div>
+
+              {/* Role context banner */}
+              <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:12,padding:"12px 16px",marginBottom:12,color:"#fff"}}>
+                <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>
+                  You are logged in as: <span style={{color:"#90caf9"}}>{authUser?.name}</span>
+                </div>
+                <div style={{fontSize:11,opacity:.8,lineHeight:1.7}}>
+                  {(()=>{
+                    const roleDesc={
+                      treasurer:"You initiate loans and member registrations. Once submitted, the item moves to Finance Manager for numbers review. Money is NOT issued until all 4 steps complete.",
+                      finance_mgr:"You review the numbers — savings compliance, borrow limits, liquidity. Approve to pass to Admin or reject with a reason to send back to Treasurer.",
+                      admin:"You give governance approval — confirm policy compliance and documentation. Approve to pass to Auditor or reject with a reason.",
+                      auditor:"You give the FINAL STAMP. Once you approve: ✅ Loan becomes active, 💰 Money can be issued, 📄 Official PDF is auto-generated with all 4 signatures and timestamps."
+                    };
+                    return roleDesc[authUser?.role]||"Review pending items below.";
+                  })()}
+                </div>
+              </div>
+
+              {/* 4-step flow diagram */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 16px",marginBottom:12}}>
+                <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:10}}>Approval Process</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                  {APPROVAL_STEPS.map((s,i)=>(
+                    <React.Fragment key={s.step}>
+                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                        <div style={{width:36,height:36,borderRadius:"50%",background:authUser?.role===s.role?"#1565c0":"var(--b50)",border:"2px solid "+(authUser?.role===s.role?"#1565c0":"var(--bdr)"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:authUser?.role===s.role?"#fff":"var(--b700)"}}>
+                          {s.step}
+                        </div>
+                        <div style={{fontSize:9,fontWeight:600,color:authUser?.role===s.role?"#1565c0":"var(--tmuted)",textAlign:"center",maxWidth:60}}>{s.label}</div>
+                      </div>
+                      {i<APPROVAL_STEPS.length-1&&<div style={{flex:1,height:2,background:"var(--bdr)",minWidth:8,maxWidth:40}}/>}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+
+              {/* My pending items */}
+              {myPendingItems.length===0?(
+                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"30px 16px",textAlign:"center"}}>
+                  <div style={{fontSize:32,marginBottom:8}}>✅</div>
+                  <div style={{fontWeight:700,fontSize:14,color:"var(--b800)",marginBottom:4}}>Nothing pending for you</div>
+                  <div style={{fontSize:11,color:"var(--tmuted)"}}>Items requiring your action will appear here.</div>
+                </div>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {myPendingItems.map((item,idx)=>{
+                    const st=APPROVAL_STATUS[item.status]||APPROVAL_STATUS.draft;
+                    const next=getNextStep(item.status);
+                    const trail=item.item.approvalTrail||[];
+                    return (
+                      <div key={idx} style={{background:"#fff",border:"1.5px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
+                        {/* Header */}
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,flexWrap:"wrap",gap:8}}>
+                          <div>
+                            <div style={{fontWeight:800,fontSize:14,color:"var(--b800)"}}>{item.label}</div>
+                            {item.amount&&<div style={{fontSize:12,color:"var(--tmuted)",marginTop:2}}>Amount: <strong>{fmt(item.amount)}</strong></div>}
+                            <div style={{marginTop:4}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:20,background:st.bg,color:st.color,fontWeight:700}}>{st.label}</span></div>
+                          </div>
+                          <div style={{fontSize:10,color:"var(--tmuted)",textAlign:"right"}}>
+                            {item.type==="loan"?"📋 Loan Application":"👤 Member Registration"}
+                          </div>
+                        </div>
+
+                        {/* Approval trail so far */}
+                        {trail.length>0&&(
+                          <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"8px 12px",marginBottom:10}}>
+                            <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Approval trail</div>
+                            {trail.map((t,ti)=>(
+                              <div key={ti} style={{display:"flex",gap:8,alignItems:"center",padding:"4px 0",borderBottom:ti<trail.length-1?"1px solid var(--bdr)":"none",flexWrap:"wrap"}}>
+                                <div style={{width:20,height:20,borderRadius:"50%",background:t.decision==="approved"?"#e8f5e9":"#ffebee",border:"1.5px solid "+(t.decision==="approved"?"#a5d6a7":"#ffcdd2"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,flexShrink:0}}>{t.decision==="approved"?"✓":"✗"}</div>
+                                <div style={{flex:1}}>
+                                  <span style={{fontWeight:700,fontSize:11,color:"var(--b800)"}}>Step {t.step} — {t.name}</span>
+                                  <span style={{fontSize:10,color:"var(--tmuted)",marginLeft:6}}>{t.date} {t.time}</span>
+                                  {t.note&&<div style={{fontSize:10,color:"var(--tmuted)",fontStyle:"italic"}}>"{t.note}"</div>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Loan detail preview */}
+                        {item.type==="loan"&&(()=>{
+                          const l=item.item;
+                          const c=calcLoan(l);
+                          return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:10}}>
+                            {[["Principal",fmt(l.amountLoaned)],["Term",l.term+"mo"],["Monthly Pay",fmt(c.monthlyPayment)],["Total Due",fmt(c.totalDue)],["Purpose",l.loanPurpose||"—"],["Type",(l.loanType||"personal")]].map(([lb,v])=>(
+                              <div key={lb} style={{background:"var(--b50)",borderRadius:7,padding:"5px 9px"}}>
+                                <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase"}}>{lb}</div>
+                                <div style={{fontWeight:700,fontSize:11,color:"var(--b700)"}}>{v}</div>
+                              </div>
+                            ))}
+                          </div>;
+                        })()}
+
+                        {/* Action buttons */}
+                        {next&&(
+                          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                            <div style={{fontWeight:700,fontSize:11,color:"var(--b700)"}}>Your action as {next.label} (Step {next.step}):</div>
+                            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                              <button className="btn bp sm" onClick={()=>handleApprove(item.type,item.id,item.status,"")}>
+                                ✅ {next.verb} &amp; Pass to Next Step
+                              </button>
+                              <button className="btn bd sm" onClick={()=>setRejectTarget({type:item.type,id:item.id,status:item.status})}>
+                                ❌ Reject &amp; Return
+                              </button>
+                            </div>
+                            {/* Reject modal inline */}
+                            {rejectTarget&&rejectTarget.id===item.id&&(
+                              <div style={{background:"#ffebee",border:"1.5px solid #ef9a9a",borderRadius:9,padding:"10px 12px"}}>
+                                <div style={{fontSize:11,fontWeight:700,color:"#c62828",marginBottom:6}}>Reason for rejection (required):</div>
+                                <textarea value={rejectNote} onChange={e=>setRejectNote(e.target.value)} placeholder="e.g. Insufficient savings base, missing guarantor details..." style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #ef9a9a",fontSize:11,resize:"vertical",minHeight:60,outline:"none"}}/>
+                                <div style={{display:"flex",gap:7,marginTop:8}}>
+                                  <button className="btn bd sm" disabled={!rejectNote.trim()} onClick={()=>handleReject(item.type,item.id,item.status,rejectNote)}>Confirm Rejection</button>
+                                  <button className="btn bg sm" onClick={()=>{setRejectTarget(null);setRejectNote("");}}>Cancel</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* All loans status overview */}
+              {(canDo(authUser,"view"))&&(
+                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginTop:12}}>
+                  <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>All Loan Applications — Status</div>
+                  {loans.length===0?<div style={{color:"var(--tmuted)",fontSize:11}}>No loans yet.</div>:
+                  loans.map((l,i)=>{
+                    const st=APPROVAL_STATUS[l.approvalStatus||"draft"]||APPROVAL_STATUS.draft;
+                    const mem=members.find(m=>m.id===l.memberId);
+                    return (
+                      <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<loans.length-1?"1px solid var(--bdr)":"none",gap:8,flexWrap:"wrap"}}>
+                        <div>
+                          <div style={{fontWeight:600,fontSize:12,color:"var(--b800)"}}>{mem?.name||l.memberName} — {fmt(l.amountLoaned)}</div>
+                          <div style={{fontSize:10,color:"var(--tmuted)"}}>{fmtD(l.dateBanked)} · {l.loanPurpose||"—"}</div>
+                        </div>
+                        <span style={{fontSize:10,padding:"2px 8px",borderRadius:20,background:st.bg,color:st.color,fontWeight:700,flexShrink:0}}>{st.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </React.Fragment>
+          )}
+
+          {/* ── AUDIT & LEDGER TAB ──────────────────────────────────────── */}
+          {tab==="audit" && (
+            <React.Fragment>
+              <div className="ptitle"><div className="ptdot"/>🔒 Audit Trail, Ledger &amp; Finance</div>
+
+              {/* Financial Statements */}
+              {(()=>{
+                const pool=savT.total;
+                const outstanding=lStat.outstanding;
+                const loanProfit=lStat.profit;
+                const invTotal=investments.reduce((s,i)=>s+(+i.amount||0),0);
+                const invReturns=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+                const grossIncome=loanProfit+invReturns;
+                const netIncome=grossIncome-totalExpenses;
+                const totalAssets=cashInBank+outstanding+invTotal;
+                const equity=totalAssets-pool;
+                return (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(270px,1fr))",gap:12,marginBottom:12}}>
+                    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>📊 Income Statement</div>
+                      {[["Loan Interest Income",loanProfit,"#2e7d32"],["Investment Returns",invReturns,"#2e7d32"],["Gross Income",grossIncome,"#1565c0"],["Less: Total Expenses",-totalExpenses,"#c62828"],["Net Surplus",netIncome,netIncome>=0?"#2e7d32":"#c62828"]].map(([l,v,c],i)=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i===3?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i>=2?700:400}}>
+                          <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
+                          <span style={{fontFamily:"var(--mono)",fontSize:11,color:c}}>{v<0?"("+fmt(Math.abs(v))+")":fmt(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>🏦 Balance Sheet</div>
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",marginBottom:4}}>ASSETS</div>
+                      {[["Cash in Bank",cashInBank],["Loan Book (Outstanding)",outstanding],["Investments",invTotal],["Total Assets",totalAssets]].map(([l,v],i)=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===2?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===3?700:400}}>
+                          <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
+                          <span style={{fontFamily:"var(--mono)",fontSize:11,color:i===3?"#1565c0":"var(--td)"}}>{fmt(v)}</span>
+                        </div>
+                      ))}
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",margin:"8px 0 4px"}}>LIABILITIES &amp; EQUITY</div>
+                      {[["Member Savings (Liability)",pool],["Retained Surplus",equity],["Total L+E",totalAssets]].map(([l,v],i)=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===1?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===2?700:400}}>
+                          <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
+                          <span style={{fontFamily:"var(--mono)",fontSize:11,color:i===2?"#1565c0":equity<0&&i===1?"#c62828":"var(--td)"}}>{fmt(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Dividend Calculator */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:8}}>💰 Dividend &amp; Surplus Distribution</div>
+                <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:10,lineHeight:1.6}}>Calculates distributable surplus after 20% statutory reserve and 10% operational reserve. Distributed 60% by share capital and 40% by savings contribution.</div>
+                <button className="btn bp sm" onClick={()=>setDividendRun(calcDividends(members,loans,expenses,investments,null))}>
+                  ⚙️ Calculate Dividends
+                </button>
+                {dividendRun&&(
+                  <React.Fragment>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,margin:"12px 0"}}>
+                      {[["Gross Surplus",fmt(dividendRun.grossSurplus),"#2e7d32"],["Statutory (20%)",fmt(dividendRun.statutory),"#e65100"],["Operational (10%)",fmt(dividendRun.operational),"#f57f17"],["Distributable",fmt(dividendRun.distributable),"#1565c0"]].map(([l,v,c])=>(
+                        <div key={l} style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"9px 11px"}}>
+                          <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase",marginBottom:3}}>{l}</div>
+                          <div style={{fontWeight:800,fontSize:13,color:c,fontFamily:"var(--mono)"}}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                        <thead><tr style={{background:"var(--b50)"}}>
+                          {["Member","Shares","Share Div","Savings Div","Total"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Member"?"left":"right",fontSize:9,fontFamily:"var(--mono)",color:"var(--b700)",fontWeight:600,textTransform:"uppercase"}}>{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {dividendRun.perMember.filter(m=>m.totalDividend>0).sort((a,b)=>b.totalDividend-a.totalDividend).map(m=>(
+                            <tr key={m.id} style={{borderBottom:"1px solid var(--bdr)"}}>
+                              <td style={{padding:"7px 10px",fontWeight:600}}>{m.name}</td>
+                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)"}}>{fmtN(m.shares)}</td>
+                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",color:"#2e7d32"}}>{fmt(m.shareDividend)}</td>
+                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",color:"#1565c0"}}>{fmt(m.savingsDividend)}</td>
+                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:800,color:"#0d3461"}}>{fmt(m.totalDividend)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </React.Fragment>
+                )}
+              </div>
+
+              {/* Double-Entry Ledger */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>📒 Double-Entry Ledger <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({ledger.length} entries — immutable)</span></div>
+                {ledger.length===0
+                  ?<div style={{color:"var(--tmuted)",fontSize:11,padding:"10px 0"}}>No ledger entries yet. Entries are created automatically when loans are issued, expenses recorded, or savings updated.</div>
+                  :<div style={{maxHeight:250,overflowY:"auto"}}>
+                    {[...ledger].reverse().map((e,i)=>(
+                      <div key={i} style={{display:"flex",gap:8,padding:"7px 0",borderBottom:"1px solid var(--bdr)",fontSize:11,flexWrap:"wrap",alignItems:"center"}}>
+                        <div style={{width:110,color:"var(--tmuted)",fontFamily:"var(--mono)",fontSize:9,flexShrink:0}}>{new Date(e.ts).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+                        <div style={{flex:1,fontWeight:600,minWidth:120}}>{e.description}</div>
+                        {e.debit>0&&<span style={{fontFamily:"var(--mono)",fontSize:10,color:"#c62828",fontWeight:700}}>DR {fmt(e.debit)}</span>}
+                        {e.credit>0&&<span style={{fontFamily:"var(--mono)",fontSize:10,color:"#2e7d32",fontWeight:700}}>CR {fmt(e.credit)}</span>}
+                        <span style={{fontSize:9,color:"var(--tmuted)",background:"var(--b50)",padding:"1px 5px",borderRadius:4}}>{e.account}</span>
+                        <span style={{fontSize:9,color:"var(--tmuted)"}}>{e.actorName}</span>
+                      </div>
+                    ))}
+                  </div>
+                }
+              </div>
+
+              {/* Audit Trail */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>🔍 Audit Trail <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({auditLog.length} events — read only)</span></div>
+                {auditLog.length===0
+                  ?<div style={{color:"var(--tmuted)",fontSize:11,padding:"10px 0"}}>No audit events yet. All logins, record changes, and approvals will appear here.</div>
+                  :<div style={{maxHeight:250,overflowY:"auto"}}>
+                    {[...auditLog].reverse().map((e,i)=>{
+                      const colors={login:"#1565c0",create:"#1b5e20",edit:"#e65100",delete:"#c62828",approve:"#2e7d32",reversal:"#6a1b9a"};
+                      const bg={login:"#e3f2fd",create:"#e8f5e9",edit:"#fff8e1",delete:"#ffebee",approve:"#e8f5e9",reversal:"#f3e5f5"};
+                      return (
+                        <div key={i} style={{display:"flex",gap:8,padding:"7px 0",borderBottom:"1px solid var(--bdr)",fontSize:11,flexWrap:"wrap",alignItems:"center"}}>
+                          <div style={{width:110,color:"var(--tmuted)",fontFamily:"var(--mono)",fontSize:9,flexShrink:0}}>{new Date(e.ts).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+                          <span style={{fontSize:9,padding:"2px 7px",borderRadius:5,fontWeight:700,background:bg[e.action]||"#f5f5f5",color:colors[e.action]||"#555",flexShrink:0}}>{(e.action||"").toUpperCase()}</span>
+                          <div style={{flex:1,fontWeight:600}}>{e.entity} {e.entityId}</div>
+                          <div style={{fontSize:9,color:"var(--tmuted)"}}>{e.actorName} ({e.actorRole})</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                }
+              </div>
+            </React.Fragment>
+          )}
+
+          {/* ── SETTINGS TAB ─────────────────────────────────────────────── */}
+          {tab==="settings" && (
+            <React.Fragment>
+              <div className="ptitle"><div className="ptdot"/>⚙️ Settings &amp; Database</div>
+
+              {/* ── PIN MANAGEMENT — Admin only ── */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"16px",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:14,color:"var(--b800)"}}>🔑 User PIN Management</div>
+                    <div style={{fontSize:11,color:"var(--tmuted)",marginTop:2}}>Change PINs for each role. Only the Administrator should do this.</div>
+                  </div>
+                  {!canDo(authUser,"all")&&<div style={{fontSize:11,color:"#c62828",background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:7,padding:"4px 10px"}}>⛔ Admin access required to change PINs</div>}
+                </div>
+
+                {/* Warning if any role still has default PIN */}
+                {Object.keys(USER_DEFS).some(r=>isPinDefault(r))&&(
+                  <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"9px 12px",marginBottom:12,fontSize:11,color:"#e65100",lineHeight:1.6}}>
+                    ⚠ <strong>Security warning:</strong> {Object.keys(USER_DEFS).filter(r=>isPinDefault(r)).map(r=>USER_DEFS[r].name).join(", ")} {Object.keys(USER_DEFS).filter(r=>isPinDefault(r)).length===1?"is":"are"} still using the default PIN. Change all PINs before going live.
+                  </div>
+                )}
+
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
+                  {Object.entries(USER_DEFS).map(([roleKey,u])=>{
+                    const isDefault=isPinDefault(roleKey);
+                    const msg=pinMsg[roleKey];
+                    const newPin=pinMgmt[roleKey]||"";
+                    const confirmPin=pinConfirm[roleKey]||"";
+                    const show=showPins[roleKey];
+                    return (
+                      <div key={roleKey} style={{background:"var(--b50)",border:"1.5px solid "+(isDefault?"#ffe082":"#a5d6a7"),borderRadius:10,padding:"12px 14px"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                          <div>
+                            <div style={{fontWeight:700,fontSize:13,color:"var(--b800)"}}>{u.name}</div>
+                            <div style={{fontSize:9,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.5}}>{u.role}</div>
+                          </div>
+                          <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20,background:isDefault?"#fff3e0":"#e8f5e9",color:isDefault?"#e65100":"#1b5e20",border:"1px solid "+(isDefault?"#ffcc80":"#a5d6a7")}}>
+                            {isDefault?"⚠ Default PIN":"✅ Custom PIN"}
+                          </span>
+                        </div>
+
+                        {canDo(authUser,"all")?(
+                          <React.Fragment>
+                            <div style={{marginBottom:6}}>
+                              <label style={{fontSize:10,color:"var(--tmuted)",display:"block",marginBottom:3,fontFamily:"var(--mono)"}}>NEW PIN (min 4 digits)</label>
+                              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                                <input
+                                  type={show?"text":"password"}
+                                  value={newPin}
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  autoComplete="new-password"
+                                  onChange={e=>setPinMgmt(p=>({...p,[roleKey]:e.target.value.replace(/[^0-9]/g,"").slice(0,8)}))}
+                                  placeholder="e.g. 4821"
+                                  style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid var(--bdr)",fontFamily:"var(--mono)",fontSize:16,letterSpacing:4,outline:"none"}}
+                                />
+                                <button type="button" onClick={()=>setShowPins(p=>({...p,[roleKey]:!p[roleKey]}))}
+                                  style={{padding:"8px 10px",borderRadius:8,border:"1px solid var(--bdr)",background:"#fff",cursor:"pointer",fontSize:12}}>
+                                  {show?"🙈":"👁"}
+                                </button>
+                              </div>
+                            </div>
+                            <div style={{marginBottom:8}}>
+                              <label style={{fontSize:10,color:"var(--tmuted)",display:"block",marginBottom:3,fontFamily:"var(--mono)"}}>CONFIRM PIN</label>
+                              <input
+                                type={show?"text":"password"}
+                                value={confirmPin}
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                autoComplete="new-password"
+                                onChange={e=>setPinConfirm(p=>({...p,[roleKey]:e.target.value.replace(/[^0-9]/g,"").slice(0,8)}))}
+                                placeholder="Repeat PIN"
+                                style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid "+(confirmPin&&newPin&&confirmPin!==newPin?"#ef9a9a":"var(--bdr)"),fontFamily:"var(--mono)",fontSize:14,letterSpacing:3,outline:"none"}}
+                              />
+                              {confirmPin&&newPin&&confirmPin!==newPin&&<div style={{fontSize:10,color:"#c62828",marginTop:3}}>PINs do not match</div>}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={!newPin||newPin.length<4||newPin!==confirmPin}
+                              onClick={()=>{
+                                if(newPin.length<4){setPinMsg(p=>({...p,[roleKey]:{type:"error",text:"PIN must be at least 4 digits"}}));return;}
+                                if(newPin!==confirmPin){setPinMsg(p=>({...p,[roleKey]:{type:"error",text:"PINs do not match"}}));return;}
+                                savePin(roleKey,newPin);
+                                postAudit([mkAudit("config_change","pin",roleKey,null,{role:roleKey,changed:true},authUser?.role,authUser?.name)]);
+                                setPinMsg(p=>({...p,[roleKey]:{type:"ok",text:"✅ PIN updated successfully"}}));
+                                setPinMgmt(p=>({...p,[roleKey]:""}));
+                                setPinConfirm(p=>({...p,[roleKey]:""}));
+                                setTimeout(()=>setPinMsg(p=>({...p,[roleKey]:null})),3000);
+                              }}
+                              style={{width:"100%",padding:"9px",borderRadius:8,background:newPin&&newPin.length>=4&&newPin===confirmPin?"linear-gradient(135deg,#1565c0,#0d3461)":"#e0e0e0",color:newPin&&newPin.length>=4&&newPin===confirmPin?"#fff":"#999",border:"none",cursor:newPin&&newPin.length>=4&&newPin===confirmPin?"pointer":"not-allowed",fontWeight:700,fontSize:12}}>
+                              🔑 Update PIN for {u.name}
+                            </button>
+                            {msg&&<div style={{marginTop:6,fontSize:11,color:msg.type==="ok"?"#1b5e20":"#c62828",textAlign:"center"}}>{msg.text}</div>}
+                          </React.Fragment>
+                        ):(
+                          <div style={{fontSize:11,color:"var(--tmuted)",fontStyle:"italic",padding:"8px 0"}}>Log in as Administrator to change this PIN.</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Supabase Setup */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:14,color:"var(--b800)",marginBottom:4}}>🗄 Supabase Database Connection</div>
+                <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:12,lineHeight:1.6}}>
+                  Enter your Supabase API key below to enable permanent data storage and sync across all devices. Data is saved instantly and available offline — syncing when internet returns.
+                </div>
+                <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 13px",marginBottom:12,fontSize:11,color:"#1b5e20",lineHeight:1.7}}>
+                  <strong>Project URL:</strong> https://oscuauaifgaeauzvkihu.supabase.co<br/>
+                  <strong>Status:</strong> {syncStatus==="synced"?"✅ Connected and saving":"syncing"===syncStatus?"🔄 Syncing...":"loading"===syncStatus?"⏳ Loading data...":"offline"===syncStatus?"📵 Offline — will sync when connected":"⚠ Not connected — enter API key below"}
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <input
+                    type="password"
+                    className="fi"
+                    style={{flex:1,minWidth:200,fontFamily:"var(--mono)",fontSize:11}}
+                    placeholder="Paste your Supabase anon/public API key here..."
+                    value={supaKeyInput}
+                    onChange={e=>setSupaKeyInput(e.target.value)}
+                  />
+                  <button className="btn bp sm" onClick={()=>{
+                    setSupaKey(supaKeyInput);
+                    setSyncStatus("loading");
+                    loadAllFromSupabase()
+                      .then(data=>{
+                        if(data.members&&data.members.length>0) setMembers(data.members);
+                        if(data.loans&&data.loans.length>0) setLoans(data.loans);
+                        if(data.expenses&&data.expenses.length>0) setExpenses(data.expenses);
+                        if(data.investments&&data.investments.length>0) setInvestments(data.investments);
+                        if(data.serviceProviders&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
+                        setDbLoaded(true);setSyncStatus("synced");
+                        alert("✅ Connected! Data loaded from Supabase.");
+                      })
+                      .catch(e=>{setSyncStatus("error");alert("Connection failed: "+e.message);});
+                  }}>Connect &amp; Load Data</button>
+                  {getSupaKey()&&<button className="btn bg sm" onClick={()=>{setSupaKey("");setSupaKeyInput("");setSyncStatus("idle");alert("API key cleared.");}}>Disconnect</button>}
+                </div>
+                {syncStatus==="offline"&&(
+                  <div style={{marginTop:10,background:"#fff8e1",border:"1px solid #ffe082",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#e65100"}}>
+                    📵 You are offline. All changes are being saved locally and will sync automatically when your internet connection returns.
+                  </div>
+                )}
+              </div>
+              {/* Manual sync */}
+              {getSupaKey()&&(
+                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:8}}>🔄 Manual Sync</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    <button className="btn bp sm" onClick={()=>{
+                      setSyncStatus("loading");
+                      loadAllFromSupabase().then(data=>{
+                        if(data.members&&data.members.length>0) setMembers(data.members);
+                        if(data.loans&&data.loans.length>0) setLoans(data.loans);
+                        if(data.expenses&&data.expenses.length>0) setExpenses(data.expenses);
+                        if(data.investments&&data.investments.length>0) setInvestments(data.investments);
+                        if(data.serviceProviders&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
+                        setSyncStatus("synced");alert("✅ Data refreshed from Supabase.");
+                      }).catch(e=>{setSyncStatus("error");alert("Refresh failed: "+e.message);});
+                    }}>↓ Pull latest from database</button>
+                    <button className="btn bg sm" onClick={()=>replayOfflineQueue(setSyncStatus)}>↑ Push offline changes</button>
+                  </div>
+                </div>
+              )}
+            </React.Fragment>
+          )}
+
           {tab==="reminders" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>Reminders & Notifications</div>
@@ -2195,7 +3216,11 @@ export default function App(){
                         {(()=>{
                           // Sort chronologically to compute running balance correctly
                           const sorted=[...expenses].sort((a,b)=>new Date(a.date)-new Date(b.date));
-                          let running=savT.total+lStat.profit;
+                          const _rr=loans.reduce((s,l)=>s+(+l.amountPaid||0),0);
+                          const _dd=loans.filter(l=>l.approvalStatus==="approved"||!l.approvalStatus).reduce((s,l)=>s+(+l.amountLoaned||0),0);
+                          const _ii=investments.reduce((s,i)=>s+(+i.amount||0),0);
+                          const _ir=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+                          let running=savT.total+_rr+_ir-_dd-_ii;
                           const withBal=sorted.map(e=>{running-=(+e.amount||0);return{...e,balAfter:running};});
                           // Display newest first
                           return [...withBal].reverse().map((e,i)=>(
@@ -2262,7 +3287,11 @@ export default function App(){
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:7,marginTop:10}}>
                   {(()=>{
-                    const cashInBk=savT.total+lStat.profit-totalExpenses;
+                    const repayments=loans.reduce((s,l)=>s+(+l.amountPaid||0),0);
+              const disbursed=loans.filter(l=>l.approvalStatus==="approved"||!l.approvalStatus).reduce((s,l)=>s+(+l.amountLoaned||0),0);
+              const invMade=investments.reduce((s,i)=>s+(+i.amount||0),0);
+              const invRet=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+              const cashInBk=savT.total+repayments+invRet-disbursed-totalExpenses-invMade;
                     const maxInv=Math.round(cashInBk*0.20);
                     const rem=Math.max(0,maxInv-totalInvested);
                     const ok=cashInBk-totalInvested>=cashInBk*0.80;
@@ -2381,12 +3410,58 @@ export default function App(){
                 <div className="card cd"><div className="clabel">Expenses</div><div className="cval danger">{fmt(totalExpenses)}</div></div>
                 <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div></div>
               </div>
+
+              {/* Financial Statements */}
+              {(()=>{
+                const pool=savT.total;
+                const outstanding=lStat.outstanding;
+                const profit=lStat.profit;
+                const invTotal=investments.reduce((s,i)=>s+(+i.amount||0),0);
+                const invReturns=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+                const grossIncome=profit+invReturns;
+                const netIncome=grossIncome-totalExpenses;
+                const totalAssets=cashInBank+outstanding+invTotal;
+                const totalLiabilities=pool; // members' savings are liabilities
+                const equity=totalAssets-totalLiabilities;
+                return (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12,marginBottom:12}}>
+                    {/* Income Statement */}
+                    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr2)",paddingBottom:6}}>📊 Income Statement</div>
+                      {[["Loan Interest Income",profit,"#2e7d32"],["Investment Returns",invReturns,"#2e7d32"],["Gross Income",grossIncome,"#1565c0"],["Less: Total Expenses",-totalExpenses,"#c62828"],["Net Surplus / Deficit",netIncome,netIncome>=0?"#2e7d32":"#c62828"]].map(([l,v,c],i)=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i===3?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i>=2?700:400}}>
+                          <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
+                          <span style={{fontFamily:"var(--mono)",fontSize:11,color:c}}>{v<0?"("+fmt(Math.abs(v))+")":fmt(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Balance Sheet */}
+                    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr2)",paddingBottom:6}}>🏦 Balance Sheet</div>
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Assets</div>
+                      {[["Cash in Bank",cashInBank],["Loan Book (Outstanding)",outstanding],["Investments",invTotal],["Total Assets",totalAssets]].map(([l,v],i)=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===2?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===3?700:400}}>
+                          <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
+                          <span style={{fontFamily:"var(--mono)",fontSize:11,color:i===3?"#1565c0":"var(--td)"}}>{fmt(v)}</span>
+                        </div>
+                      ))}
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",margin:"8px 0 4px",textTransform:"uppercase",letterSpacing:.5}}>Liabilities &amp; Equity</div>
+                      {[["Member Savings (Liabilities)",totalLiabilities],["Retained Surplus / Equity",equity],["Total L+E",totalAssets]].map(([l,v],i)=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===1?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===2?700:400}}>
+                          <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
+                          <span style={{fontFamily:"var(--mono)",fontSize:11,color:i===2?"#1565c0":equity<0&&i===1?"#c62828":"var(--td)"}}>{fmt(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
               {sharedPDF&&sharedPDF.type!=="member"&&sharedPDF.dataUrl&&(
                 <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:11,padding:"14px 16px",marginTop:10}}>
                   <div style={{fontWeight:700,fontSize:13,color:"#1b5e20",marginBottom:8}}>✅ {sharedPDF.label} is ready</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                    <a href={sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,textDecoration:"none"}}>📥 Download PDF</a>
-                    <a href={sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:12,textDecoration:"none"}}>🔍 Open in New Tab</a>
+                    <a href={sharedPDF.blobUrl||sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,textDecoration:"none"}}>📥 Download PDF</a>
+                    <a href={sharedPDF.blobUrl||sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:12,textDecoration:"none"}}>🔍 Open in New Tab</a>
                     <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:8,background:"#25D366",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,sharedPDF.label)}>{WA_SVG} Share via WhatsApp</button>
                   </div>
                   <div style={{fontSize:10,color:"#2e7d32",marginTop:8,opacity:.8}}>Tip: If "Download" doesn't work in your browser, use "Open in New Tab" then save from there (Ctrl+S or right-click → Save).</div>
@@ -2394,15 +3469,39 @@ export default function App(){
               )}
             </React.Fragment>
           )}
-        {/* ── FLOATING PDF READY TOAST — visible on all tabs ── */}
-        {sharedPDF&&sharedPDF.dataUrl&&(
-          <div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"#1b5e20",color:"#fff",borderRadius:12,padding:"12px 18px",boxShadow:"0 8px 32px rgba(0,0,0,.35)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",maxWidth:"92vw",animation:"su .25s ease"}}>
-            <div style={{fontSize:12,fontWeight:700}}>✅ {sharedPDF.label} ready</div>
-            <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-              <a href={sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 14px",borderRadius:7,background:"#fff",color:"#1b5e20",fontWeight:800,fontSize:12,textDecoration:"none"}}>📥 Download</a>
-              <a href={sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 14px",borderRadius:7,background:"rgba(255,255,255,.15)",color:"#fff",fontWeight:700,fontSize:12,textDecoration:"none",border:"1px solid rgba(255,255,255,.3)"}}>🔍 Open</a>
+        {/* ── PDF READY MODAL ── */}
+        {sharedPDF&&sharedPDF.show&&(
+          <div style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(13,52,97,.95)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+            <div style={{background:"#fff",borderRadius:16,padding:24,width:"100%",maxWidth:400,textAlign:"center"}}>
+              <div style={{fontSize:40,marginBottom:8}}>📄</div>
+              <div style={{fontWeight:900,fontSize:18,color:"#0d3461",marginBottom:4}}>{sharedPDF.label}</div>
+              <div style={{fontSize:12,color:"#888",marginBottom:20}}>BIDA Co-operative · {new Date().toLocaleDateString("en-GB")}</div>
+
+              {/* Android/Desktop: doc.save() already triggered the download */}
+              <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#1b5e20",lineHeight:1.6}}>
+                ✅ <strong>Download has started.</strong><br/>
+                Check your <strong>Downloads folder</strong> or the notification bar at the top of your screen.
+              </div>
+
+              {/* iOS / share alternative */}
+              <div style={{fontSize:12,color:"#555",marginBottom:12}}>Not downloading? Use Share instead:</div>
+              <button onClick={async()=>{
+                if(!sharedPDF.blob)return;
+                const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
+                if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+                  try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label});}
+                  catch(e){if(e.name!=="AbortError")console.warn(e);}
+                } else {
+                  alert("Sharing not supported on this browser. Check Downloads folder for the file.");
+                }
+              }} style={{width:"100%",padding:"14px",borderRadius:10,background:"#25D366",color:"#fff",fontWeight:800,fontSize:15,border:"none",cursor:"pointer",marginBottom:12}}>
+                📤 Share / Save to Files (iPhone)
+              </button>
+
+              <button onClick={()=>setSharedPDF(null)} style={{width:"100%",padding:"12px",borderRadius:10,background:"#f5f5f5",color:"#333",fontWeight:700,fontSize:14,border:"none",cursor:"pointer"}}>
+                Close
+              </button>
             </div>
-            <button onClick={()=>setSharedPDF(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:16,padding:"0 4px",lineHeight:1}}>✕</button>
           </div>
         )}
         </main>
@@ -2418,8 +3517,8 @@ export default function App(){
                 {!profEdit&&<button className="btn bstmt sm" disabled={!!pdfGen} onClick={()=>handleMemberPDF(profMember)}>{pdfGen===("member_"+profMember.id)?"⏳...":"📄 Statement"}</button>}
                 {!profEdit&&sharedPDF&&sharedPDF.type==="member"&&sharedPDF.memberId===profMember.id&&sharedPDF.dataUrl&&(
                   <React.Fragment>
-                    <a href={sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,textDecoration:"none"}}>📥 PDF</a>
-                    <a href={sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:10,textDecoration:"none"}}>🔍</a>
+                    <a href={sharedPDF.blobUrl||sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,textDecoration:"none"}}>📥 PDF</a>
+                    <a href={sharedPDF.blobUrl||sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:10,textDecoration:"none"}}>🔍</a>
                     <button className="btn sm" style={{background:"#25D366",color:"#fff",fontWeight:700}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,profMember.name)}>{WA_SVG} WA</button>
                   </React.Fragment>
                 )}
@@ -2460,6 +3559,11 @@ export default function App(){
                         ))}
                       </div>;
                     })()}
+                    {/* Approval status badge on profile */}
+                    {profMember.approvalStatus&&profMember.approvalStatus!=="approved"&&(()=>{
+                      const st=APPROVAL_STATUS[profMember.approvalStatus];
+                      return st?<div style={{marginTop:3,display:"inline-block",fontSize:9,padding:"2px 8px",borderRadius:20,background:st.bg,color:st.color,fontWeight:700}}>{st.label}</div>:null;
+                    })()}
                     {profMember.referredByMemberId&&(()=>{
                       const referrer=members.find(m=>m.id===profMember.referredByMemberId);
                       return referrer?<div style={{marginTop:3,fontSize:10,color:"rgba(255,255,255,.6)"}}>Referred by: <strong style={{color:"#90caf9"}}>{referrer.name}</strong></div>:null;
@@ -2481,6 +3585,26 @@ export default function App(){
                     </div>
                   </div>
                 </div>
+                {/* Initial payment status */}
+                {profMember.approvalStatus&&profMember.approvalStatus!=="approved"&&(
+                  <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:10,padding:"10px 14px",marginBottom:8}}>
+                    <div style={{fontWeight:700,fontSize:12,color:"#e65100",marginBottom:4}}>⏳ Member Registration Pending Approval</div>
+                    <div style={{fontSize:11,color:"#795548",lineHeight:1.6}}>
+                      This member is awaiting approval through the 4-step process before being fully activated.
+                      {profMember.initialPaymentReceived&&" ✅ Initial payments confirmed received."}
+                      {!profMember.initialPaymentReceived&&" ⚠ Initial payment collection not yet confirmed."}
+                    </div>
+                    {(profMember.approvalTrail||[]).length>0&&(
+                      <div style={{marginTop:8}}>
+                        {(profMember.approvalTrail||[]).map((t,i)=>(
+                          <div key={i} style={{fontSize:10,color:"var(--tmuted)",marginTop:3}}>
+                            {t.decision==="approved"?"✓":"✗"} Step {t.step}: {t.name} — {t.date} {t.time}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="prof-section">
                   <div className="prof-section-title">Savings Breakdown</div>
                   <div className="prof-grid">
@@ -2545,7 +3669,12 @@ export default function App(){
                                   </div>}
                                 </div>
                                 {comm&&!comm.paid&&isPayable&&(
-                                  <button className="btn bk xs" onClick={()=>setMembers(prev=>prev.map(mb=>mb.id===profMember.id?{...mb,pendingCommissions:(mb.pendingCommissions||[]).map(c=>c.newMemberId===m.id?{...c,paid:true}:c)}:mb))}>Mark Paid</button>
+                                  <button className="btn bk xs" onClick={()=>setMembers(prev=>{
+                                              const upd=prev.map(mb=>mb.id===profMember.id?{...mb,pendingCommissions:(mb.pendingCommissions||[]).map(c=>c.newMemberId===m.id?{...c,paid:true}:c)}:mb);
+                                              const changed=upd.find(mb=>mb.id===profMember.id);
+                                              if(changed) saveRecord("members",changed,setSyncStatus);
+                                              return upd;
+                                            })}>Mark Paid</button>
                                 )}
                               </div>
                             );
@@ -2615,6 +3744,17 @@ export default function App(){
                   );
                 })()}
 
+                {/* Risk indicators */}
+                {(()=>{
+                  const risk=riskIndicators(profMember,loans);
+                  if(risk.flags.length===0) return null;
+                  return <div style={{background:risk.risk==="high"?"#ffebee":"#fff8e1",border:"1.5px solid "+(risk.risk==="high"?"#ef9a9a":"#ffe082"),borderRadius:10,padding:"10px 14px",marginBottom:8}}>
+                    <div style={{fontWeight:700,fontSize:11,color:risk.risk==="high"?"#c62828":"#e65100",marginBottom:5}}>
+                      {risk.risk==="high"?"🔴 High Risk Profile":"🟡 Medium Risk Profile"}
+                    </div>
+                    {risk.flags.map((f,i)=><div key={i} style={{fontSize:10,color:"#555",marginTop:2}}>• {f.msg}</div>)}
+                  </div>;
+                })()}
                 <div className="prof-section">
                   <div className="prof-section-title">Pool Contribution vs Peers</div>
                   <div className="prof-bar-wrap">
@@ -2739,6 +3879,35 @@ export default function App(){
               {/* Personal details */}
               <div className="fg ff"><label className="fl">Full Name</label><input className="fi" value={addMF.name} onChange={e=>setAddMF(f=>({...f,name:e.target.value}))} placeholder="e.g. KATUNTU HANNAH"/></div>
               {/* How did they hear about BIDA */}
+              {/* Initial Payment Section */}
+              <div className="fg ff">
+                <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:10,padding:"10px 14px",marginBottom:4}}>
+                  <div style={{fontWeight:700,fontSize:12,color:"#1b5e20",marginBottom:6}}>💳 Initial Payments — Member pays INTO BIDA</div>
+                  <div style={{fontSize:11,color:"#2e7d32",marginBottom:8,lineHeight:1.6}}>
+                    The new member brings money <strong>to BIDA</strong>. Confirm the amounts below and tick when collected.
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                    {[["Membership Fee",addMF.membership,50000],["Annual Subscription",addMF.annualSub,50000],["1st Month Savings",addMF.monthlySavings,10000]].map(([lb,v,min])=>(
+                      <div key={lb} style={{background:"#fff",border:"1px solid #a5d6a7",borderRadius:8,padding:"7px 10px"}}>
+                        <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase",marginBottom:2}}>{lb}</div>
+                        <div style={{fontWeight:800,fontSize:13,color:(+v||0)>=min?"#1b5e20":"#e65100",fontFamily:"var(--mono)"}}>{fmt(+v||0)}</div>
+                        <div style={{fontSize:9,color:"var(--tmuted)"}}>Min: {fmt(min)}</div>
+                      </div>
+                    ))}
+                    <div style={{background:"#fff",border:"1.5px solid #1565c0",borderRadius:8,padding:"7px 10px"}}>
+                      <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase",marginBottom:2}}>Total to Collect</div>
+                      <div style={{fontWeight:900,fontSize:15,color:"#1565c0",fontFamily:"var(--mono)"}}>{fmt((+addMF.membership||0)+(+addMF.annualSub||0)+(+addMF.monthlySavings||0))}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(27,94,32,.1)",borderRadius:8,padding:"8px 12px"}}>
+                    <input type="checkbox" id="initPaid" checked={!!addMF.initialPaymentReceived} onChange={e=>setAddMF(f=>({...f,initialPaymentReceived:e.target.checked}))} style={{width:16,height:16,cursor:"pointer"}}/>
+                    <label htmlFor="initPaid" style={{fontSize:12,fontWeight:700,color:"#1b5e20",cursor:"pointer"}}>✅ Initial payments received and banked</label>
+                  </div>
+                  {!addMF.initialPaymentReceived&&<div style={{marginTop:6,fontSize:10,color:"#e65100"}}>⚠ Confirm receipt before submitting.</div>}
+                </div>
+              </div>
+
+              {/* How did they hear about BIDA */}
               <div className="fg ff">
                 <label className="fl">How did they hear about BIDA? <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required)</span></label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
@@ -2860,7 +4029,11 @@ export default function App(){
               <div className="fg"><label className="fl">Amount Invested (UGX)</label>
                 <input className="fi" type="number" value={invF.amount} onChange={e=>setInvF(f=>({...f,amount:e.target.value}))} placeholder="0"/>
                 {(()=>{
-                  const cashInBk=(savT.total||0)+(lStat.profit||0)-(totalExpenses||0);
+                  const _rep=(loans||[]).reduce((s,l)=>s+(+l.amountPaid||0),0);
+                  const _dis=(loans||[]).filter(l=>l.approvalStatus==="approved"||!l.approvalStatus).reduce((s,l)=>s+(+l.amountLoaned||0),0);
+                  const _inv=(investments||[]).reduce((s,i)=>s+(+i.amount||0),0);
+                  const _iret=(investments||[]).reduce((s,i)=>s+(+i.interestEarned||0),0);
+                  const cashInBk=(savT.total||0)+_rep+_iret-_dis-(totalExpenses||0)-_inv;
                   const maxInv=Math.round(cashInBk*0.20);
                   const over=(+invF.amount||0)>maxInv;
                   return <span className="fhint" style={{color:over?"#c62828":"var(--b500)"}}>Max investable: {fmt(maxInv)} (20% of cash in bank {fmt(cashInBk)}){over?" — ⚠ EXCEEDS LIMIT":""}</span>;
@@ -3072,8 +4245,11 @@ export default function App(){
                 onClick={()=>{
                   if(editSp!==null){
                     setServiceProviders(prev=>prev.map((p,i)=>i===editSp?{...spF}:p));
+                    saveRecord("service_providers",{...spF},setSyncStatus);
                   } else {
-                    setServiceProviders(prev=>[...prev,{...spF,id:Date.now()}]);
+                    const newSP={...spF,id:Date.now()};
+                    setServiceProviders(prev=>[...prev,newSP]);
+                    saveRecord("service_providers",{...newSP,id:String(newSP.id)},setSyncStatus);
                   }
                   setSpModal(false);
                   setEditSp(null);
@@ -3302,6 +4478,20 @@ export default function App(){
                 )}
               </React.Fragment>
             )}
+            {/* Liquidity check */}
+            {(+lF.amountLoaned>0)&&(()=>{
+              const amt=+lF.amountLoaned;
+              const _lr=loans.reduce((s,l)=>s+(+l.amountPaid||0),0);
+              const _ld=loans.filter(l=>l.approvalStatus==="approved"||!l.approvalStatus).reduce((s,l)=>s+(+l.amountLoaned||0),0);
+              const _li=investments.reduce((s,i)=>s+(+i.amount||0),0);
+              const _lir=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+              const cib=savT.total+_lr+_lir-_ld-totalExpenses-_li;
+              const totalInv=investments.reduce((s,i)=>s+(+i.amount||0),0);
+              const liq=liquidityCheck(amt,cib,totalInv);
+              return liq.ok
+                ?<div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"7px 12px",marginBottom:8,fontSize:11,color:"#1b5e20"}}>✅ Liquidity OK — {fmt(liq.available)} available after 30% reserve</div>
+                :<div style={{background:"#ffebee",border:"1.5px solid #ef9a9a",borderRadius:9,padding:"9px 12px",marginBottom:8,fontSize:11,color:"#c62828"}}><strong>⚠ Liquidity Alert:</strong> Available: {fmt(liq.available)} · Shortfall: {fmt(liq.shortfall)}</div>;
+            })()}
             <div className="fa"><button className="btn bg" onClick={()=>setLModal(false)}>Cancel</button><button className="btn bp" onClick={saveL}>{editL?"Save Changes":"Issue Loan"}</button></div>
           </div>
         </div>
