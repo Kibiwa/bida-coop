@@ -2254,16 +2254,9 @@ export default function App(){
     const filenames={savings:"BIDA_Savings_Report.pdf",loans:"BIDA_Loans_Report.pdf",expenses:"BIDA_Expenses_Report.pdf",projections:"BIDA_Projections_Report.pdf"};
     const labels={savings:"Savings Report",loans:"Loans Report",expenses:"Expenses Report",projections:"Projections Report"};
     try{
-      // Always use blob → object URL — works on iOS Safari, Android Chrome, Desktop
       const blob=await generatePDF(type,members,loans,expenses,true);
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url; a.download=filenames[type];
-      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
-      setSharedPDF({blob,url,filename:filenames[type],label:labels[type],type,show:true});
+      // Show modal — user taps Download button to save the file
+      setSharedPDF({blob,filename:filenames[type],label:labels[type],type,show:true});
     }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
     finally{setPdfGen(null);}
   };
@@ -2272,14 +2265,7 @@ export default function App(){
     try{
       const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
       const blob=await generateMemberPDF(m,profLoans,members,loans,true);
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url; a.download=filename;
-      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
-      setSharedPDF({blob,url,filename,label:m.name+" Statement",type:"member",memberId:m.id,show:true});
+      setSharedPDF({blob,filename,label:m.name+" Statement",type:"member",memberId:m.id,show:true});
     }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
     finally{setPdfGen(null);}
   };
@@ -2649,60 +2635,7 @@ export default function App(){
               {/* ── SAVINGS/EXPENSES CHART ── */}
               <SavingsExpensesChart savingsData={SAVINGS_CHART_DATA} expensesData={EXPENSES_CHART_DATA}/>
 
-              {/* ── EXPENSES MINI LEDGER ON DASHBOARD ── */}
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,marginBottom:12}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px 8px",borderBottom:"1px solid var(--bdr)"}}>
-                  <div>
-                    <div style={{fontWeight:800,fontSize:13,color:"var(--b800)"}}>🧾 Expenses Ledger</div>
-                    <div style={{fontSize:10,color:"var(--tmuted)",marginTop:1}}>Every expense reduces cash in bank in real time</div>
-                  </div>
-                  <div style={{display:"flex",gap:7,alignItems:"center"}}>
-                    <span style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:"#c62828"}}>− {fmt(totalExpenses)}</span>
-                    <button className="btn bp xs" onClick={openAddExp}>＋ Add</button>
-                    <button className="btn bg xs" onClick={()=>setTab("expenses")}>View All</button>
-                  </div>
-                </div>
-                {expenses.length===0?(
-                  <div className="empty" style={{padding:"20px"}}><div className="eico">🧾</div>No expenses yet.</div>
-                ):(
-                  <div style={{padding:"0 16px"}}>
-                    {[...expenses].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5).map((e,i)=>{
-                      const runningTotal=expenses
-                        .slice()
-                        .sort((a,b)=>new Date(a.date)-new Date(b.date))
-                        .slice(0,expenses.indexOf(e)+1)
-                        .reduce((s,x)=>s+(+x.amount||0),0);
-                      const balAfter=savT.total+lStat.profit-runningTotal;
-                      return (
-                        <div key={e.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:i<4?"1px solid #eef5ff":"none",flexWrap:"wrap"}}>
-                          <div style={{minWidth:65,fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>{fmtD(e.date)}</div>
-                          <div style={{flex:1,minWidth:120}}>
-                            <div style={{fontWeight:700,fontSize:12,color:"var(--b800)"}}>{e.activity}</div>
-                            <div style={{fontSize:10,color:"var(--tmuted)"}}>{e.issuedBy||"—"}{e.category?" · "+e.category:""}</div>
-                          </div>
-                          <div style={{textAlign:"right",flexShrink:0}}>
-                            <div style={{fontWeight:900,fontSize:13,color:"#c62828",fontFamily:"var(--mono)"}}>− {fmt(+e.amount||0)}</div>
-                            <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>bal: {fmt(balAfter)}</div>
-                          </div>
-                          <div style={{display:"flex",gap:4}}>
-                            <button className="btn bg xs" onClick={()=>openEditExp(e)}>✏️</button>
-                            <button className="btn bd xs" onClick={()=>delExp(e.id)}>🗑</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {expenses.length>5&&(
-                      <div style={{padding:"8px 0",textAlign:"center"}}>
-                        <button className="btn bg sm" onClick={()=>setTab("expenses")} style={{width:"100%"}}>View all {expenses.length} expenses →</button>
-                      </div>
-                    )}
-                    <div style={{borderTop:"2px solid var(--bdr2)",padding:"10px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--tmuted)",fontWeight:700}}>CASH IN BANK AFTER ALL EXPENSES</span>
-                      <span style={{fontFamily:"var(--mono)",fontSize:14,fontWeight:900,color:cashInBank<0?"#c62828":"#2e7d32"}}>{fmt(cashInBank)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
+
               <div className="toolbar">
                 <div className="tl"><span className="ttitle">All Members</span><span className="tcount">{fmems.length}</span></div>
                 <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
@@ -3726,12 +3659,12 @@ export default function App(){
                   </div>
                 );
               })()}
-              {sharedPDF&&sharedPDF.type!=="member"&&sharedPDF.dataUrl&&(
+              {sharedPDF&&sharedPDF.type!=="member"&&sharedPDF.blob&&(
                 <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:11,padding:"14px 16px",marginTop:10}}>
                   <div style={{fontWeight:700,fontSize:13,color:"#1b5e20",marginBottom:8}}>✅ {sharedPDF.label} is ready</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                    <a href={sharedPDF.blobUrl||sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,textDecoration:"none"}}>📥 Download PDF</a>
-                    <a href={sharedPDF.blobUrl||sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:12,textDecoration:"none"}}>🔍 Open in New Tab</a>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,border:"none",cursor:"pointer"}}>📥 Download PDF</button>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:12,cursor:"pointer"}}>🔍 Open in New Tab</button>
                     <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:8,background:"#25D366",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,sharedPDF.label)}>{WA_SVG} Share via WhatsApp</button>
                   </div>
                   <div style={{fontSize:10,color:"#2e7d32",marginTop:8,opacity:.8}}>Tip: If "Download" doesn't work in your browser, use "Open in New Tab" then save from there (Ctrl+S or right-click → Save).</div>
@@ -3741,34 +3674,46 @@ export default function App(){
           )}
         {/* ── PDF READY MODAL ── */}
         {sharedPDF&&sharedPDF.show&&(
-          <div style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(13,52,97,.95)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-            <div style={{background:"#fff",borderRadius:16,padding:24,width:"100%",maxWidth:400,textAlign:"center"}}>
-              <div style={{fontSize:40,marginBottom:8}}>📄</div>
+          <div style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(13,52,97,.95)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setSharedPDF(null);}}>
+            <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
+              <div style={{fontSize:48,marginBottom:8}}>📄</div>
               <div style={{fontWeight:900,fontSize:18,color:"#0d3461",marginBottom:4}}>{sharedPDF.label}</div>
-              <div style={{fontSize:12,color:"#888",marginBottom:20}}>BIDA Co-operative · {new Date().toLocaleDateString("en-GB")}</div>
+              <div style={{fontSize:12,color:"#888",marginBottom:24}}>BIDA Co-operative · {new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
 
-              {/* Android/Desktop: doc.save() already triggered the download */}
-              <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#1b5e20",lineHeight:1.6}}>
-                ✅ <strong>Download has started.</strong><br/>
-                Check your <strong>Downloads folder</strong> or the notification bar at the top of your screen.
-              </div>
-
-              {/* iOS / share alternative */}
-              <div style={{fontSize:12,color:"#555",marginBottom:12}}>Not downloading? Use Share instead:</div>
-              <button onClick={async()=>{
-                if(!sharedPDF.blob)return;
-                const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
-                if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
-                  try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label});}
-                  catch(e){if(e.name!=="AbortError")console.warn(e);}
-                } else {
-                  alert("Sharing not supported on this browser. Check Downloads folder for the file.");
-                }
-              }} style={{width:"100%",padding:"14px",borderRadius:10,background:"#25D366",color:"#fff",fontWeight:800,fontSize:15,border:"none",cursor:"pointer",marginBottom:12}}>
-                📤 Share / Save to Files (iPhone)
+              {/* PRIMARY: Download button — tap to save file */}
+              <button
+                onClick={()=>{
+                  if(!sharedPDF.blob) return;
+                  const url=URL.createObjectURL(sharedPDF.blob);
+                  const a=document.createElement("a");
+                  a.href=url; a.download=sharedPDF.filename;
+                  document.body.appendChild(a); a.click();
+                  setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
+                }}
+                style={{width:"100%",padding:"16px",borderRadius:12,background:"linear-gradient(135deg,#1565c0,#0d3461)",color:"#fff",fontWeight:900,fontSize:16,border:"none",cursor:"pointer",marginBottom:10,letterSpacing:.5}}>
+                📥 Download PDF
               </button>
 
-              <button onClick={()=>setSharedPDF(null)} style={{width:"100%",padding:"12px",borderRadius:10,background:"#f5f5f5",color:"#333",fontWeight:700,fontSize:14,border:"none",cursor:"pointer"}}>
+              {/* SECONDARY: Native share (iOS Save to Files, Android share sheet) */}
+              <button
+                onClick={async()=>{
+                  if(!sharedPDF.blob) return;
+                  const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
+                  if(navigator.canShare&&navigator.canShare({files:[file]})){
+                    try{ await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label}); }
+                    catch(e){ if(e.name!=="AbortError") console.warn(e); }
+                  } else {
+                    // Fallback for browsers without share API
+                    const url=URL.createObjectURL(sharedPDF.blob);
+                    window.open(url,"_blank");
+                    setTimeout(()=>URL.revokeObjectURL(url),10000);
+                  }
+                }}
+                style={{width:"100%",padding:"14px",borderRadius:12,background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
+                📤 Share / Save to Files
+              </button>
+
+              <button onClick={()=>setSharedPDF(null)} style={{width:"100%",padding:"12px",borderRadius:12,background:"#f5f5f5",color:"#666",fontWeight:600,fontSize:13,border:"none",cursor:"pointer"}}>
                 Close
               </button>
             </div>
@@ -3785,10 +3730,10 @@ export default function App(){
               <div style={{display:"flex",alignItems:"center",gap:9}}><Avatar name={profMember.name} size={34}/><div className="mtitle">{profMember.name}</div></div>
               <div style={{display:"flex",gap:7}}>
                 {!profEdit&&<button className="btn bstmt sm" disabled={!!pdfGen} onClick={()=>handleMemberPDF(profMember)}>{pdfGen===("member_"+profMember.id)?"⏳...":"📄 Statement"}</button>}
-                {!profEdit&&sharedPDF&&sharedPDF.type==="member"&&sharedPDF.memberId===profMember.id&&sharedPDF.dataUrl&&(
+                {!profEdit&&sharedPDF&&sharedPDF.type==="member"&&sharedPDF.memberId===profMember.id&&sharedPDF.blob&&(
                   <React.Fragment>
-                    <a href={sharedPDF.blobUrl||sharedPDF.dataUrl} download={sharedPDF.filename} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,textDecoration:"none"}}>📥 PDF</a>
-                    <a href={sharedPDF.blobUrl||sharedPDF.dataUrl} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:10,textDecoration:"none"}}>🔍</a>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,border:"none",cursor:"pointer"}}>📥 PDF</button>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:10,cursor:"pointer"}}>🔍</button>
                     <button className="btn sm" style={{background:"#25D366",color:"#fff",fontWeight:700}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,profMember.name)}>{WA_SVG} WA</button>
                   </React.Fragment>
                 )}
