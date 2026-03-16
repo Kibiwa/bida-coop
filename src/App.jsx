@@ -14,10 +14,13 @@ const loadScript = (src) => new Promise((res, rej) => {
 // ══════════════════════════════════════════════════════════════════════════════
 const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
 const SYNC_INTERVAL_MS = 15000; // poll every 15 seconds for cross-device sync
-let SUPA_KEY = ""; // Set via Settings tab — never hardcode in production
+// anon/public key — safe to ship in frontend code.
+// Security enforced by Row Level Security on the database, not key secrecy.
+// Supabase explicitly designed this key to be public.
+const SUPA_ANON_KEY = "__SUPA_ANON_KEY__";
 
-// Load Supabase key from localStorage (set once by treasurer in Settings)
-function getSupaKey(){ return localStorage.getItem("bida_supa_key")||""; }
+let SUPA_KEY = SUPA_ANON_KEY;
+function getSupaKey(){ return localStorage.getItem("bida_supa_key")||SUPA_ANON_KEY; }
 function setSupaKey(k){ localStorage.setItem("bida_supa_key",k); SUPA_KEY=k; }
 SUPA_KEY = getSupaKey();
 
@@ -152,7 +155,7 @@ function sanitiseInvestment(r){
 }
 
 async function loadAllFromSupabase(){
-  const [rawMembers,rawLoans,rawExpenses,rawInvestments,providers,receipts,ledger,auditLog]=await Promise.all([
+  const [rawMembers,rawLoans,rawExpenses,rawInvestments,providers,receipts,ledger,auditLog,settings]=await Promise.all([
     supaFetch("members"),
     supaFetch("loans"),
     supaFetch("expenses"),
@@ -161,7 +164,17 @@ async function loadAllFromSupabase(){
     supaFetch("receipts").catch(()=>[]),
     supaFetch("ledger").catch(()=>[]),
     supaFetch("audit_log").catch(()=>[]),
+    supaFetch("settings").catch(()=>[]),
   ]);
+  // Apply any PINs stored in Supabase settings
+  if(Array.isArray(settings)){
+    settings.forEach(row=>{
+      if(row.key&&row.key.startsWith("pin_")&&row.value){
+        const role=row.key.replace("pin_","");
+        savePin(role,row.value);
+      }
+    });
+  }
   // Sanitise all numeric fields so no string values corrupt the cash formula
   const members     = Array.isArray(rawMembers)     ? rawMembers.map(sanitiseMember)     : [];
   const loans       = Array.isArray(rawLoans)       ? rawLoans.map(sanitiseLoan)         : [];
@@ -507,6 +520,12 @@ function savePin(role,pin){
   const saved=loadSavedPins();
   saved[role]=pin;
   localStorage.setItem("bida_pins",JSON.stringify(saved));
+  // Also persist to Supabase so all devices get the new PIN
+  const key=getSupaKey();
+  if(key){
+    supaUpsert("settings",[{key:"pin_"+role,value:pin,updated_at:new Date().toISOString()}])
+      .catch(e=>console.warn("PIN sync to Supabase failed:",e.message));
+  }
 }
 function isPinDefault(role){
   return !loadSavedPins()[role];
@@ -898,7 +917,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...NAVY);
     const summaryItems=[["Total Banked",fmt(grand)],["Total Expenses",fmt(totalExp)],["Loan Profit",fmt(profit)],["Cash in Bank",fmt(cashInBk)],["Active Loans",""+loans.filter(l=>l.status!=="paid").length],["Outstanding",fmt(loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+calcLoan(l).balance,0))]];
     summaryItems.forEach((item,i)=>{const x=10+i*47;doc.setFontSize(6);doc.setFont("helvetica","normal");doc.setTextColor(...GREY);doc.text(item[0].toUpperCase(),x,fy+5);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...NAVY);doc.text(item[1],x,fy+11);});
-    if(returnBlob)return doc.output("blob");doc.save("BIDA_Savings_Report.pdf");
+    return doc.output("blob");
   } else if(type==="loans"){
     const calcs=loans.map(l=>({...l,...calcLoan(l)})),active=calcs.filter(l=>l.status!=="paid"),paid=calcs.filter(l=>l.status==="paid");
     dH("LOAN REGISTER REPORT","Disbursements & Repayments — 4% Flat (<7m) | 6% Reducing (≥7m)");
@@ -906,7 +925,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const rows=calcs.map((l,i)=>[i+1,l.memberName,fmtD(l.dateBanked),fmtN(l.amountLoaned),l.method==="reducing"?"6% RB":"4% Flat",l.term+"mo",fmtN(l.monthlyPayment),""+l.months,fmtN(l.totalInterest),fmtN(l.totalDue),fmtN(l.amountPaid),l.balance>0?"("+fmtN(l.balance)+")":fmtN(l.balance),l.status==="paid"?"PAID":"ACTIVE"]);
     doc.autoTable({startY:48,head:[["#","Member","Issued","Principal","Method","Term","Monthly Pay","Elapsed","Total Int.","Total Due","Paid","Balance","Status"]],body:rows,styles:{fontSize:7,cellPadding:2.2},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7,halign:"center"},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{halign:"center",cellWidth:7},1:{cellWidth:34,fontStyle:"bold"},2:{halign:"center",cellWidth:19},3:{halign:"right"},4:{halign:"center",cellWidth:13},5:{halign:"center",cellWidth:11},6:{halign:"right",fontStyle:"bold"},7:{halign:"center"},8:{halign:"right"},9:{halign:"right",fontStyle:"bold"},10:{halign:"right"},11:{halign:"right"},12:{halign:"center"}},didParseCell:(d)=>{if(d.column.index===12&&d.section==="body"){d.cell.styles.fontStyle="bold";d.cell.styles.textColor=d.cell.raw==="PAID"?GREEN:[191,54,12];}if(d.column.index===11&&d.section==="body"&&typeof d.cell.raw==="string"&&d.cell.raw.startsWith("("))d.cell.styles.textColor=RED;},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
     const fy=doc.lastAutoTable.finalY+6;doc.setFillColor(255,253,231);doc.roundedRect(10,fy,W-20,10,2,2,"F");doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(120,90,10);doc.text("INTEREST RULES:",15,fy+4);doc.setFont("helvetica","normal");doc.setTextColor(100,80,20);doc.text("Loans < UGX 7,000,000: 4% flat on original principal/mo. Loans ≥ UGX 7,000,000: 6% reducing balance on outstanding principal/mo. Terms 6–24 months.",52,fy+4);
-    if(returnBlob)return doc.output("blob");doc.save("BIDA_Loans_Report.pdf");
+    return doc.output("blob");
   } else if(type==="expenses"){
     const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
     const pool=members.reduce((s,m)=>s+totBanked(m),0);
@@ -959,7 +978,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
       margin:{left:8,right:8},
       didDrawPage:(d)=>dF(d.pageNumber)
     });
-    if(returnBlob)return doc.output("blob");doc.save("BIDA_Expenses_Report.pdf");
+    return doc.output("blob");
   } else if(type==="projections"){
     // ── DATA-DRIVEN PROJECTIONS based on actual activity ──
     const tM=members.reduce((s,m)=>s+(m.monthlySavings||0),0);
@@ -1034,7 +1053,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
       doc.text("Consistent UGX 30,000/month by all members grows the pool "+Math.round(((pC*12/18)/Math.max(pA,1)-1)*100)+"% faster than current pace.",14,yS+19);
       doc.text("Higher pool = larger investments, bigger dividends, more welfare — everyone benefits.",14,yS+25);
     }
-    if(returnBlob)return doc.output("blob");doc.save("BIDA_Projections_Report.pdf");
+    return doc.output("blob");
   }
 }
 
@@ -1196,8 +1215,7 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     doc.text("BIDA Co-operative Multi-Purpose Society — Confidential Member Statement",12,H-4);
     doc.text("Page "+pg+" of "+pageCount+"  ·  "+toStr(),W-12,H-4,{align:"right"});
   }
-  if(returnBlob)return doc.output("blob");
-  doc.save("BIDA_Statement_"+member.name.replace(/\s+/g,"_")+".pdf");
+  return doc.output("blob");
 }
 
 // ── CSS ──────────────────────────────────────────────────────────────────────
@@ -1891,12 +1909,21 @@ export default function App(){
     const poll=async()=>{
       try{
         // Fetch latest data silently in background
-        const [freshMembers,freshLoans,freshExpenses,freshInvestments]=await Promise.all([
+        const [freshMembers,freshLoans,freshExpenses,freshInvestments,freshSettings]=await Promise.all([
           supaFetch("members"),
           supaFetch("loans"),
           supaFetch("expenses"),
           supaFetch("investments"),
+          supaFetch("settings").catch(()=>[]),
         ]);
+        // Apply any PIN changes made on other devices
+        if(Array.isArray(freshSettings)){
+          freshSettings.forEach(row=>{
+            if(row.key&&row.key.startsWith("pin_")&&row.value){
+              savePin(row.key.replace("pin_",""),row.value);
+            }
+          });
+        }
         // Only update state if data looks valid (prevents corrupt data overwriting good data)
         if(freshMembers&&freshMembers.length>0&&freshMembers.some(m=>(m.membership||0)+(m.monthlySavings||0)>0)){
           setMembers(freshMembers.map(sanitiseMember));
@@ -2352,9 +2379,16 @@ export default function App(){
         const mem = members.find(m=>m.id===finalLoan.memberId);
         if(mem){
           try{
-            await generatePDF("loans",members,loans.map(l=>l.id===entityId?finalLoan:l),expenses,false);
-            alert("✅ Loan fully approved! Loan Agreement PDF has been generated.");
-          }catch(e){console.error("PDF error:",e);}
+            const blob=await generateLoanPDF(finalLoan,mem,calcLoan(finalLoan));
+            const fname="BIDA_LoanAgreement_"+(mem.name||"").replace(/\s+/g,"_")+".pdf";
+            const url=URL.createObjectURL(blob);
+            const a=document.createElement("a");
+            a.href=url;a.download=fname;
+            a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+            document.body.appendChild(a);a.click();
+            setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+            alert("✅ Loan fully approved! Loan Agreement PDF downloading now.");
+          }catch(e){console.error("Loan PDF error:",e);}
         }
       }
     }
@@ -2550,22 +2584,6 @@ export default function App(){
           {/* ── SAVINGS TAB (MAIN DASHBOARD) ─────────────────────────────── */}
           {tab==="savings" && (
             <React.Fragment>
-              {/* ── API KEY MISSING WARNING ── */}
-              {!getSupaKey()&&(
-                <div style={{background:"linear-gradient(135deg,#e65100,#bf360c)",borderRadius:12,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <span style={{fontSize:22}}>🔌</span>
-                    <div>
-                      <div style={{fontWeight:800,fontSize:13,color:"#fff"}}>Sync not active on this device</div>
-                      <div style={{fontSize:11,color:"rgba(255,255,255,.8)",marginTop:2}}>Enter the Supabase API key in ⚙️ Settings to connect and sync with all other devices.</div>
-                    </div>
-                  </div>
-                  <button onClick={()=>setTab("settings")} style={{background:"#fff",color:"#e65100",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:12,cursor:"pointer",flexShrink:0}}>
-                    Go to Settings →
-                  </button>
-                </div>
-              )}
-
               {/* ── LIVE DATE & TIME BANNER ── */}
               <div style={{background:"linear-gradient(135deg,#0a1931,#0d3461)",borderRadius:13,padding:"13px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
