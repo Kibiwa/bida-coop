@@ -683,15 +683,14 @@ async function shareViaPDF(blob, filename, memberName){
       return "shared";
     }catch(e){if(e.name!=="AbortError")console.warn("Share failed:",e);}
   }
-  // Fallback: data URL anchor click
-  const dataUrl=await blobToDataUrl(blob);
+  // Fallback: URL.createObjectURL (works on all platforms unlike data URLs)
+  const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
-  a.href=dataUrl;
-  a.download=filename;
-  a.style.cssText="position:fixed;top:-100px;left:-100px;opacity:0";
+  a.href=url; a.download=filename;
+  a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
   document.body.appendChild(a);
   a.click();
-  setTimeout(()=>{try{document.body.removeChild(a);}catch(e){}},5000);
+  setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
   return "downloaded";
 }
 
@@ -2228,11 +2227,16 @@ export default function App(){
     const filenames={savings:"BIDA_Savings_Report.pdf",loans:"BIDA_Loans_Report.pdf",expenses:"BIDA_Expenses_Report.pdf",projections:"BIDA_Projections_Report.pdf"};
     const labels={savings:"Savings Report",loans:"Loans Report",expenses:"Expenses Report",projections:"Projections Report"};
     try{
-      // Step 1: trigger download via jsPDF doc.save() — uses FileSaver.js internally
-      await generatePDF(type,members,loans,expenses,false);
-      // Step 2: also get blob for native share (iOS share sheet)
+      // Always use blob → object URL — works on iOS Safari, Android Chrome, Desktop
       const blob=await generatePDF(type,members,loans,expenses,true);
-      setSharedPDF({blob,filename:filenames[type],label:labels[type],type,show:true});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=filenames[type];
+      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+      setSharedPDF({blob,url,filename:filenames[type],label:labels[type],type,show:true});
     }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
     finally{setPdfGen(null);}
   };
@@ -2240,11 +2244,15 @@ export default function App(){
     setPdfGen("member_"+m.id);setSharedPDF(null);
     try{
       const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
-      // Step 1: trigger download via jsPDF doc.save()
-      await generateMemberPDF(m,profLoans,members,loans,false);
-      // Step 2: get blob for native share
       const blob=await generateMemberPDF(m,profLoans,members,loans,true);
-      setSharedPDF({blob,filename,label:m.name+" Statement",type:"member",memberId:m.id,show:true});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=filename;
+      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+      setSharedPDF({blob,url,filename,label:m.name+" Statement",type:"member",memberId:m.id,show:true});
     }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
     finally{setPdfGen(null);}
   };
@@ -2542,6 +2550,22 @@ export default function App(){
           {/* ── SAVINGS TAB (MAIN DASHBOARD) ─────────────────────────────── */}
           {tab==="savings" && (
             <React.Fragment>
+              {/* ── API KEY MISSING WARNING ── */}
+              {!getSupaKey()&&(
+                <div style={{background:"linear-gradient(135deg,#e65100,#bf360c)",borderRadius:12,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:22}}>🔌</span>
+                    <div>
+                      <div style={{fontWeight:800,fontSize:13,color:"#fff"}}>Sync not active on this device</div>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,.8)",marginTop:2}}>Enter the Supabase API key in ⚙️ Settings to connect and sync with all other devices.</div>
+                    </div>
+                  </div>
+                  <button onClick={()=>setTab("settings")} style={{background:"#fff",color:"#e65100",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:800,fontSize:12,cursor:"pointer",flexShrink:0}}>
+                    Go to Settings →
+                  </button>
+                </div>
+              )}
+
               {/* ── LIVE DATE & TIME BANNER ── */}
               <div style={{background:"linear-gradient(135deg,#0a1931,#0d3461)",borderRadius:13,padding:"13px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -3166,7 +3190,7 @@ export default function App(){
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"16px",marginBottom:12}}>
                 <div style={{fontWeight:800,fontSize:14,color:"var(--b800)",marginBottom:4}}>🗄 Supabase Database Connection</div>
                 <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:12,lineHeight:1.6}}>
-                  Enter your Supabase API key below to enable permanent data storage and sync across all devices. Data is saved instantly and available offline — syncing when internet returns.
+                  To enable sync on THIS device: paste the Supabase API key below. Every device (phone, tablet, laptop) needs this key entered once. Get it from: Supabase Dashboard → your project → Settings → API → copy the <strong>anon public</strong> key (starts with eyJ...).
                 </div>
                 <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 13px",marginBottom:12,fontSize:11,color:"#1b5e20",lineHeight:1.7}}>
                   <strong>Project URL:</strong> https://oscuauaifgaeauzvkihu.supabase.co<br/>
@@ -4021,7 +4045,22 @@ export default function App(){
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {profMember.email&&<button className="btn bemail sm" disabled={emailSending["sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsEmail(profMember)}>{emailSending["sav_"+profMember.id]==="sending"?"⏳...":"📨 Email"}</button>}
                         {profMember.whatsapp&&<React.Fragment><a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWASavingsMsg(profMember))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
-                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);const dataUrl=await blobToDataUrl(blob);const a=document.createElement("a");a.href=dataUrl;a.download="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";a.style.cssText="position:fixed;top:-100px;opacity:0";document.body.appendChild(a);a.click();setTimeout(()=>{try{document.body.removeChild(a);}catch(e){}},5000);}}>{WA_SVG}WA PDF</button>
+                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{
+  try{
+    const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);
+    const filename="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";
+    const file=new File([blob],filename,{type:"application/pdf"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:"BIDA — "+profMember.name});
+    } else {
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;a.download=filename;
+      a.style.cssText="position:fixed;top:-200px;opacity:0";
+      document.body.appendChild(a);a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+    }
+  }catch(e){if(e.name!=="AbortError")alert("PDF error: "+e.message);}
+}}>{WA_SVG}WA PDF</button>
                         <button className="btn bsms sm" disabled={emailSending["sms_sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsSMS(profMember)}>{emailSending["sms_sav_"+profMember.id]==="sending"?"⏳...":"📱 SMS"}</button></React.Fragment>}
                       </div>
                     </div>
