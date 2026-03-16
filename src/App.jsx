@@ -13,6 +13,7 @@ const loadScript = (src) => new Promise((res, rej) => {
 // SUPABASE — Persistent storage + real-time sync across all devices
 // ══════════════════════════════════════════════════════════════════════════════
 const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
+const SYNC_INTERVAL_MS = 15000; // poll every 15 seconds for cross-device sync
 let SUPA_KEY = ""; // Set via Settings tab — never hardcode in production
 
 // Load Supabase key from localStorage (set once by treasurer in Settings)
@@ -106,8 +107,52 @@ async function deleteRecord(table, id, setSync){
 }
 
 // Load all data from Supabase on startup
+// Sanitise a member row coming back from Supabase —
+// coerce all numeric fields regardless of column name casing
+function sanitiseMember(r){
+  if(!r) return r;
+  return {
+    ...r,
+    id:           +r.id||0,
+    membership:   +(r.membership||r.Membership||0),
+    annualSub:    +(r.annualSub||r.annualsub||r.annual_sub||0),
+    monthlySavings: +(r.monthlySavings||r.monthlysavings||r.monthly_savings||0),
+    welfare:      +(r.welfare||0),
+    shares:       +(r.shares||0),
+    voluntaryDeposit: +(r.voluntaryDeposit||r.voluntarydeposit||0),
+    approvalTrail: Array.isArray(r.approvalTrail||r.approvaltrail) ? (r.approvalTrail||r.approvaltrail) : [],
+    pendingCommissions: Array.isArray(r.pendingCommissions||r.pendingcommissions) ? (r.pendingCommissions||r.pendingcommissions) : [],
+  };
+}
+function sanitiseLoan(r){
+  if(!r) return r;
+  return {
+    ...r,
+    id:             +r.id||0,
+    memberId:       +(r.memberId||r.memberid||0),
+    amountLoaned:   +(r.amountLoaned||r.amountloaned||0),
+    amountPaid:     +(r.amountPaid||r.amountpaid||0),
+    processingFeePaid: +(r.processingFeePaid||r.processingfeepaid||0),
+    term:           +(r.term||12),
+    approvalTrail:  Array.isArray(r.approvalTrail||r.approvaltrail) ? (r.approvalTrail||r.approvaltrail) : [],
+  };
+}
+function sanitiseExpense(r){
+  if(!r) return r;
+  return {...r, id:+r.id||0, amount:+(r.amount||0)};
+}
+function sanitiseInvestment(r){
+  if(!r) return r;
+  return {
+    ...r,
+    id:             +r.id||0,
+    amount:         +(r.amount||0),
+    interestEarned: +(r.interestEarned||r.interestearned||0),
+  };
+}
+
 async function loadAllFromSupabase(){
-  const [members,loans,expenses,investments,providers,receipts,ledger,auditLog]=await Promise.all([
+  const [rawMembers,rawLoans,rawExpenses,rawInvestments,providers,receipts,ledger,auditLog]=await Promise.all([
     supaFetch("members"),
     supaFetch("loans"),
     supaFetch("expenses"),
@@ -117,7 +162,12 @@ async function loadAllFromSupabase(){
     supaFetch("ledger").catch(()=>[]),
     supaFetch("audit_log").catch(()=>[]),
   ]);
-  return {members,loans,expenses,investments,serviceProviders:providers,receipts,ledger,auditLog};
+  // Sanitise all numeric fields so no string values corrupt the cash formula
+  const members     = Array.isArray(rawMembers)     ? rawMembers.map(sanitiseMember)     : [];
+  const loans       = Array.isArray(rawLoans)       ? rawLoans.map(sanitiseLoan)         : [];
+  const expenses    = Array.isArray(rawExpenses)    ? rawExpenses.map(sanitiseExpense)   : [];
+  const investments = Array.isArray(rawInvestments) ? rawInvestments.map(sanitiseInvestment) : [];
+  return {members,loans,expenses,investments,serviceProviders:providers||[],receipts,ledger,auditLog};
 }
 
 const fmt   = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString("en-UG");
@@ -1804,13 +1854,23 @@ export default function App(){
     setSyncStatus("loading");
     loadAllFromSupabase()
       .then(data=>{
-        if(data.members&&Array.isArray(data.members)&&data.members.length>0) setMembers(data.members);
-        if(data.loans&&Array.isArray(data.loans)&&data.loans.length>0) setLoans(data.loans);
-        if(data.expenses&&Array.isArray(data.expenses)&&data.expenses.length>0) setExpenses(data.expenses);
-        if(data.investments&&Array.isArray(data.investments)&&data.investments.length>0) setInvestments(data.investments);
-        if(data.serviceProviders&&Array.isArray(data.serviceProviders)&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
-        if(data.ledger&&Array.isArray(data.ledger)&&data.ledger.length>0) setLedger(data.ledger);
-        if(data.auditLog&&Array.isArray(data.auditLog)&&data.auditLog.length>0) setAuditLog(data.auditLog);
+        // Only replace local data if Supabase returned valid records
+        // This prevents empty or corrupt DB from wiping correct INIT figures
+        if(data.members&&data.members.length>0){
+          // Sanity check: members should have positive savings totals
+          const hasValidData = data.members.some(m=>(m.membership||0)>0||(m.monthlySavings||0)>0);
+          if(hasValidData) setMembers(data.members);
+        }
+        if(data.loans&&data.loans.length>0) setLoans(data.loans);
+        if(data.expenses&&data.expenses.length>0){
+          // Sanity check: expenses should have positive amounts
+          const hasValidData = data.expenses.some(e=>(e.amount||0)>0);
+          if(hasValidData) setExpenses(data.expenses);
+        }
+        if(data.investments&&data.investments.length>0) setInvestments(data.investments);
+        if(data.serviceProviders&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
+        if(data.ledger&&data.ledger.length>0) setLedger(data.ledger);
+        if(data.auditLog&&data.auditLog.length>0) setAuditLog(data.auditLog);
         setDbLoaded(true); setSyncStatus("synced");
         replayOfflineQueue(setSyncStatus);
       })
@@ -1823,6 +1883,44 @@ export default function App(){
     window.addEventListener("online",h);
     return ()=>window.removeEventListener("online",h);
   },[]);
+
+  // ── Cross-device sync: poll Supabase every 15 seconds ──
+  // When another device saves a record, this pulls it in automatically
+  useEffect(()=>{
+    const key=getSupaKey();
+    if(!key||!authUser) return; // only poll when logged in with a key
+    const poll=async()=>{
+      try{
+        // Fetch latest data silently in background
+        const [freshMembers,freshLoans,freshExpenses,freshInvestments]=await Promise.all([
+          supaFetch("members"),
+          supaFetch("loans"),
+          supaFetch("expenses"),
+          supaFetch("investments"),
+        ]);
+        // Only update state if data looks valid (prevents corrupt data overwriting good data)
+        if(freshMembers&&freshMembers.length>0&&freshMembers.some(m=>(m.membership||0)+(m.monthlySavings||0)>0)){
+          setMembers(freshMembers.map(sanitiseMember));
+        }
+        if(freshLoans&&freshLoans.length>0){
+          setLoans(freshLoans.map(sanitiseLoan));
+        }
+        if(freshExpenses&&freshExpenses.length>0&&freshExpenses.some(e=>(e.amount||0)>0)){
+          setExpenses(freshExpenses.map(sanitiseExpense));
+        }
+        if(freshInvestments&&freshInvestments.length>=0){
+          setInvestments(freshInvestments.map(sanitiseInvestment));
+        }
+      }catch(e){
+        // Silent fail — don't show error for background poll
+        console.debug("Background sync poll failed:",e.message);
+      }
+    };
+    // Poll immediately on login, then every 15 seconds
+    poll();
+    const interval=setInterval(poll, SYNC_INTERVAL_MS);
+    return ()=>clearInterval(interval);
+  },[authUser, supaKeyInput]);
 
   useEffect(()=>{
     fetch("https://open.er-api.com/v6/latest/UGX")
@@ -2402,9 +2500,22 @@ export default function App(){
               </svg>
               <div><div className="brand-name">BIDA</div><div className="brand-sub">Co-Operative Multi-Purpose Society</div></div>
             </div>
-            <button onClick={()=>setAuthUser(null)} style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"4px 10px",color:"#fff",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"var(--mono)"}}>
-              {authUser?.role==="treasurer"?"🏦":"✅"} {authUser?.name} · Logout
-            </button>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+              {/* ── SYNC STATUS DOT ── */}
+              <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(0,0,0,.2)",borderRadius:20,padding:"3px 10px",border:"1px solid rgba(255,255,255,.1)"}}>
+                <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,
+                  background:syncStatus==="synced"?"#69f0ae":syncStatus==="syncing"||syncStatus==="loading"?"#ffcc02":syncStatus==="offline"?"#ef5350":syncStatus==="error"?"#ef5350":"#607d8b",
+                  boxShadow:syncStatus==="synced"?"0 0 6px #69f0ae":syncStatus==="syncing"||syncStatus==="loading"?"0 0 6px #ffcc02":"none",
+                  animation:syncStatus==="syncing"||syncStatus==="loading"?"pu .8s ease-in-out infinite":"none"
+                }}/>
+                <span style={{fontSize:9,fontWeight:700,color:"rgba(255,255,255,.8)",fontFamily:"var(--mono)",whiteSpace:"nowrap"}}>
+                  {syncStatus==="synced"?"LIVE":syncStatus==="syncing"?"SAVING…":syncStatus==="loading"?"LOADING…":syncStatus==="offline"?"OFFLINE":syncStatus==="error"?"ERROR":"NO SYNC"}
+                </span>
+              </div>
+              <button onClick={()=>setAuthUser(null)} style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"4px 10px",color:"#fff",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"var(--mono)",whiteSpace:"nowrap"}}>
+                {authUser?.role==="admin"?"🔑":authUser?.role==="auditor"?"🔍":authUser?.role==="finance_mgr"?"💼":"🏦"} {authUser?.name} · Logout
+              </button>
+            </div>
           </div>
           <div className="hdr-nav">
             <nav className="nav">
