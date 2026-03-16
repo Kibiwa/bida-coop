@@ -675,6 +675,20 @@ const WA_SVG = <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColo
 
 function buildWASavingsMsg(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return `Dear ${m.name.split(" ")[0]}, this is your BIDA Co-operative Multi-Purpose Society savings reminder for ${mn} ${yr}.\n\nYour monthly contribution of ${fmt(m.monthlySavings)} is due by the 5th.\nTotal banked to date: ${fmt(totBanked(m))}\n\n— BIDA Co-operative Multi-Purpose Society`;}
 function buildWALoanMsg(m,loan){const c=calcLoan(loan);return `Dear ${m.name.split(" ")[0]}, this is a BIDA Co-operative loan reminder.\n\nBalance outstanding: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\nTotal due: ${fmt(c.totalDue)}\n\nPlease arrange payment at your earliest convenience.\n— BIDA Co-operative Multi-Purpose Society`;}
+function buildWAStatementMsg(m){
+  const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();
+  return `Dear ${m.name.split(" ")[0]}, please find your BIDA Co-operative Member Statement attached.
+
+Summary as at ${mn} ${yr}:
+  Total Banked:  ${fmt(totBanked(m))}
+  Monthly Savings: ${fmt(m.monthlySavings)}
+  Welfare:       ${fmt(m.welfare)}
+  Shares:        ${fmt(m.shares)}
+
+Thank you for being a valued member.
+— BIDA Co-operative Multi-Purpose Society
+bidacooperative@gmail.com`;
+}
 function buildWADueMsg(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return `⚠️ Dear ${m.name.split(" ")[0]}, your BIDA Co-operative loan of ${fmt(loan.amountLoaned)} is due for full settlement on ${dueFmt}.\n\nBalance due: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\n\nPlease arrange payment before the due date.\n— BIDA Co-operative Multi-Purpose Society`;}
 function buildSMSSavingsMsg(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return `BIDA Coop: Dear ${m.name.split(" ")[0]}, your ${mn} ${yr} savings of ${fmt(m.monthlySavings)} is due by the 5th. Total: ${fmt(totBanked(m))}.`;}
 function buildSMSLoanMsg(m,loan){const c=calcLoan(loan);return `BIDA Coop: Dear ${m.name.split(" ")[0]}, your loan balance is ${fmt(c.balance)}. Monthly pay: ${fmt(c.monthlyPayment)}. Total due: ${fmt(c.totalDue)}.`;}
@@ -2264,7 +2278,7 @@ export default function App(){
     try{
       const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
       const blob=await generateMemberPDF(m,profLoans,members,loans,true);
-      setSharedPDF({blob,filename,label:m.name+" Statement",type:"member",memberId:m.id,show:true});
+      setSharedPDF({blob,filename,label:m.name+" Statement",type:"member",memberId:m.id,show:true,waNumber:waNum(m.whatsapp||m.phone||"")});
     }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
     finally{setPdfGen(null);}
   };
@@ -3664,7 +3678,20 @@ export default function App(){
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                     <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,border:"none",cursor:"pointer"}}>📥 Download PDF</button>
                     <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:12,cursor:"pointer"}}>🔍 Open in New Tab</button>
-                    <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:8,background:"#25D366",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,sharedPDF.label)}>{WA_SVG} Share via WhatsApp</button>
+                    <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:8,background:"#25D366",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={async()=>{
+                      if(!sharedPDF.blob)return;
+                      const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
+                      if(navigator.canShare&&navigator.canShare({files:[file]})){
+                        try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label,text:"BIDA Co-operative "+sharedPDF.label+" — "+toStr()});}
+                        catch(e){if(e.name!=="AbortError"){const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}}
+                      } else {
+                        const u=URL.createObjectURL(sharedPDF.blob);
+                        const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;
+                        document.body.appendChild(a);a.click();
+                        setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);
+                        setTimeout(()=>window.open("https://web.whatsapp.com","_blank"),800);
+                      }
+                    }}>{WA_SVG} Share via WhatsApp</button>
                   </div>
                   <div style={{fontSize:10,color:"#2e7d32",marginTop:8,opacity:.8}}>Tip: If "Download" doesn't work in your browser, use "Open in New Tab" then save from there (Ctrl+S or right-click → Save).</div>
                 </div>
@@ -3693,24 +3720,34 @@ export default function App(){
                 📥 Download PDF
               </button>
 
-              {/* SECONDARY: Native share (iOS Save to Files, Android share sheet) */}
+              {/* SECONDARY: Native share sheet — iOS saves to Files, Android shows share menu */}
               <button
                 onClick={async()=>{
                   if(!sharedPDF.blob) return;
                   const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                   if(navigator.canShare&&navigator.canShare({files:[file]})){
-                    try{ await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label}); }
+                    try{ await navigator.share({files:[file],title:"BIDA Co-operative",text:"Please find your BIDA statement attached."}); }
                     catch(e){ if(e.name!=="AbortError") console.warn(e); }
                   } else {
-                    // Fallback for browsers without share API
+                    // Open PDF in new tab — user can then share from there
                     const url=URL.createObjectURL(sharedPDF.blob);
                     window.open(url,"_blank");
-                    setTimeout(()=>URL.revokeObjectURL(url),10000);
+                    setTimeout(()=>URL.revokeObjectURL(url),15000);
                   }
                 }}
-                style={{width:"100%",padding:"14px",borderRadius:12,background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
-                📤 Share / Save to Files
+                style={{width:"100%",padding:"14px",borderRadius:12,background:"#128C7E",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
+                📤 Share / Save to Files (iPhone & Android)
               </button>
+
+              {/* WHATSAPP: Opens WA with pre-filled text — user attaches PDF from Downloads */}
+              {sharedPDF.waNumber&&(
+                <a
+                  href={"https://wa.me/"+sharedPDF.waNumber+"?text="+encodeURIComponent("Dear Member, please find your BIDA Co-operative statement attached. Download it from the link or check your Downloads folder.\n\n— BIDA Co-operative Multi-Purpose Society\nbidacooperative@gmail.com")}
+                  target="_blank" rel="noreferrer"
+                  style={{display:"block",width:"100%",padding:"14px",borderRadius:12,background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10,boxSizing:"border-box",textAlign:"center"}}>
+                  {WA_SVG} Send on WhatsApp
+                </a>
+              )}
 
               <button onClick={()=>setSharedPDF(null)} style={{width:"100%",padding:"12px",borderRadius:12,background:"#f5f5f5",color:"#666",fontWeight:600,fontSize:13,border:"none",cursor:"pointer"}}>
                 Close
@@ -4006,7 +4043,27 @@ export default function App(){
                       <div style={{fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Savings Reminder</div>
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {profMember.email&&<button className="btn bemail sm" disabled={emailSending["sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsEmail(profMember)}>{emailSending["sav_"+profMember.id]==="sending"?"⏳...":"📨 Email"}</button>}
-                        {profMember.whatsapp&&<React.Fragment><a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWASavingsMsg(profMember))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
+                        {profMember.whatsapp&&<React.Fragment>
+                          <button className="btn bwa sm" disabled={!!pdfGen} onClick={async()=>{
+                            setPdfGen("wa_"+profMember.id);
+                            try{
+                              const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);
+                              const fname="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";
+                              const file=new File([blob],fname,{type:"application/pdf"});
+                              if(navigator.canShare&&navigator.canShare({files:[file]})){
+                                await navigator.share({files:[file],title:"BIDA — "+profMember.name,text:buildWAStatementMsg(profMember)});
+                              } else {
+                                // Download PDF first then open WA with message
+                                const url=URL.createObjectURL(blob);
+                                const a=document.createElement("a");a.href=url;a.download=fname;
+                                document.body.appendChild(a);a.click();
+                                setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
+                                setTimeout(()=>window.open(waLink(profMember.whatsapp,"PDF downloaded! Please attach from your Downloads folder.\n\n"+buildWAStatementMsg(profMember)),"_blank"),800);
+                              }
+                            }catch(e){if(e.name!=="AbortError")alert("WA share error: "+e.message);}
+                            finally{setPdfGen(null);}
+                          }}>{pdfGen===("wa_"+profMember.id)?"⏳":WA_SVG} WA PDF</button>
+                          <a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWASavingsMsg(profMember))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
                         <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{
   try{
     const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);
@@ -4031,7 +4088,7 @@ export default function App(){
                         <div style={{fontSize:10,color:"#bf360c",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Loan Reminder · Balance {fmt(l.balance)}</div>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                           {profMember.email&&<button className="btn bemail sm" disabled={emailSending["loan_"+l.id]==="sending"} onClick={()=>sendLoanEmail(profMember,l)}>{emailSending["loan_"+l.id]==="sending"?"⏳...":"📨 Email"}</button>}
-                          {profMember.whatsapp&&<React.Fragment><a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWALoanMsg(profMember,l))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
+                          {profMember.whatsapp&&<React.Fragment><a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWALoanMsg(profMember,l))} target="_blank" rel="noreferrer">{WA_SVG}WA Loan</a>
                           <button className="btn bsms sm" disabled={emailSending["sms_loan_"+l.id]==="sending"} onClick={()=>sendLoanSMS(profMember,l)}>{emailSending["sms_loan_"+l.id]==="sending"?"⏳...":"📱"}</button></React.Fragment>}
                         </div>
                       </div>
