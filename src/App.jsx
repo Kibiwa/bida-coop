@@ -12,34 +12,61 @@ const loadScript = (src) => new Promise((res, rej) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // SUPABASE — Persistent storage + real-time sync across all devices
 // ══════════════════════════════════════════════════════════════════════════════
-const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
+const SUPA_URL = "https://gzoafxyinwysstpixlclw.supabase.co";
 const SYNC_INTERVAL_MS = 15000; // poll every 15 seconds for cross-device sync
 // anon/public key — safe to ship in frontend code.
 // Security enforced by Row Level Security on the database, not key secrecy.
 // Supabase explicitly designed this key to be public.
-const SUPA_ANON_KEY = "__SUPA_ANON_KEY__";
+const SUPA_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd6b2FmeHlpbnd5c3RwaXhsY2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyNzgzNDUsImV4cCI6MjA4Nzg1NDM0NX0.5RL38BcXpa_KYhRwLMeJwshGtFzEKZNF8xt9qbsx_nw";
 
 let SUPA_KEY = SUPA_ANON_KEY;
 function getSupaKey(){ return localStorage.getItem("bida_supa_key")||SUPA_ANON_KEY; }
 function setSupaKey(k){ localStorage.setItem("bida_supa_key",k); SUPA_KEY=k; }
-SUPA_KEY = getSupaKey();
+SUPA_KEY = SUPA_ANON_KEY; // Always start with hardcoded key — localStorage overrides if set
 
 // Simple fetch wrapper for Supabase REST API
 async function supa(method, table, body=null, query=""){
   const key=SUPA_KEY||getSupaKey();
-  if(!key) throw new Error("Supabase API key not set. Go to Settings tab to enter it.");
+  if(!key) throw new Error("Supabase API key not set.");
   const url=SUPA_URL+"/rest/v1/"+table+(query?"?"+query:"");
-  const headers={"Content-Type":"application/json","apikey":key,"Authorization":"Bearer "+key,"Prefer":method==="POST"?"resolution=merge-duplicates":"return=representation"};
-  const res=await fetch(url,{method,headers,body:body?JSON.stringify(body):undefined});
-  if(!res.ok){const err=await res.text();throw new Error("Supabase "+method+" "+table+": "+err);}
+  // POST (upsert): merge-duplicates tells Supabase to UPDATE on conflict
+  // GET: no Prefer header — it causes PostgREST to error on reads
+  const headers={
+    "Content-Type":"application/json",
+    "apikey":key,
+    "Authorization":"Bearer "+key,
+  };
+  if(method==="POST"){
+    headers["Prefer"]="resolution=merge-duplicates,return=representation";
+  }
+  let res;
+  try{
+    res=await fetch(url,{method,headers,body:body?JSON.stringify(body):undefined});
+  }catch(netErr){
+    throw new Error("Network error on "+table+": "+netErr.message);
+  }
+  if(!res.ok){
+    const err=await res.text().catch(()=>"unknown error");
+    throw new Error("Supabase "+method+" "+table+" ("+res.status+"): "+err);
+  }
   if(method==="DELETE"||res.status===204) return [];
-  return res.json();
+  const text=await res.text();
+  if(!text||text==="null") return [];
+  try{ return JSON.parse(text); }catch(e){ return []; }
 }
 
-// Upsert array of records into a table
+// Upsert array of records into a table — safe for concurrent multi-user writes
+// Uses PostgreSQL upsert (INSERT ... ON CONFLICT DO UPDATE) via Supabase Prefer header
 async function supaUpsert(table, rows){
   if(!rows||!rows.length) return;
-  await supa("POST", table, rows);
+  // Retry once on transient failure (handles simultaneous saves from different devices)
+  try{
+    await supa("POST", table, rows);
+  }catch(e){
+    // Wait 500ms and retry once — handles race conditions between concurrent users
+    await new Promise(r=>setTimeout(r,500));
+    await supa("POST", table, rows);
+  }
 }
 
 // Fetch all rows from a table
@@ -74,19 +101,24 @@ async function replayOfflineQueue(setSync){
 }
 
 // Save one record — tries Supabase, queues if offline
-async function saveRecord(table, row, setSync){
+async function saveRecord(table, row, setSync, onError){
   const key=getSupaKey();
-  if(!key) return; // No key configured — skip silently, data still in React state
+  if(!key) return;
+  const stamped={...row, last_saved_at: new Date().toISOString()};
   try{
-    await supaUpsert(table,[row]);
+    setSync("syncing");
+    await supaUpsert(table,[stamped]);
     setSync("synced");
   }catch(e){
+    const msg=e.message||"Unknown error";
     if(!navigator.onLine){
-      queueOp({type:"upsert",table,row});
+      queueOp({type:"upsert",table,row:stamped});
       setSync("offline");
     } else {
-      console.error("Save failed ("+table+"):",e.message);
+      console.error("Save failed ("+table+"):",msg);
       setSync("error");
+      queueOp({type:"upsert",table,row:stamped});
+      if(onError) onError(msg);
     }
   }
 }
@@ -114,6 +146,17 @@ async function deleteRecord(table, id, setSync){
 // coerce all numeric fields regardless of column name casing
 function sanitiseMember(r){
   if(!r) return r;
+  // approvalTrail and pendingCommissions come back as parsed arrays from JSONB
+  const trail = Array.isArray(r.approvalTrail||r.approvaltrail)
+    ? (r.approvalTrail||r.approvaltrail)
+    : (typeof (r.approvalTrail||r.approvaltrail)==="string"
+        ? JSON.parse(r.approvalTrail||r.approvaltrail||"[]")
+        : []);
+  const commissions = Array.isArray(r.pendingCommissions||r.pendingcommissions)
+    ? (r.pendingCommissions||r.pendingcommissions)
+    : (typeof (r.pendingCommissions||r.pendingcommissions)==="string"
+        ? JSON.parse(r.pendingCommissions||r.pendingcommissions||"[]")
+        : []);
   return {
     ...r,
     id:           +r.id||0,
@@ -123,12 +166,42 @@ function sanitiseMember(r){
     welfare:      +(r.welfare||0),
     shares:       +(r.shares||0),
     voluntaryDeposit: +(r.voluntaryDeposit||r.voluntarydeposit||0),
-    approvalTrail: Array.isArray(r.approvalTrail||r.approvaltrail) ? (r.approvalTrail||r.approvaltrail) : [],
-    pendingCommissions: Array.isArray(r.pendingCommissions||r.pendingcommissions) ? (r.pendingCommissions||r.pendingcommissions) : [],
+    approvalStatus: r.approvalStatus||r.approvalstatus||"approved",
+    approvalTrail: trail,
+    pendingCommissions: commissions,
+    nextOfKin:    r.nextOfKin||r.next_of_kin||null,
+    // Contact & profile fields
+    phone:        r.phone||r.Phone||"",
+    whatsapp:     r.whatsapp||r.Whatsapp||"",
+    email:        r.email||r.Email||"",
+    address:      r.address||r.Address||"",
+    nin:          r.nin||r.NIN||"",
+    photoUrl:     r.photoUrl||r.photourl||"",
+    // Referral fields
+    referralCommission:  +(r.referralCommission||r.referralcommission||0),
+    referralSource:       r.referralSource||r.referralsource||"",
+    referredByMemberId:   r.referredByMemberId||r.referredbymemberid||null,
+    // Payment fields (stored from new member registration)
+    payMode:      r.payMode||r.paymode||"cash",
+    bankName:     r.bankName||r.bankname||"",
+    bankAccount:  r.bankAccount||r.bankaccount||"",
+    depositorName:r.depositorName||r.depositorname||"",
+    mobileNumber: r.mobileNumber||r.mobilenumber||"",
+    transactionId:r.transactionId||r.transactionid||"",
+    initialPaymentReceived: !!(r.initialPaymentReceived||r.initialpaymentreceived),
+    joinDate:     r.joinDate||r.joindate||null,
   };
 }
 function sanitiseLoan(r){
   if(!r) return r;
+  const trail = Array.isArray(r.approvalTrail||r.approvaltrail)
+    ? (r.approvalTrail||r.approvaltrail)
+    : (typeof (r.approvalTrail||r.approvaltrail)==="string"
+        ? JSON.parse(r.approvalTrail||r.approvaltrail||"[]")
+        : []);
+  const payments = Array.isArray(r.payments)
+    ? r.payments
+    : (typeof r.payments==="string" ? JSON.parse(r.payments||"[]") : []);
   return {
     ...r,
     id:             +r.id||0,
@@ -137,12 +210,23 @@ function sanitiseLoan(r){
     amountPaid:     +(r.amountPaid||r.amountpaid||0),
     processingFeePaid: +(r.processingFeePaid||r.processingfeepaid||0),
     term:           +(r.term||12),
-    approvalTrail:  Array.isArray(r.approvalTrail||r.approvaltrail) ? (r.approvalTrail||r.approvaltrail) : [],
+    approvalStatus: r.approvalStatus||r.approvalstatus||"approved",
+    approvalTrail:  trail,
+    payments:       payments,
   };
 }
 function sanitiseExpense(r){
   if(!r) return r;
-  return {...r, id:+r.id||0, amount:+(r.amount||0)};
+  return {
+    ...r,
+    id:+r.id||0,
+    amount:+(r.amount||0),
+    // Default approval status for all existing expenses — they are pre-approved
+    expApprovalStatus: r.expApprovalStatus||"approved",
+    expApprovedBy:     r.expApprovedBy||"",
+    expApprovedAt:     r.expApprovedAt||"",
+    expRejectionReason:r.expRejectionReason||"",
+  };
 }
 function sanitiseInvestment(r){
   if(!r) return r;
@@ -155,13 +239,15 @@ function sanitiseInvestment(r){
 }
 
 async function loadAllFromSupabase(){
-  const [rawMembers,rawLoans,rawExpenses,rawInvestments,providers,receipts,ledger,auditLog,settings]=await Promise.all([
+  const [rawMembers,rawLoans,rawExpenses,rawInvestments,providers,receipts,ledger,auditLog,settings,rawContribLog,rawDividendPayouts]=await Promise.all([
     supaFetch("members"),
     supaFetch("loans"),
     supaFetch("expenses"),
     supaFetch("investments"),
     supaFetch("service_providers"),
     supaFetch("receipts").catch(()=>[]),
+    supaFetch("contrib_log").catch(()=>[]),
+    supaFetch("dividend_payouts").catch(()=>[]),
     supaFetch("ledger").catch(()=>[]),
     supaFetch("audit_log").catch(()=>[]),
     supaFetch("settings").catch(()=>[]),
@@ -180,7 +266,7 @@ async function loadAllFromSupabase(){
   const loans       = Array.isArray(rawLoans)       ? rawLoans.map(sanitiseLoan)         : [];
   const expenses    = Array.isArray(rawExpenses)    ? rawExpenses.map(sanitiseExpense)   : [];
   const investments = Array.isArray(rawInvestments) ? rawInvestments.map(sanitiseInvestment) : [];
-  return {members,loans,expenses,investments,serviceProviders:providers||[],receipts,ledger,auditLog};
+  return {members,loans,expenses,investments,serviceProviders:providers||[],receipts,ledger,auditLog,contribLog:rawContribLog||[],dividendPayouts:rawDividendPayouts||[]};
 }
 
 const fmt   = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString("en-UG");
@@ -269,58 +355,58 @@ const spExpiryDate=(sp)=>{
 const spIsActive=(sp)=>{const e=spExpiryDate(sp);return e?new Date()<=e:false;};
 
 const INIT_MEMBERS = [
-  {id:1,name:"LUKULA PATRICK",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:60000,welfare:40000,shares:150000,joinDate:"2024-01-01"},
-  {id:2,name:"NAMWASE LOY",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:1030000,welfare:550000,shares:300000,joinDate:"2024-01-01"},
-  {id:3,name:"BIRUNGI SHEILLA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:385000,welfare:285000,shares:300000,joinDate:"2024-01-01"},
-  {id:4,name:"GANDI FRED K",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:935000,welfare:300000,shares:350000,joinDate:"2024-01-01"},
-  {id:5,name:"BAZIRA RONALD JO",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:220000,welfare:150000,shares:250000,joinDate:"2024-01-01"},
-  {id:6,name:"MUGAYA ROBERT",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:130000,welfare:120000,shares:200000,joinDate:"2024-01-01"},
-  {id:7,name:"WANYANA JULIET",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:120000,welfare:110000,shares:200000,joinDate:"2024-01-01"},
-  {id:8,name:"KITAKUULE BINASALI",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:850000,welfare:360000,shares:300000,joinDate:"2024-01-01"},
-  {id:9,name:"KITAKUULE NASUR",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:10,name:"KISAMBIRA HASSAN",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:250000,welfare:200000,shares:300000,joinDate:"2024-01-01"},
-  {id:11,name:"BAFUMBA SARAH",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:50000,welfare:60000,shares:200000,joinDate:"2024-01-01"},
-  {id:12,name:"TEZUKUUBA FAROUK",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:0,welfare:10000,shares:0,joinDate:"2024-01-01"},
-  {id:13,name:"KATUNTU HANNAH",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:210000,welfare:210000,shares:300000,joinDate:"2024-01-01"},
-  {id:15,name:"KANKWENZI HELLEN",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:105000,welfare:60000,shares:200000,joinDate:"2024-01-01"},
-  {id:16,name:"MUKESI DAVID",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:100000,welfare:70000,shares:200000,joinDate:"2024-01-01"},
-  {id:17,name:"ITTAZI CHRISTOPHER",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:45000,welfare:40000,shares:150000,joinDate:"2024-01-01"},
-  {id:18,name:"KIFUMBA SUMIN",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:19,name:"WOTAKYALA SAM",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:160000,welfare:90000,shares:200000,joinDate:"2024-01-01"},
-  {id:20,name:"WOTAKYALA HAAWA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:110000,welfare:140000,shares:250000,joinDate:"2024-01-01"},
-  {id:21,name:"JOSEPH KAWUBIRI",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:22,name:"LOVINA TEZIKUBA",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:23,name:"KAMIS KAYIMA",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:35000,welfare:20000,shares:150000,joinDate:"2024-01-01"},
-  {id:24,name:"NAKAZIBWE FAITH",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:25,name:"KASIIRA ZIRABA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:700000,welfare:360000,shares:300000,joinDate:"2024-01-01"},
-  {id:26,name:"ZIRABA YUSUF",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:140000,welfare:80000,shares:200000,joinDate:"2024-01-01"},
-  {id:27,name:"JULIET TIGATEGE",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:660000,welfare:400000,shares:300000,joinDate:"2024-01-01"},
-  {id:28,name:"KATUKO ZOE",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:990000,welfare:480000,shares:300000,joinDate:"2024-01-01"},
-  {id:29,name:"BOGERE SWALIK",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:30,name:"MUKOOBA JULIUS",email:"",whatsapp:"",membership:50000,annualSub:100000,monthlySavings:50000,welfare:40000,shares:100000,joinDate:"2024-01-01"},
-  {id:31,name:"ZIRABA AIDHA",email:"",whatsapp:"",membership:50000,annualSub:100000,monthlySavings:50000,welfare:60000,shares:100000,joinDate:"2024-01-01"},
-  {id:33,name:"KATUBE AZIAZ",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:60000,welfare:40000,shares:150000,joinDate:"2024-01-01"},
-  {id:34,name:"TIBAKAWA SUZAN",email:"",whatsapp:"",membership:50000,annualSub:100000,monthlySavings:110000,welfare:40000,shares:100000,joinDate:"2024-01-01"},
-  {id:35,name:"BALWANA JOHNNY",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:36,name:"MWASE PATRICK",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:200000,welfare:100000,shares:200000,joinDate:"2024-01-01"},
-  {id:37,name:"NAMULONDO SHAMIRA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:140000,welfare:150000,shares:300000,joinDate:"2024-01-01"},
-  {id:38,name:"NDIKUWA MISHA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:240000,welfare:100000,shares:200000,joinDate:"2024-01-01"},
-  {id:39,name:"BABIRYE OLIVIA",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:70000,welfare:80000,shares:100000,joinDate:"2024-01-01"},
-  {id:40,name:"WAISWA DAMIENO",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:41,name:"BABIRYE REBECCA",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:42,name:"BALWANA SUZAN",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:43,name:"EDWARD BAZIRA",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:0,welfare:20000,shares:100000,joinDate:"2024-01-01"},
-  {id:44,name:"ROBINA KALINAKI",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:20000,welfare:0,shares:50000,joinDate:"2024-01-01"},
-  {id:45,name:"BAKITA JOYCE",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:300000,welfare:200000,shares:300000,joinDate:"2024-01-01"},
-  {id:46,name:"MUNABI AGGREY",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:47,name:"NASONGOLA ARON",email:"",whatsapp:"",membership:50000,annualSub:20000,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01"},
-  {id:48,name:"KAGODA MOSES",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:50000,welfare:50000,shares:100000,joinDate:"2024-01-01"},
+  {id:1,name:"LUKULA PATRICK",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:60000,welfare:40000,shares:150000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:2,name:"NAMWASE LOY",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:1030000,welfare:550000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:3,name:"BIRUNGI SHEILLA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:385000,welfare:285000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:4,name:"GANDI FRED K",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:935000,welfare:300000,shares:350000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:5,name:"BAZIRA RONALD JO",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:220000,welfare:150000,shares:250000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:6,name:"MUGAYA ROBERT",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:130000,welfare:120000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:7,name:"WANYANA JULIET",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:120000,welfare:110000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:8,name:"KITAKUULE BINASALI",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:850000,welfare:360000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:9,name:"KITAKUULE NASUR",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:10,name:"KISAMBIRA HASSAN",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:250000,welfare:200000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:11,name:"BAFUMBA SARAH",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:50000,welfare:60000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:12,name:"TEZUKUUBA FAROUK",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:0,welfare:10000,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:13,name:"KATUNTU HANNAH",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:210000,welfare:210000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:15,name:"KANKWENZI HELLEN",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:105000,welfare:60000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:16,name:"MUKESI DAVID",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:100000,welfare:70000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:17,name:"ITTAZI CHRISTOPHER",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:45000,welfare:40000,shares:150000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:18,name:"KIFUMBA SUMIN",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:19,name:"WOTAKYALA SAM",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:160000,welfare:90000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:20,name:"WOTAKYALA HAAWA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:110000,welfare:140000,shares:250000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:21,name:"JOSEPH KAWUBIRI",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:22,name:"LOVINA TEZIKUBA",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:23,name:"KAMIS KAYIMA",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:35000,welfare:20000,shares:150000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:24,name:"NAKAZIBWE FAITH",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:25,name:"KASIIRA ZIRABA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:700000,welfare:360000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:26,name:"ZIRABA YUSUF",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:140000,welfare:80000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:27,name:"JULIET TIGATEGE",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:660000,welfare:400000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:28,name:"KATUKO ZOE",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:990000,welfare:480000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:29,name:"BOGERE SWALIK",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:30,name:"MUKOOBA JULIUS",email:"",whatsapp:"",membership:50000,annualSub:100000,monthlySavings:50000,welfare:40000,shares:100000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:31,name:"ZIRABA AIDHA",email:"",whatsapp:"",membership:50000,annualSub:100000,monthlySavings:50000,welfare:60000,shares:100000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:33,name:"KATUBE AZIAZ",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:60000,welfare:40000,shares:150000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:34,name:"TIBAKAWA SUZAN",email:"",whatsapp:"",membership:50000,annualSub:100000,monthlySavings:110000,welfare:40000,shares:100000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:35,name:"BALWANA JOHNNY",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:36,name:"MWASE PATRICK",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:200000,welfare:100000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:37,name:"NAMULONDO SHAMIRA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:140000,welfare:150000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:38,name:"NDIKUWA MISHA",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:240000,welfare:100000,shares:200000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:39,name:"BABIRYE OLIVIA",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:70000,welfare:80000,shares:100000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:40,name:"WAISWA DAMIENO",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:41,name:"BABIRYE REBECCA",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:42,name:"BALWANA SUZAN",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:43,name:"EDWARD BAZIRA",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:0,welfare:20000,shares:100000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:44,name:"ROBINA KALINAKI",email:"",whatsapp:"",membership:50000,annualSub:50000,monthlySavings:20000,welfare:0,shares:50000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:45,name:"BAKITA JOYCE",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:300000,welfare:200000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:46,name:"MUNABI AGGREY",email:"",whatsapp:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:47,name:"NASONGOLA ARON",email:"",whatsapp:"",membership:50000,annualSub:20000,monthlySavings:0,welfare:0,shares:0,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
+  {id:48,name:"KAGODA MOSES",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:50000,welfare:50000,shares:100000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
 ];
 
 const INIT_LOANS = [
-  {id:1,memberId:13,memberName:"KATUNTU HANNAH",dateBanked:"2025-09-01",amountLoaned:1000000,processingFeePaid:60000,datePaid:"",amountPaid:0,status:"active",term:12},
-  {id:2,memberId:16,memberName:"MUKESI DAVID",dateBanked:"2025-09-01",amountLoaned:550000,processingFeePaid:55500,datePaid:"",amountPaid:0,status:"active",term:12},
-  {id:3,memberId:28,memberName:"KATUKO ZOE",dateBanked:"2025-09-01",amountLoaned:1000000,processingFeePaid:60000,datePaid:"2025-09-30",amountPaid:1040000,status:"paid",term:1},
+  {id:1,memberId:13,memberName:"KATUNTU HANNAH",dateBanked:"2025-09-01",amountLoaned:1000000,processingFeePaid:60000,datePaid:"",amountPaid:0,status:"active",term:12,approvalStatus:"approved",approvalTrail:[]},
+  {id:2,memberId:16,memberName:"MUKESI DAVID",dateBanked:"2025-09-01",amountLoaned:550000,processingFeePaid:55500,datePaid:"",amountPaid:0,status:"active",term:12,approvalStatus:"approved",approvalTrail:[]},
+  {id:3,memberId:28,memberName:"KATUKO ZOE",dateBanked:"2025-09-01",amountLoaned:1000000,processingFeePaid:60000,datePaid:"2025-09-30",amountPaid:1040000,status:"paid",term:1,approvalStatus:"approved",approvalTrail:[]},
 ];
 
 const INIT_INVESTMENTS = [];
@@ -642,7 +728,8 @@ const emptyE = {
   activity:"", amount:"", issuedBy:"", issuedByPhone:"", issuedByNIN:"", issuedById:"",
   approvedBy:"", approverPhone:"", approverNIN:"",
   purpose:"", payMode:"cash", bankName:"", bankAccount:"", depositorName:"",
-  mobileNumber:"", transactionId:"", category:"operations", categoryCustom:"", bankCharges:0, approverMemberId:""
+  mobileNumber:"", transactionId:"", category:"operations", categoryCustom:"", bankCharges:0, approverMemberId:"",
+  expApprovalStatus:"approved", expApprovedBy:"", expApprovedAt:"", expRejectionReason:""
 };
 const emptyL = {
   memberId:"", memberName:"", dateBanked:"", amountLoaned:"", processingFeePaid:"",
@@ -1231,6 +1318,119 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   return doc.output("blob");
 }
 
+
+// ── SHARE CERTIFICATE PDF ─────────────────────────────────────────────────
+async function generateShareCertificate(member, shareUnitsCount, shareValue){
+  await loadJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a5"});
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  const NAVY=[13,52,97],BLUE=[21,101,192],WHITE=[255,255,255],GOLD=[183,146,30],LIGHT=[227,242,253];
+
+  // Border
+  doc.setDrawColor(...GOLD);doc.setLineWidth(1.5);doc.rect(6,6,W-12,H-12,"S");
+  doc.setLineWidth(0.4);doc.rect(9,9,W-18,H-18,"S");
+
+  // Header band
+  doc.setFillColor(...NAVY);doc.rect(9,9,W-18,22,"F");
+
+  // Logo block
+  const cx=24,cy=20,r=7;
+  doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");
+  doc.setFillColor(...WHITE);
+  doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");
+  doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");
+  doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");
+
+  doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);
+  doc.text("BIDA",36,17);
+  doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(180,210,250);
+  doc.text("CO-OPERATIVE MULTI-PURPOSE SOCIETY",36,23);
+
+  doc.setFont("helvetica","bold");doc.setFontSize(15);doc.setTextColor(...WHITE);
+  doc.text("SHARE CERTIFICATE",W/2,16,{align:"center"});
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(180,210,250);
+  doc.text("Official Certificate of Share Ownership",W/2,23,{align:"center"});
+
+  const certNo="BIDA-SH-"+String(member.id).padStart(4,"0");
+  doc.setFontSize(7);doc.setTextColor(180,210,250);
+  doc.text("Cert No: "+certNo,W-12,16,{align:"right"});
+  doc.text("Date: "+toStr(),W-12,22,{align:"right"});
+
+  // Gold band under header
+  doc.setFillColor(...GOLD);doc.rect(9,31,W-18,1,"F");
+
+  // THIS IS TO CERTIFY text
+  doc.setFont("helvetica","italic");doc.setFontSize(9);doc.setTextColor(...NAVY);
+  doc.text("This is to certify that",W/2,40,{align:"center"});
+
+  // Member name large
+  doc.setFont("helvetica","bold");doc.setFontSize(18);doc.setTextColor(...NAVY);
+  doc.text(member.name,W/2,51,{align:"center"});
+  doc.setDrawColor(...GOLD);doc.setLineWidth(0.5);
+  doc.line(W/2-50,53,W/2+50,53);
+
+  // Details
+  doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(50,50,50);
+  const midY=60;
+  doc.text("Member ID: #"+member.id,W/2,midY,{align:"center"});
+  doc.text("is the registered holder of",W/2,midY+7,{align:"center"});
+
+  // Share count — big
+  doc.setFillColor(...LIGHT);doc.roundedRect(W/2-40,midY+10,80,18,3,3,"F");
+  doc.setDrawColor(...GOLD);doc.setLineWidth(0.8);doc.roundedRect(W/2-40,midY+10,80,18,3,3,"S");
+  doc.setFont("helvetica","bold");doc.setFontSize(20);doc.setTextColor(...NAVY);
+  doc.text(shareUnitsCount+" UNIT"+(shareUnitsCount>1?"S":""),W/2,midY+20,{align:"center"});
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(100,100,100);
+  doc.text("("+shareUnitsCount+" share unit"+(shareUnitsCount>1?"s":"")+") at UGX 50,000 per unit",W/2,midY+26,{align:"center"});
+
+  // Share value
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...BLUE);
+  doc.text("Total Share Capital: UGX "+Number(shareValue).toLocaleString("en-UG"),W/2,midY+34,{align:"center"});
+
+  doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,60,60);
+  doc.text("in BIDA Co-operative Multi-Purpose Society, subject to the rules and by-laws of the Society.",W/2,midY+41,{align:"center"});
+
+  // Signature lines
+  const sigY=H-22;
+  doc.setDrawColor(150,150,150);doc.setLineWidth(0.4);
+  doc.line(18,sigY,65,sigY);doc.line(W-65,sigY,W-18,sigY);
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(100,100,100);
+  doc.text("Chairperson Signature & Date",18,sigY+4);
+  doc.text("Secretary / Treasurer Signature & Date",W-65,sigY+4);
+
+  // Footer
+  doc.setFillColor(...NAVY);doc.rect(9,H-11,W-18,6,"F");
+  doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(...WHITE);
+  doc.text("BIDA Co-operative Multi-Purpose Society · "+certNo+" · bidacooperative@gmail.com",W/2,H-7,{align:"center"});
+
+  return doc.output("blob");
+}
+
+
+// ── ERROR BOUNDARY — catches render crashes and shows message instead of white screen ──
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state={hasError:false,error:null}; }
+  static getDerivedStateFromError(error){ return {hasError:true,error}; }
+  componentDidCatch(error,info){ console.error("BIDA App Error:",error,info); }
+  render(){
+    if(this.state.hasError){
+      return React.createElement("div",{style:{minHeight:"100vh",background:"#0d3461",display:"flex",alignItems:"center",justifyContent:"center",padding:20}},
+        React.createElement("div",{style:{background:"#fff",borderRadius:16,padding:"28px 24px",maxWidth:480,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,.4)"}},
+          React.createElement("div",{style:{fontSize:28,marginBottom:12}},"⚠️"),
+          React.createElement("div",{style:{fontSize:18,fontWeight:800,color:"#0d3461",marginBottom:8}},"BIDA App — Unexpected Error"),
+          React.createElement("div",{style:{fontSize:12,color:"#666",marginBottom:16,lineHeight:1.6}},"Something went wrong. Please refresh the page. If the problem persists, clear your browser cache."),
+          React.createElement("div",{style:{background:"#f5f5f5",borderRadius:8,padding:"10px 12px",fontSize:11,fontFamily:"monospace",color:"#c62828",wordBreak:"break-word"}},
+            this.state.error?.message||"Unknown error"
+          ),
+          React.createElement("button",{onClick:()=>window.location.reload(),style:{marginTop:16,padding:"10px 20px",borderRadius:8,background:"#1565c0",color:"#fff",border:"none",fontWeight:700,fontSize:13,cursor:"pointer",width:"100%"}},"Refresh Page")
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── CSS ──────────────────────────────────────────────────────────────────────
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -1534,13 +1734,76 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
           );
         })}
       </div>
-      {l.status!=="paid"&&<div style={{display:"flex",gap:6}}>
-        {(l.approvalStatus==="approved"||!l.approvalStatus)
-          ?<button className="btn bk sm" onClick={function(){markPd(l.id);}}>✓ Settle</button>
-          :<button className="btn bg sm" disabled style={{opacity:.5}} title="Awaiting full approval">⏳ Pending Approval</button>}
-        <button className="btn bg sm" onClick={function(){closeProfile();openEditL(l);}}>✏️ Edit</button>
-      </div>}
+      {/* Repayment Schedule — rendered via proper sub-component (hooks-safe) */}
+      <LoanScheduleFooter l={l} markPd={markPd} closeProfile={closeProfile} openEditL={openEditL}/>
     </div>
+  );
+}
+
+// Proper sub-component so useState is called at component level — not inside an IIFE
+function LoanScheduleFooter({l, markPd, closeProfile, openEditL}){
+  const [showSched,setShowSched] = React.useState(false);
+  const term=l.term||12;
+  const isReducing=(l.amountLoaned||0)>=7000000;
+  const rate=isReducing?0.06:0.04;
+  const schedule=[];
+  if(l.dateBanked){
+    let bal=l.amountLoaned;
+    const start=new Date(l.dateBanked);
+    const principalPerMonth=Math.round(l.amountLoaned/term);
+    for(let i=1;i<=term;i++){
+      const due=new Date(start.getFullYear(),start.getMonth()+i,start.getDate());
+      const interest=isReducing?Math.round(bal*rate):Math.round(l.amountLoaned*rate);
+      const principal=principalPerMonth;
+      const payment=principal+interest;
+      const cumPaid=i*payment;
+      const isPaid=(l.amountPaid||0)>=cumPaid;
+      bal=Math.max(0,bal-principal);
+      schedule.push({n:i,due,payment,principal,interest,balance:bal,isPaid});
+    }
+  }
+  return (
+    <React.Fragment>
+      <div style={{display:"flex",gap:6,marginTop:l.status!=="paid"?0:6,flexWrap:"wrap"}}>
+        {l.status!=="paid"&&(
+          <React.Fragment>
+            {(l.approvalStatus==="approved"||!l.approvalStatus)
+              ?<button className="btn bk sm" onClick={function(){markPd(l.id);}}>✓ Settle</button>
+              :<button className="btn bg sm" disabled style={{opacity:.5}}>⏳ Pending</button>}
+            <button className="btn bg sm" onClick={function(){closeProfile();openEditL(l);}}>✏️ Edit</button>
+          </React.Fragment>
+        )}
+        {schedule.length>0&&(
+          <button className="btn bg sm" onClick={()=>setShowSched(s=>!s)} style={{fontSize:10}}>
+            {showSched?"▲ Hide":"📅 Repayment Schedule"}
+          </button>
+        )}
+      </div>
+      {showSched&&schedule.length>0&&(
+        <div style={{marginTop:8,overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
+            <thead><tr style={{background:"var(--b50)"}}>
+              {["Mo","Due Date","Payment","Principal","Interest","Balance","Status"].map(h=>(
+                <th key={h} style={{padding:"4px 6px",textAlign:h==="Mo"||h==="Status"?"center":"right",fontSize:8,fontFamily:"var(--mono)",fontWeight:700,color:"var(--b700)",borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {schedule.map(row=>(
+                <tr key={row.n} style={{background:row.isPaid?"#f1f8e9":new Date()>row.due&&!row.isPaid?"#ffebee":"#fff",borderBottom:"1px solid #eef5ff"}}>
+                  <td style={{padding:"4px 6px",textAlign:"center",fontFamily:"var(--mono)",fontWeight:700,color:"var(--b700)",fontSize:9}}>{row.n}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,whiteSpace:"nowrap"}}>{row.due.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#1565c0",fontSize:9}}>{fmt(row.payment)}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9}}>{fmt(row.principal)}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,color:"#c62828"}}>{fmt(row.interest)}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,color:row.balance>0?"#e65100":"#1b5e20",fontWeight:700}}>{fmt(row.balance)}</td>
+                  <td style={{padding:"4px 6px",textAlign:"center"}}><span style={{fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:10,background:row.isPaid?"#e8f5e9":new Date()>row.due?"#ffebee":"#e3f2fd",color:row.isPaid?"#1b5e20":new Date()>row.due?"#c62828":"#1565c0"}}>{row.isPaid?"✓ Paid":new Date()>row.due?"Overdue":"Pending"}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </React.Fragment>
   );
 }
 
@@ -1790,10 +2053,10 @@ function SavingsExpensesChart({savingsData, expensesData}){
   );
 }
 
-export default function App(){
+function AppInner(){
   const [tab,setTab]        = useState("savings");
   const [authUser,setAuthUser] = useState(null); // null = logged out
-  const SESSION_MINUTES = 10;
+  const SESSION_MINUTES = 5;
 
   const [loginPin,setLoginPin] = useState("");
   const [loginRole,setLoginRole] = useState("treasurer");
@@ -1802,10 +2065,22 @@ export default function App(){
   const [loginLockedUntil,setLoginLockedUntil] = useState(null);
   const [members,setMembers]= useState(INIT_MEMBERS);
   const [loans,setLoans]    = useState(INIT_LOANS);
-  const [expenses,setExpenses] = useState(INIT_EXPENSES);
+  const [expenses,setExpenses] = useState(INIT_EXPENSES.map(sanitiseExpense));
   const [serviceProviders,setServiceProviders] = useState(INIT_SERVICE_PROVIDERS);
   // Sync state: "idle" | "loading" | "synced" | "syncing" | "offline" | "error"
   const [syncStatus,setSyncStatus] = useState("idle");
+  const [benovSelMember,setBenovSelMember] = useState("");
+  // Contribution log: {memberId, date, category, amount, note}
+  const [contribLog,setContribLog] = useState([]);
+  const [contribModal,setContribModal] = useState(false);
+  const [contribF,setContribF] = useState({memberId:"",date:new Date().toISOString().split("T")[0],category:"monthlySavings",amount:"",note:""});
+  // Dividend payout records
+  const [dividendPayouts,setDividendPayouts] = useState([]);
+  const [dividendModal,setDividendModal] = useState(false);
+  // Expense approval threshold
+  const EXPENSE_APPROVAL_THRESHOLD = 100000; // expenses >= 100k need Admin approval
+  const [benovClaimType,setBenovClaimType] = useState("death");
+  const [benovRetention,setBenovRetention] = useState("compensate");
   const [supaKeyInput,setSupaKeyInput] = useState(getSupaKey());
   const [pinMgmt,setPinMgmt]         = useState({});
   const [approvalQueue,setApprovalQueue] = useState([]); // pending items across all workflows
@@ -1884,32 +2159,82 @@ export default function App(){
     setSyncStatus("loading");
     loadAllFromSupabase()
       .then(data=>{
-        // Only replace local data if Supabase returned valid records
-        // This prevents empty or corrupt DB from wiping correct INIT figures
+        // Safe initial load: DB is source of truth.
+        // INIT_ data is only used if DB returns nothing (first ever launch).
+        // Merge strategy: DB records win; INIT records not in DB are kept (safety net).
         if(data.members&&data.members.length>0){
-          // Sanity check: members should have positive savings totals
-          const hasValidData = data.members.some(m=>(m.membership||0)>0||(m.monthlySavings||0)>0);
-          if(hasValidData) setMembers(data.members);
+          const hasValid=data.members.some(m=>(m.membership||0)>0||(m.monthlySavings||0)>0);
+          if(hasValid){
+            setMembers(prev=>{
+              const dbIds=new Set(data.members.map(m=>m.id));
+              // Keep any local members not yet in DB (just registered, not yet synced)
+              const localOnly=prev.filter(m=>!dbIds.has(m.id));
+              return [...data.members,...localOnly];
+            });
+          }
         }
-        if(data.loans&&data.loans.length>0) setLoans(data.loans);
-        if(data.expenses&&data.expenses.length>0){
-          // Sanity check: expenses should have positive amounts
-          const hasValidData = data.expenses.some(e=>(e.amount||0)>0);
-          if(hasValidData) setExpenses(data.expenses);
+        if(data.loans&&data.loans.length>=0){
+          setLoans(prev=>{
+            const dbIds=new Set(data.loans.map(l=>l.id));
+            const localOnly=prev.filter(l=>!dbIds.has(l.id));
+            return [...data.loans,...localOnly];
+          });
         }
-        if(data.investments&&data.investments.length>0) setInvestments(data.investments);
+        if(data.expenses&&data.expenses.length>=0){
+          const hasValid=data.expenses.length===0||data.expenses.some(e=>(e.amount||0)>0);
+          if(hasValid){
+            setExpenses(prev=>{
+              const dbIds=new Set(data.expenses.map(e=>e.id));
+              const localOnly=prev.filter(e=>!dbIds.has(e.id));
+              return [...data.expenses,...localOnly];
+            });
+          }
+        }
+        if(data.investments&&data.investments.length>=0) setInvestments(data.investments);
         if(data.serviceProviders&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
         if(data.ledger&&data.ledger.length>0) setLedger(data.ledger);
         if(data.auditLog&&data.auditLog.length>0) setAuditLog(data.auditLog);
+        if(data.contribLog&&data.contribLog.length>0) setContribLog(data.contribLog);
+        if(data.dividendPayouts&&data.dividendPayouts.length>0) setDividendPayouts(data.dividendPayouts);
         setDbLoaded(true); setSyncStatus("synced");
         replayOfflineQueue(setSyncStatus);
       })
       .catch(e=>{ console.error("Supabase load failed:",e.message); setSyncStatus("idle"); });
   },[supaKeyInput]);
 
-  // ── Replay offline queue when internet returns ──
+  // ── When internet returns: replay queue then re-pull all data ──
   useEffect(()=>{
-    const h=()=>replayOfflineQueue(setSyncStatus);
+    const h=async()=>{
+      setSyncStatus("syncing");
+      // First push any queued offline changes
+      await replayOfflineQueue(setSyncStatus);
+      // Then pull fresh data from DB to catch anything others saved while we were offline
+      try{
+        const data=await loadAllFromSupabase();
+        if(data.members&&data.members.length>0){
+          setMembers(prev=>{
+            const dbIds=new Set(data.members.map(m=>m.id));
+            return [...data.members,...prev.filter(m=>!dbIds.has(m.id))];
+          });
+        }
+        if(data.loans&&data.loans.length>=0){
+          setLoans(prev=>{
+            const dbIds=new Set(data.loans.map(l=>l.id));
+            return [...data.loans,...prev.filter(l=>!dbIds.has(l.id))];
+          });
+        }
+        if(data.expenses&&data.expenses.length>=0){
+          setExpenses(prev=>{
+            const dbIds=new Set(data.expenses.map(e=>e.id));
+            return [...data.expenses,...prev.filter(e=>!dbIds.has(e.id))];
+          });
+        }
+        if(data.investments&&data.investments.length>=0) setInvestments(data.investments);
+        if(data.contribLog&&data.contribLog.length>=0) setContribLog(data.contribLog);
+        if(data.dividendPayouts&&data.dividendPayouts.length>=0) setDividendPayouts(data.dividendPayouts);
+        setSyncStatus("synced");
+      }catch(e){ console.warn("Post-reconnect pull failed:",e.message); }
+    };
     window.addEventListener("online",h);
     return ()=>window.removeEventListener("online",h);
   },[]);
@@ -1937,19 +2262,55 @@ export default function App(){
             }
           });
         }
-        // Only update state if data looks valid (prevents corrupt data overwriting good data)
-        if(freshMembers&&freshMembers.length>0&&freshMembers.some(m=>(m.membership||0)+(m.monthlySavings||0)>0)){
-          setMembers(freshMembers.map(sanitiseMember));
+        // SAFE MERGE: DB is the source of truth. Only update state if DB has valid data.
+        // NEVER let a poll with fewer records wipe records only in local state —
+        // local state is merged with DB (DB wins on conflict, local additions are preserved
+        // until they appear in the next poll after being saved).
+        if(freshMembers&&freshMembers.length>0&&freshMembers.some(m=>(m.membership||0)+(m.monthlySavings||0)+(m.membership||0)>0)){
+          const sanitised=freshMembers.map(sanitiseMember);
+          // Merge: keep local members that haven't reached DB yet
+          setMembers(prev=>{
+            const dbIds=new Set(sanitised.map(m=>m.id));
+            const localOnly=prev.filter(m=>!dbIds.has(m.id));
+            return [...sanitised,...localOnly];
+          });
         }
-        if(freshLoans&&freshLoans.length>0){
-          setLoans(freshLoans.map(sanitiseLoan));
+        if(freshLoans&&freshLoans.length>=0){
+          const sanitised=freshLoans.map(sanitiseLoan);
+          setLoans(prev=>{
+            const dbIds=new Set(sanitised.map(l=>l.id));
+            const localOnly=prev.filter(l=>!dbIds.has(l.id));
+            return [...sanitised,...localOnly];
+          });
         }
-        if(freshExpenses&&freshExpenses.length>0&&freshExpenses.some(e=>(e.amount||0)>0)){
-          setExpenses(freshExpenses.map(sanitiseExpense));
+        if(freshExpenses&&freshExpenses.length>=0&&(freshExpenses.length===0||freshExpenses.some(e=>(e.amount||0)>0))){
+          const sanitised=freshExpenses.map(sanitiseExpense);
+          setExpenses(prev=>{
+            const dbIds=new Set(sanitised.map(e=>e.id));
+            const localOnly=prev.filter(e=>!dbIds.has(e.id));
+            return [...sanitised,...localOnly];
+          });
         }
         if(freshInvestments&&freshInvestments.length>=0){
-          setInvestments(freshInvestments.map(sanitiseInvestment));
+          const sanitised=freshInvestments.map(sanitiseInvestment);
+          setInvestments(prev=>{
+            const dbIds=new Set(sanitised.map(i=>i.id));
+            const localOnly=prev.filter(i=>!dbIds.has(i.id));
+            return [...sanitised,...localOnly];
+          });
         }
+        // Also pull contribution log and dividend payouts
+        const [freshContrib,freshDividends]=await Promise.all([
+          supaFetch("contrib_log").catch(()=>null),
+          supaFetch("dividend_payouts").catch(()=>null),
+        ]);
+        if(freshContrib&&freshContrib.length>=0){
+          setContribLog(prev=>{
+            const dbIds=new Set(freshContrib.map(c=>c.id));
+            return [...freshContrib,...prev.filter(c=>!dbIds.has(c.id))];
+          });
+        }
+        if(freshDividends&&freshDividends.length>=0) setDividendPayouts(freshDividends);
       }catch(e){
         // Silent fail — don't show error for background poll
         console.debug("Background sync poll failed:",e.message);
@@ -1997,7 +2358,8 @@ export default function App(){
     monthly:members.reduce((s,m)=>s+(m.monthlySavings||0),0),
     welfare:members.reduce((s,m)=>s+(m.welfare||0),0),
     shares:members.reduce((s,m)=>s+(m.shares||0),0),
-    total:members.reduce((s,m)=>s+totBanked(m),0)
+    voluntary:members.reduce((s,m)=>s+(m.voluntaryDeposit||0),0),
+    total:members.reduce((s,m)=>s+totBanked(m),0)  // includes voluntaryDeposit via totBanked
   }),[members]);
   const lStat = useMemo(()=>{
     const act=loansCalc.filter(l=>l.status!=="paid"),pdd=loansCalc.filter(l=>l.status==="paid");
@@ -2059,10 +2421,35 @@ export default function App(){
   const saveProfile=()=>{
     if(!profF.name.trim())return;
     const before=members.find(m=>m.id===profId);
-    const updated={...before||{},...profF,photoUrl:profF.photoUrl||"",phone:profF.phone||"",nin:profF.nin||"",address:profF.address||"",whatsapp:profF.whatsapp||"",membership:+profF.membership||0,annualSub:+profF.annualSub||0,monthlySavings:+profF.monthlySavings||0,welfare:+profF.welfare||0,shares:+profF.shares||0};
+    const monthlySavings=+profF.monthlySavings||0;
+    // Preserve manual welfare if set, otherwise auto-calc 40%
+    const welfare=(+profF.welfare>0)?+profF.welfare:autoWelfare(monthlySavings);
+    const updated={
+      ...before||{},
+      ...profF,
+      photoUrl:profF.photoUrl||"",
+      phone:profF.phone||"",
+      nin:profF.nin||"",
+      address:profF.address||"",
+      whatsapp:profF.whatsapp||"",
+      membership:+profF.membership||0,
+      annualSub:+profF.annualSub||0,
+      monthlySavings,
+      welfare,
+      shares:+profF.shares||0,
+      voluntaryDeposit:+profF.voluntaryDeposit||0,
+      nextOfKin:profF.nextOfKin||before?.nextOfKin||null,
+      // preserve approval trail from DB — never overwrite
+      approvalTrail:before?.approvalTrail||[],
+      approvalStatus:before?.approvalStatus||"approved",
+      pendingCommissions:before?.pendingCommissions||[],
+    };
     setMembers(prev=>prev.map(m=>m.id===profId?updated:m));
     postAudit(mkAudit("edit","member",profId,before,updated,authUser?.role,authUser?.name));
-    saveRecord("members",updated,setSyncStatus);
+    saveRecord("members",updated,setSyncStatus,(errMsg)=>{
+      setMembers(prev=>prev.map(m=>m.id===profId?before:m));
+      alert("⚠️ Profile NOT saved to database.\n\nError: "+errMsg+"\n\nChanges have been reverted. Check your internet connection and try again.\nIf this keeps happening, run complete_schema.sql in Supabase.");
+    });
     setProfEdit(false);
   };
   const optOutMember=()=>{
@@ -2073,9 +2460,13 @@ export default function App(){
   const saveInv=()=>{
     if(!invF.platform||!invF.amount)return;
     const rec={...invF,amount:+invF.amount||0,interestEarned:+invF.interestEarned||0,id:editInv||(investments.length>0?Math.max(...investments.map(i=>i.id||0))+1:1)};
+    const prevInvSnapshot=[...investments];
     if(editInv) setInvestments(prev=>prev.map(i=>i.id===editInv?rec:i));
     else setInvestments(prev=>[...prev,rec]);
-    saveRecord("investments",rec,setSyncStatus);
+    saveRecord("investments",rec,setSyncStatus,(errMsg)=>{
+      setInvestments(prevInvSnapshot);
+      alert("⚠️ Investment NOT saved.\n\nError: "+errMsg+"\n\nChanges reverted. Please try again.");
+    });
     setInvModal(false);setEditInv(null);setInvF({...emptyInv,dateInvested:new Date().toISOString().split("T")[0]});
   };
   const delInv=(id)=>{if(window.confirm("Delete this investment record?")){setInvestments(prev=>prev.filter(i=>i.id!==id));deleteRecord("investments",id,setSyncStatus);}};
@@ -2085,12 +2476,43 @@ export default function App(){
     if(!addMF.name.trim())return;
     const id=Math.max(...members.map(m=>m.id),0)+1;
     const joinDate=addMF.joinDate||new Date().toISOString().split("T")[0];
-    // Store referral info on the new member record
-    const newMember={id,...addMF,photoUrl:addMF.photoUrl||"",whatsapp:addMF.whatsapp||"",
-      membership:+addMF.membership||0,annualSub:+addMF.annualSub||0,
-      monthlySavings:+addMF.monthlySavings||0,welfare:+addMF.welfare||0,shares:+addMF.shares||0,voluntaryDeposit:+addMF.voluntaryDeposit||0,
+    // Enforce 40% welfare auto-calc from monthly savings if not manually set
+    const monthlySavings=+addMF.monthlySavings||0;
+    const welfare=(+addMF.welfare>0)?+addMF.welfare:autoWelfare(monthlySavings);
+    // Voluntary deposit goes to savings total (counted in totBanked)
+    const voluntaryDeposit=+addMF.voluntaryDeposit||0;
+    // Build approval trail inline so it is always synced
+    const trail=[mkApprovalStep(1,authUser||{role:"treasurer",name:"Treasurer"},"approved","Member registration initiated")];
+    const newMember={
+      id,
+      name:addMF.name.trim(),
+      email:addMF.email||"",
+      whatsapp:addMF.whatsapp||"",
+      phone:addMF.phone||"",
+      address:addMF.address||"",
+      nin:addMF.nin||"",
+      photoUrl:addMF.photoUrl||"",
+      membership:+addMF.membership||0,
+      annualSub:+addMF.annualSub||0,
+      monthlySavings,
+      welfare,
+      shares:+addMF.shares||0,
+      voluntaryDeposit,
+      joinDate,
       referredByMemberId:addMF.referralSource==="member"?+addMF.referredById||null:null,
       referralSource:addMF.referralSource||"",
+      approvalStatus:"step1_done",
+      approvalTrail:trail,
+      pendingCommissions:[],
+      referralCommission:0,
+      nextOfKin:addMF.nextOfKin||null,
+      initialPaymentReceived:!!addMF.initialPaymentReceived,
+      payMode:addMF.payMode||"cash",
+      bankName:addMF.bankName||"",
+      bankAccount:addMF.bankAccount||"",
+      depositorName:addMF.depositorName||"",
+      mobileNumber:addMF.mobileNumber||"",
+      transactionId:addMF.transactionId||"",
     };
     let updatedMembers=[...members,newMember];
     // Commission: 1% of referrer's (monthlySavings + welfare) — payable after 1 month
@@ -2101,56 +2523,42 @@ export default function App(){
       if(referrer&&newAnnualSub>=50000){
         const commBase=(referrer.monthlySavings||0)+(referrer.welfare||0);
         const commission=Math.round(commBase*0.01);
-        // Payable date = 1 month after new member join date
         const payableDate=new Date(joinDate);
         payableDate.setMonth(payableDate.getMonth()+1);
         const payableDateStr=payableDate.toISOString().split("T")[0];
-        const newCommission={
-          newMemberId:id,
-          newMemberName:addMF.name.trim(),
-          amount:commission,
-          earnedDate:joinDate,
-          payableDate:payableDateStr,
-          paid:false,
-          base:commBase,
-        };
-        updatedMembers=updatedMembers.map(m=>m.id===refId?{
-          ...m,
-          referralCommission:(m.referralCommission||0)+commission,
-          pendingCommissions:[...(m.pendingCommissions||[]),newCommission],
-        }:m);
+        const newCommission={newMemberId:id,newMemberName:addMF.name.trim(),amount:commission,earnedDate:joinDate,payableDate:payableDateStr,paid:false,base:commBase};
+        const updatedReferrer={...referrer,referralCommission:(referrer.referralCommission||0)+commission,pendingCommissions:[...(referrer.pendingCommissions||[]),newCommission]};
+        updatedMembers=updatedMembers.map(m=>m.id===refId?updatedReferrer:m);
+        saveRecord("members",updatedReferrer,setSyncStatus);
       }
     }
-    // Add approval trail to new member
-    const memberWithTrail=updatedMembers.find(m=>m.id===id);
-    if(memberWithTrail){
-      const trail=[mkApprovalStep(1,authUser||{role:"treasurer",name:"Treasurer"},"approved","Member registration initiated")];
-      const updatedWithTrail=updatedMembers.map(m=>m.id===id?{...m,approvalStatus:"step1_done",approvalTrail:trail}:m);
-      setMembers(updatedWithTrail);
-    } else {
-      setMembers(updatedMembers);
-    }
-    // Sync new member and updated referrer to Supabase
-    const newM=updatedMembers.find(m=>m.id===id);
-    if(newM) saveRecord("members",newM,setSyncStatus);
-    if(addMF.referralSource==="member"&&addMF.referredById){
-      const updated=updatedMembers.find(m=>m.id===+addMF.referredById);
-      if(updated) saveRecord("members",updated,setSyncStatus);
-    }
+    setMembers(updatedMembers);
+    // Sync — trail is already baked into newMember object
+    saveRecord("members",newMember,setSyncStatus,(errMsg)=>{
+      setMembers(prev=>prev.filter(m=>m.id!==newMember.id));
+      alert("⚠️ New member NOT saved to database.\n\nError: "+errMsg+"\n\nThe member has been removed from your local view. Please check your connection and try again.");
+    });
+    postAudit([mkAudit("create","member",id,null,newMember,authUser?.role,authUser?.name)]);
     setAddMModal(false);
-    setAddMF({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:""});
+    setAddMF({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,shareUnitsInput:0,voluntaryDeposit:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:"",initialPaymentReceived:false,initialPaymentNote:"",nextOfKin:null});
   };
   const openPayModal=(loan)=>{setPayF({...emptyPay,loanId:loan.id,date:new Date().toISOString().split("T")[0]});setPayModal(true);};
   const savePay=()=>{
     if(!payF.amount||!payF.loanId)return;
     const amt=+payF.amount||0;
+    const loanBefore=loans.find(l=>l.id===payF.loanId);
     setLoans(prev=>prev.map(l=>{
       if(l.id!==payF.loanId)return l;
       const newPaid=(l.amountPaid||0)+amt;
       const calc=calcLoan({...l,amountPaid:newPaid});
       const nowPaid=calc.balance<=0;
-      return{...l,amountPaid:newPaid,status:nowPaid?"paid":l.status,datePaid:nowPaid?(payF.date||new Date().toISOString().split("T")[0]):l.datePaid,
+      const updated={...l,amountPaid:newPaid,status:nowPaid?"paid":l.status,datePaid:nowPaid?(payF.date||new Date().toISOString().split("T")[0]):l.datePaid,
         payments:[...(l.payments||[]),{...payF,amount:amt,id:Date.now()}]};
+      saveRecord("loans",updated,setSyncStatus,(errMsg)=>{
+        setLoans(prev=>prev.map(l=>l.id===payF.loanId?loanBefore:l));
+        alert("⚠️ Loan repayment NOT saved.\n\nError: "+errMsg+"\n\nPayment reverted. Please try again.");
+      });
+      return updated;
     }));
     setPayModal(false);setPayF({...emptyPay});
   };
@@ -2165,15 +2573,24 @@ export default function App(){
     if(!p.memberName)return;
     let savedLoan;
     if(editL){
-      setLoans(prev=>prev.map(l=>l.id===editL?{...l,...p}:l));
-      savedLoan={...p,id:editL};
-      postAudit([mkAudit("edit","loan",editL,loans.find(l=>l.id===editL),savedLoan,authUser?.role,authUser?.name)]);
+      const before=loans.find(l=>l.id===editL);
+      savedLoan={...before,...p,id:editL};
+      setLoans(prev=>prev.map(l=>l.id===editL?savedLoan:l));
+      saveRecord("loans",savedLoan,setSyncStatus,(errMsg)=>{
+        setLoans(prev=>prev.map(l=>l.id===editL?before:l));
+        alert("⚠️ Loan changes NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+      });
+      postAudit([mkAudit("edit","loan",editL,before,savedLoan,authUser?.role,authUser?.name)]);
     } else {
       const id=Math.max(...loans.map(l=>l.id),0)+1;
       // Treasurer initiates: step 1 auto-applied
       const trail=[mkApprovalStep(1,authUser||{role:"treasurer",name:"Treasurer"},"approved","Initiated by Treasurer")];
-      savedLoan={id,...p,approvalStatus:"step1_done",approvalTrail:trail,initiatedBy:authUser?.name||"Treasurer"};
+      savedLoan={id,...p,approvalStatus:"step1_done",approvalTrail:trail,initiatedBy:authUser?.name||"Treasurer",payments:[]};
       setLoans(prev=>[...prev,savedLoan]);
+      saveRecord("loans",savedLoan,setSyncStatus,(errMsg)=>{
+        setLoans(prev=>prev.filter(l=>l.id!==savedLoan.id));
+        alert("⚠️ New loan NOT saved.\n\nError: "+errMsg+"\n\nRemoved from view. Please try again.");
+      });
       postLoanLedger(savedLoan,authUser);
       postAudit([mkAudit("create","loan",id,null,savedLoan,authUser?.role,authUser?.name)]);
     }
@@ -2181,32 +2598,150 @@ export default function App(){
     // Note: loan PDF is generated ONLY after full 4-step approval
     // When Auditor approves (step 4), PDF auto-generates — see handleApprove
   };
-  const delL=(id)=>{if(window.confirm("Delete this loan?"))setLoans(prev=>prev.filter(l=>l.id!==id));};
-  const markPd=(id)=>setLoans(prev=>prev.map(l=>{
-    if(l.id!==id)return l;
-    const dp=new Date().toISOString().split("T")[0];
-    const c=calcLoan({...l,datePaid:dp,status:"paid"});
-    return{...l,status:"paid",amountPaid:c.totalDue,datePaid:dp};
-  }));
+  const delL=(id)=>{if(window.confirm("Delete this loan?")){setLoans(prev=>prev.filter(l=>l.id!==id));deleteRecord("loans",id,setSyncStatus);}};
+  const markPd=(id)=>{
+    const loanBefore=loans.find(l=>l.id===id);
+    setLoans(prev=>prev.map(l=>{
+      if(l.id!==id)return l;
+      const dp=new Date().toISOString().split("T")[0];
+      const c=calcLoan({...l,datePaid:dp,status:"paid"});
+      const updated={...l,status:"paid",amountPaid:c.totalDue,datePaid:dp};
+      saveRecord("loans",updated,setSyncStatus,(errMsg)=>{
+        setLoans(prev=>prev.map(l=>l.id===id?loanBefore:l));
+        alert("⚠️ Loan settlement NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+      });
+      return updated;
+    }));
+  };
+
+  // ── Contribution log handlers ────────────────────────────────────────────
+  const saveContrib=()=>{
+    if(!contribF.memberId||!contribF.amount||!contribF.date) return;
+    const id=Date.now();
+    const rec={id,memberId:+contribF.memberId,date:contribF.date,category:contribF.category,amount:+contribF.amount||0,note:contribF.note||"",recordedBy:authUser?.name||"System",recordedAt:new Date().toISOString()};
+    const memberBefore=members.find(m=>m.id===+contribF.memberId);
+    setContribLog(prev=>[...prev,rec]);
+    saveRecord("contrib_log",rec,setSyncStatus,(errMsg)=>{
+      setContribLog(prev=>prev.filter(c=>c.id!==rec.id));
+      setMembers(prev=>prev.map(m=>m.id===+contribF.memberId?memberBefore:m));
+      alert("⚠️ Contribution NOT saved.\n\nError: "+errMsg+"\n\nContribution and member total reverted. Please try again.");
+    });
+    // Also update the member's running total for that category
+    setMembers(prev=>prev.map(m=>{
+      if(m.id!==+contribF.memberId) return m;
+      const updated={...m,[contribF.category]:(+m[contribF.category]||0)+(+contribF.amount||0)};
+      saveRecord("members",updated,setSyncStatus,(errMsg)=>{
+        setMembers(prev=>prev.map(m=>m.id===+contribF.memberId?memberBefore:m));
+        alert("⚠️ Member total NOT updated.\n\nError: "+errMsg+"\n\nMember total reverted. Please try again.");
+      });
+      return updated;
+    }));
+    setContribModal(false);
+    setContribF({memberId:"",date:new Date().toISOString().split("T")[0],category:"monthlySavings",amount:"",note:""});
+  };
+  const delContrib=(id)=>{
+    if(!window.confirm("Delete this contribution entry?")) return;
+    setContribLog(prev=>prev.filter(c=>c.id!==id));
+    deleteRecord("contrib_log",id,setSyncStatus);
+  };
+
+  // ── Dividend payout handlers ──────────────────────────────────────────────
+  const saveDividendPayout=(run)=>{
+    if(!run||!run.distributable) return;
+    const id=Date.now();
+    const rec={
+      id,
+      runDate:new Date().toISOString().split("T")[0],
+      grossSurplus:run.grossSurplus,
+      statutory:run.statutory,
+      operational:run.operational,
+      distributable:run.distributable,
+      memberPayouts:JSON.stringify(run.perMember.filter(m=>m.totalDividend>0).map(m=>({id:m.id,name:m.name,amount:m.totalDividend,shareDividend:m.shareDividend,savingsDividend:m.savingsDividend}))),
+      totalMembers:run.perMember.filter(m=>m.totalDividend>0).length,
+      recordedBy:authUser?.name||"System",
+      status:"declared",
+    };
+    setDividendPayouts(prev=>[...prev,rec]);
+    saveRecord("dividend_payouts",rec,setSyncStatus,(errMsg)=>{
+      setDividendPayouts(prev=>prev.filter(p=>p.id!==rec.id));
+      alert("⚠️ Dividend payout record NOT saved.\n\nError: "+errMsg+"\n\nRecord removed. Please try again.");
+    });
+    postAudit([mkAudit("create","dividend",id,null,rec,authUser?.role,authUser?.name)]);
+    setDividendModal(false);
+  };
 
   // ── Expense handlers ──────────────────────────────────────────────────────
   const openAddExp=()=>{setEditExp(null);setExpF({...emptyE});setExpModal(true);};
   const openEditExp=(e)=>{setEditExp(e.id);setExpF({...e});setExpModal(true);};
   const saveExp=()=>{
     if(!expF.activity||!expF.activity.trim()||!expF.amount)return;
-    const rec={...expF,amount:+expF.amount||0};
+    const amt=+expF.amount||0;
+    // Expenses >= UGX 100,000 require Admin approval before being counted as authorised
+    // Treasurer and Finance Manager can record them but they are flagged "pending_approval"
+    // Administrator approves directly from the expense list
+    const needsApproval = amt >= EXPENSE_APPROVAL_THRESHOLD;
+    const isAdmin = authUser?.role==="admin";
+    const expApprovalStatus = needsApproval && !isAdmin ? "pending_approval" : "approved";
+    const rec={
+      ...expF,
+      amount:amt,
+      expApprovalStatus,
+      expApprovedBy: (!needsApproval||isAdmin) ? (authUser?.name||"") : "",
+      expApprovedAt: (!needsApproval||isAdmin) ? new Date().toISOString() : "",
+    };
     if(editExp){
-      setExpenses(prev=>prev.map(e=>e.id===editExp?{...e,...rec}:e));
-      postAudit([mkAudit("edit","expense",editExp,expenses.find(e=>e.id===editExp),rec,authUser?.role,authUser?.name)]);
+      const before=expenses.find(e=>e.id===editExp);
+      const updated={...before,...rec};
+      setExpenses(prev=>prev.map(e=>e.id===editExp?updated:e));
+      saveRecord("expenses",updated,setSyncStatus,(errMsg)=>{
+        setExpenses(prev=>prev.map(e=>e.id===editExp?before:e));
+        alert("⚠️ Expense changes NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+      });
+      postAudit([mkAudit("edit","expense",editExp,before,updated,authUser?.role,authUser?.name)]);
     } else {
       const id=(expenses.length>0?Math.max(...expenses.map(e=>e.id||0)):0)+1;
       const newRec={id,...rec};
       setExpenses(prev=>[...prev,newRec]);
+      saveRecord("expenses",newRec,setSyncStatus,(errMsg)=>{
+        setExpenses(prev=>prev.filter(e=>e.id!==newRec.id));
+        alert("⚠️ New expense NOT saved.\n\nError: "+errMsg+"\n\nRemoved from view. Please try again.");
+      });
       postExpenseLedger(newRec,authUser);
     }
     setExpModal(false);
     setEditExp(null);
     setExpF({...emptyE,date:new Date().toISOString().split("T")[0]});
+  };
+
+  // Approve a large expense — Admin only
+  const approveExpense=(expId)=>{
+    if(authUser?.role!=="admin"){alert("Only the Administrator can approve expenses.");return;}
+    setExpenses(prev=>prev.map(e=>{
+      if(e.id!==expId) return e;
+      const expBefore={...e};
+      const updated={...e,expApprovalStatus:"approved",expApprovedBy:authUser.name,expApprovedAt:new Date().toISOString()};
+      saveRecord("expenses",updated,setSyncStatus,(errMsg)=>{
+        setExpenses(prev=>prev.map(e=>e.id===expId?expBefore:e));
+        alert("⚠️ Expense approval NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+      });
+      postAudit([mkAudit("approve","expense",expId,{expApprovalStatus:"pending_approval"},{expApprovalStatus:"approved"},authUser.role,authUser.name)]);
+      return updated;
+    }));
+  };
+
+  // Reject a large expense — Admin only
+  const rejectExpense=(expId,reason)=>{
+    if(authUser?.role!=="admin") return;
+    setExpenses(prev=>prev.map(e=>{
+      if(e.id!==expId) return e;
+      const expBefore2={...e};
+      const updated={...e,expApprovalStatus:"rejected",expApprovedBy:authUser.name,expApprovedAt:new Date().toISOString(),expRejectionReason:reason||""};
+      saveRecord("expenses",updated,setSyncStatus,(errMsg)=>{
+        setExpenses(prev=>prev.map(e=>e.id===expId?expBefore2:e));
+        alert("⚠️ Expense rejection NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+      });
+      return updated;
+    }));
   };
   const delExp=(id)=>{if(window.confirm("Delete this expense?")){setExpenses(prev=>prev.filter(e=>e.id!==id));deleteRecord("expenses",id,setSyncStatus);}};
 
@@ -2369,7 +2904,11 @@ export default function App(){
         const trail=[...(l.approvalTrail||[]),step];
         const updated={...l,approvalStatus:newStatus,approvalTrail:trail};
         if(isFinal) { updated.status="active"; finalLoan=updated; }
-        saveRecord("loans",updated,setSyncStatus);
+        const loanSnapApprove={...l,approvalStatus:currentStatus,approvalTrail:l.approvalTrail||[]};
+        saveRecord("loans",updated,setSyncStatus,(errMsg)=>{
+          setLoans(prev=>prev.map(l=>l.id===entityId?loanSnapApprove:l));
+          alert("⚠️ Loan approval NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+        });
         return updated;
       }));
       postAudit([mkAudit("approve","loan",entityId,{status:currentStatus},{status:newStatus,step},authUser.role,authUser.name)]);
@@ -2396,7 +2935,11 @@ export default function App(){
         if(m.id!==entityId) return m;
         const trail=[...(m.approvalTrail||[]),step];
         const updated={...m,approvalStatus:newStatus,approvalTrail:trail};
-        saveRecord("members",updated,setSyncStatus);
+        const memSnapApprove={...m,approvalStatus:currentStatus,approvalTrail:m.approvalTrail||[]};
+        saveRecord("members",updated,setSyncStatus,(errMsg)=>{
+          setMembers(prev=>prev.map(m=>m.id===entityId?memSnapApprove:m));
+          alert("⚠️ Member approval NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+        });
         return updated;
       }));
       postAudit([mkAudit("approve","member",entityId,{status:currentStatus},{status:newStatus,step},authUser.role,authUser.name)]);
@@ -2412,8 +2955,12 @@ export default function App(){
       setLoans(prev=>prev.map(l=>{
         if(l.id!==entityId) return l;
         const trail=[...(l.approvalTrail||[]),step];
+        const loanSnapReject={...l};
         const updated={...l,approvalStatus:"rejected",approvalTrail:trail};
-        saveRecord("loans",updated,setSyncStatus);
+        saveRecord("loans",updated,setSyncStatus,(errMsg)=>{
+          setLoans(prev=>prev.map(l=>l.id===entityId?loanSnapReject:l));
+          alert("⚠️ Loan rejection NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+        });
         return updated;
       }));
     }
@@ -2421,8 +2968,12 @@ export default function App(){
       setMembers(prev=>prev.map(m=>{
         if(m.id!==entityId) return m;
         const trail=[...(m.approvalTrail||[]),step];
+        const memSnapReject={...m};
         const updated={...m,approvalStatus:"rejected",approvalTrail:trail};
-        saveRecord("members",updated,setSyncStatus);
+        saveRecord("members",updated,setSyncStatus,(errMsg)=>{
+          setMembers(prev=>prev.map(m=>m.id===entityId?memSnapReject:m));
+          alert("⚠️ Member rejection NOT saved.\n\nError: "+errMsg+"\n\nReverted. Please try again.");
+        });
         return updated;
       }));
     }
@@ -2565,13 +3116,21 @@ export default function App(){
               <button className={"nbtn"+(tab==="reminders"?" on":"")} onClick={()=>{setTab("reminders");setSearch("");}}>
                 ✉️ Remind{dueSoonLoans.length>0&&<span style={{background:"#ef5350",color:"#fff",borderRadius:"50%",fontSize:9,fontWeight:900,padding:"1px 5px",marginLeft:4}}>{dueSoonLoans.length}</span>}
               </button>
-              <button className={"nbtn"+(tab==="expenses"?" on":"")} onClick={()=>{setTab("expenses");setSearch("");}}>🧾 Expenses</button>
+              <button className={"nbtn"+(tab==="expenses"?" on":"")} onClick={()=>{setTab("expenses");setSearch("");}} style={{position:"relative"}}>
+                🧾 Expenses
+                {expenses.filter(e=>e.expApprovalStatus==="pending_approval").length>0&&(
+                  <span style={{position:"absolute",top:-4,right:-4,background:"#e65100",color:"#fff",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:9}}>
+                    {expenses.filter(e=>e.expApprovalStatus==="pending_approval").length}
+                  </span>
+                )}
+              </button>
               <button className={"nbtn"+(tab==="investments"?" on":"")} onClick={()=>{setTab("investments");setSearch("");}}>📈 Invest</button>
               <button className={"nbtn"+(tab==="reports"?" on":"")} onClick={()=>{setTab("reports");setSearch("");}}>📄 Reports</button>
               <button className={"nbtn"+(tab==="approvals"?" on":"")} onClick={()=>{setTab("approvals");setSearch("");}} style={{position:"relative"}}>
                 ✅ Approvals
                 {myPendingItems.length>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#e65100",color:"#fff",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:9}}>{myPendingItems.length}</span>}
               </button>
+              <button className={"nbtn"+(tab==="benevolent"?" on":"")} onClick={()=>{setTab("benevolent");setSearch("");}}>🕊 Benevolent</button>
               <button className={"nbtn"+(tab==="audit"?" on":"")} onClick={()=>{setTab("audit");setSearch("");}}>🔒 Audit</button>
               <button className={"nbtn"+(tab==="settings"?" on":"")} onClick={()=>{setTab("settings");setSearch("");}}>⚙️ Settings</button>
             </nav>
@@ -2636,6 +3195,7 @@ export default function App(){
                 <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
                 <div className="card"><div className="clabel">Monthly Savings</div><div className="cval">{fmt(savT.monthly)}</div></div>
                 <div className="card"><div className="clabel">Welfare Pool</div><div className="cval">{fmt(savT.welfare)}</div></div>
+                {savT.voluntary>0&&<div className="card ck"><div className="clabel">Voluntary Deposits</div><div className="cval ok">{fmt(savT.voluntary)}</div><div className="csub">Extra savings — in total</div></div>}
                 <div className="card cd" title="Includes operational costs + bank transactional charges">
                   <div className="clabel">Total Expenses</div>
                   <div className="cval danger">{fmt(totalExpenses)}</div>
@@ -2917,6 +3477,245 @@ export default function App(){
             </React.Fragment>
           )}
 
+          {/* ── BENEVOLENT FUND TAB ─────────────────────────────────────── */}
+          {tab==="benevolent" && (
+            <React.Fragment>
+              <div className="ptitle"><div className="ptdot"/>🕊 BIDA Benevolent Fund</div>
+
+              {/* Policy Banner */}
+              <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:13,padding:"14px 16px",marginBottom:12,color:"#fff"}}>
+                <div style={{fontWeight:800,fontSize:14,marginBottom:6}}>BIDA Member Protection Policy</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:8,marginBottom:10}}>
+                  {[
+                    ["🕊 Passing","Family receives 70% of total invested (principal + interest). Remaining 30% negotiated with board. NOK may retain account.","#ef9a9a"],
+                    ["🏥 Serious Illness","Member entitled to support based on their share of the pool. Calculated after investment returns. BIDA retains operational capacity.","#ffcc80"],
+                    ["🔒 Protected","At least 70% guaranteed payout to beneficiary. BIDA compensates fully upon board agreement.","#a5d6a7"],
+                  ].map(([t,d,c])=>(
+                    <div key={t} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",borderRadius:9,padding:"10px 12px"}}>
+                      <div style={{fontWeight:700,fontSize:12,color:c,marginBottom:4}}>{t}</div>
+                      <div style={{fontSize:10,opacity:.8,lineHeight:1.6}}>{d}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{fontSize:10,opacity:.6,borderTop:"1px solid rgba(255,255,255,.15)",paddingTop:8,lineHeight:1.6}}>
+                  ⚠ Payout requires board approval. Percentage of shares and dividends realised are included in the calculation. NOK can be a BIDA member or non-member.
+                </div>
+              </div>
+
+              {/* Benevolent Fund Stats */}
+              {(()=>{
+                const eligibleMembers = members.filter(m=>m.nextOfKin&&(m.nextOfKin.name||"").trim());
+                const noNOK = members.filter(m=>!m.nextOfKin||(!(m.nextOfKin.name||"").trim()));
+                const totalPool = savT.total;
+                return (
+                  <div className="stats" style={{marginBottom:12}}>
+                    <div className="card ck"><div className="clabel">Members with NOK</div><div className="cval ok">{eligibleMembers.length}</div><div className="csub">Benevolent-ready</div></div>
+                    <div className="card cw"><div className="clabel">Missing NOK</div><div className="cval warn">{noNOK.length}</div><div className="csub">Cannot activate fund</div></div>
+                    <div className="card ck"><div className="clabel">Total Pool</div><div className="cval ok">{fmt(totalPool)}</div><div className="csub">Basis for calculations</div></div>
+                    <div className="card"><div className="clabel">Min Payout (70%)</div><div className="cval">{fmt(Math.round(totalPool*0.70/Math.max(members.length,1)))}</div><div className="csub">Per member avg</div></div>
+                  </div>
+                );
+              })()}
+
+              {/* Members Missing NOK — urgent */}
+              {(()=>{
+                const noNOK = members.filter(m=>!m.nextOfKin||(!(m.nextOfKin.name||"").trim()));
+                if(noNOK.length===0) return null;
+                return (
+                  <div style={{background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                    <div style={{fontWeight:800,fontSize:13,color:"#e65100",marginBottom:8}}>⚠ {noNOK.length} Members Have No Next of Kin on File</div>
+                    <div style={{fontSize:11,color:"#795548",marginBottom:10,lineHeight:1.6}}>These members cannot benefit from the Benevolent Fund until NOK details are added. Ask them to update their profiles.</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {noNOK.map(m=>(
+                        <button key={m.id} onClick={()=>{openProfile(m);setTimeout(()=>setProfEdit(true),100);}} style={{padding:"5px 11px",borderRadius:20,background:"#fff3e0",border:"1px solid #ffcc80",fontSize:11,fontWeight:700,color:"#e65100",cursor:"pointer"}}>
+                          {m.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Benevolent Claim Calculator */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>💰 Benevolent Payout Calculator</div>
+                <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:12,lineHeight:1.6}}>
+                  Select a member and claim type to calculate the payout. This is a calculator only — it does not disburse funds. Board must approve before any payout.
+                </div>
+                {(()=>{
+                  const selMemberId=benovSelMember;
+                  const setSelMemberId=setBenovSelMember;
+                  const claimType=benovClaimType;
+                  const setClaimType=setBenovClaimType;
+                  const retention=benovRetention;
+                  const setRetention=setBenovRetention;
+                  const m = members.find(mb=>mb.id===+selMemberId);
+                  // ── Calculation basis ──
+                  // 1. Member's total savings (all categories)
+                  const totalSavings = m ? totBanked(m) : 0;
+                  // 2. Member's share of investment returns (by share capital ratio)
+                  const totalShareCapital = Math.max(members.reduce((s,mb)=>s+(mb.shares||0),0),1);
+                  const shareRatio = m ? (m.shares||0)/totalShareCapital : 0;
+                  const invReturnsShare = Math.round(totalInvInterest * shareRatio);
+                  // 3. Member's pool contribution ratio (by savings)
+                  const poolRatio = (savT.total>0&&m) ? totBanked(m)/savT.total : 0;
+                  // 4. Total base for DEATH = all savings + share of investment returns
+                  const deathBase = totalSavings + invReturnsShare;
+                  // 5. Total base for ILLNESS = 50% of their pool share value (BIDA retains capacity)
+                  const illnessBase = Math.round(cashInBank * poolRatio * 0.50);
+                  const totalBase = claimType==="death" ? deathBase : illnessBase;
+                  // 6. Guaranteed minimum: 70% for passing, full amount for illness (already 50%)
+                  const minPayout = claimType==="death" ? Math.round(deathBase * 0.70) : illnessBase;
+                  const remaining30 = deathBase - minPayout; // the 30% board decides on
+                  const fullPayout = deathBase; // if board agrees 100%
+                  const nok = m?.nextOfKin||null;
+                  return (
+                    <div>
+                      <div className="fgrid">
+                        <div className="fg ff">
+                          <label className="fl">Select Member</label>
+                          <select className="fi" value={selMemberId} onChange={e=>setSelMemberId(e.target.value)}>
+                            <option value="">— Select member —</option>
+                            {members.map(mb=>(
+                              <option key={mb.id} value={mb.id}>{mb.name} {mb.nextOfKin&&mb.nextOfKin.name?"✓":"⚠ No NOK"}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="fg ff">
+                          <label className="fl">Claim Type</label>
+                          <div style={{display:"flex",gap:8,marginTop:4}}>
+                            {[["death","🕊 Passing"],["illness","🏥 Serious Illness"]].map(([v,lbl])=>(
+                              <button key={v} type="button" onClick={()=>setClaimType(v)} style={{flex:1,padding:"8px",borderRadius:9,border:claimType===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:claimType===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:claimType===v?700:400,color:claimType===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      {m&&(
+                        <React.Fragment>
+                          {/* NOK info */}
+                          {nok&&nok.name?(
+                            <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                              <div style={{fontWeight:700,fontSize:12,color:"#1b5e20",marginBottom:4}}>✅ Next of Kin on File</div>
+                              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,fontSize:11}}>
+                                {[["Name",nok.name],["Phone",nok.phone||"—"],["Relationship",nok.relationship||"—"],["NIN",nok.nin||"—"],["Address",nok.address||"—"],["BIDA Member",nok.isMember?"Yes":"No"]].map(([lb,v])=>(
+                                  <div key={lb}><span style={{color:"var(--tmuted)"}}>{lb}: </span><strong>{v}</strong></div>
+                                ))}
+                              </div>
+                            </div>
+                          ):(
+                            <div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:11,color:"#c62828"}}>
+                              ⚠ No next of kin on file for {m.name}. Edit their profile to add NOK before activating benevolent fund.
+                            </div>
+                          )}
+                          {/* Breakdown */}
+                          <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"12px 14px",marginBottom:10}}>
+                            <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>📊 Payout Breakdown — {m.name}</div>
+                            {(claimType==="death"?[
+                              ["Member total savings",fmt(totalSavings),"var(--td)"],
+                              ["Share of investment returns ("+Math.round(shareRatio*100)+"% of pool returns "+fmt(totalInvInterest)+")",fmt(invReturnsShare),"#1565c0"],
+                              ["Total death claim base",fmt(deathBase),"var(--b800)"],
+                              ["Minimum guaranteed payout (70%)",fmt(minPayout),"#1b5e20"],
+                              ["Remaining 30% — board decision",fmt(remaining30),retention==="compensate"?"#1b5e20":"#e65100"],
+                              ["Full payout if board agrees 100%",fmt(fullPayout),"#1565c0"],
+                            ]:[
+                              ["Member total savings",fmt(totalSavings),"var(--td)"],
+                              ["Member's pool share ("+Math.round(poolRatio*100)+"%)",fmt(Math.round(cashInBank*poolRatio)),"var(--td)"],
+                              ["Illness support (50% of pool share)",fmt(illnessBase),"#1b5e20"],
+                              ["Member retains membership","Active — continues contributing","#1565c0"],
+                            ]).map(([lb,v,c],i)=>(
+                              <div key={lb} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i<5?"1px solid var(--bdr)":"none",fontWeight:i===2||i===5?700:400}}>
+                                <span style={{fontSize:11,color:"var(--td)"}}>{lb}</span>
+                                <span style={{fontFamily:"var(--mono)",fontSize:12,fontWeight:700,color:c}}>{v}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Retention option for death claims */}
+                          {claimType==="death"&&(
+                            <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                              <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>Remaining 30% — Board Decision</div>
+                              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                                {[
+                                  ["compensate","✅ Full compensation — NOK receives 100%","Pay out the remaining 30% to next of kin as goodwill"],
+                                  ["retain_account","🔄 NOK retains account — Takes on membership","NOK becomes a BIDA member and inherits the account"],
+                                ].map(([v,lbl,sub])=>(
+                                  <button key={v} type="button" onClick={()=>setRetention(v)} style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:9,border:retention===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:retention===v?"var(--b100)":"#fff",cursor:"pointer",textAlign:"left"}}>
+                                    <div style={{fontWeight:700,fontSize:12,color:retention===v?"var(--b700)":"var(--td)"}}>{lbl}</div>
+                                    <div style={{fontSize:10,color:"var(--tmuted)",marginTop:2,lineHeight:1.5}}>{sub}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {/* Illness payout note */}
+                          {claimType==="illness"&&(
+                            <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 12px",marginBottom:10,fontSize:11,color:"#e65100",lineHeight:1.6}}>
+                              <strong>🏥 Illness Support Logic:</strong> Member receives support equal to 50% of their pool share value. This is calculated after all active investments and loan positions. BIDA retains capacity to remain operational. The member continues their membership after recovery.
+                            </div>
+                          )}
+                          <div style={{background:claimType==="death"?"linear-gradient(135deg,#1b5e20,#2e7d32)":"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:10,padding:"12px 16px",color:"#fff"}}>
+                            <div style={{fontSize:10,opacity:.7,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>
+                              {claimType==="death"?"Recommended Payout to "+((nok&&nok.name)||"Next of Kin"):"Support Entitlement for "+m.name}
+                            </div>
+                            <div style={{fontSize:26,fontWeight:900,fontFamily:"var(--mono)"}}>{fmt(claimType==="death"?(retention==="compensate"?fullPayout:minPayout):illnessBase)}</div>
+                            <div style={{fontSize:10,opacity:.7,marginTop:4}}>
+                              {claimType==="death"
+                                ?retention==="compensate"?"Full 100% — board agreed all funds to NOK":"70% guaranteed + NOK retains remaining 30% account"
+                                :"50% of member pool share — member retains membership after recovery"
+                              }
+                            </div>
+                            <div style={{marginTop:10,fontSize:10,opacity:.6,lineHeight:1.6,borderTop:"1px solid rgba(255,255,255,.2)",paddingTop:8}}>
+                              ⚠ This is a CALCULATION ONLY. Actual disbursement requires written board resolution, identity verification of next of kin, and formal documentation. Contact the BIDA board to initiate an official claim.
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Members with NOK on file */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>👥 All Members — Benevolent Status</div>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                    <thead><tr style={{background:"var(--b50)"}}>
+                      {["#","Member","Total Invested","Min Payout (70%)","NOK Name","Relationship","NOK Phone","Status"].map(h=>(
+                        <th key={h} style={{padding:"8px 10px",textAlign:h==="Total Invested"||h==="Min Payout (70%)"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {members.map((m,i)=>{
+                        const nok=m.nextOfKin||null;
+                        const hasNOK=nok&&(nok.name||"").trim();
+                        const tb=totBanked(m);
+                        const minPayout=Math.round(tb*0.70);
+                        return (
+                          <tr key={m.id} style={{borderBottom:"1px solid #eef5ff",background:hasNOK?"":"#fffde7"}}>
+                            <td style={{padding:"7px 10px",fontSize:10,color:"var(--tmuted)"}}>{i+1}</td>
+                            <td style={{padding:"7px 10px"}}><span className="nc" onClick={()=>openProfile(m)}>{m.name}</span></td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11}}>{fmt(tb)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11,color:"#1b5e20"}}>{fmt(minPayout)}</td>
+                            <td style={{padding:"7px 10px",fontSize:11,fontWeight:hasNOK?600:400,color:hasNOK?"var(--td)":"var(--tmuted)"}}>{hasNOK?nok.name:"—"}</td>
+                            <td style={{padding:"7px 10px",fontSize:11,color:"var(--tmuted)"}}>{hasNOK?nok.relationship||"—":"—"}</td>
+                            <td style={{padding:"7px 10px",fontSize:11,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{hasNOK?nok.phone||"—":"—"}</td>
+                            <td style={{padding:"7px 10px"}}>
+                              {hasNOK
+                                ?<span style={{fontSize:9,background:"#e8f5e9",color:"#1b5e20",border:"1px solid #a5d6a7",borderRadius:20,padding:"2px 8px",fontWeight:700}}>✅ Protected</span>
+                                :<button onClick={()=>{openProfile(m);setTimeout(()=>setProfEdit(true),100);}} style={{fontSize:9,background:"#fff3e0",color:"#e65100",border:"1px solid #ffcc80",borderRadius:20,padding:"2px 8px",fontWeight:700,cursor:"pointer"}}>⚠ Add NOK</button>
+                              }
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </React.Fragment>
+          )}
+
+
           {/* ── AUDIT & LEDGER TAB ──────────────────────────────────────── */}
           {tab==="audit" && (
             <React.Fragment>
@@ -2969,9 +3768,12 @@ export default function App(){
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:8}}>💰 Dividend &amp; Surplus Distribution</div>
                 <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:10,lineHeight:1.6}}>Calculates distributable surplus after 20% statutory reserve and 10% operational reserve. Distributed 60% by share capital and 40% by savings contribution.</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
                 <button className="btn bp sm" onClick={()=>setDividendRun(calcDividends(members,loans,expenses,investments,null))}>
                   ⚙️ Calculate Dividends
                 </button>
+                {dividendRun&&<button className="btn bk sm" onClick={()=>{if(window.confirm("Record this dividend run in the payout ledger?"))saveDividendPayout(dividendRun);}}>💾 Save Payout Record</button>}
+                </div>
                 {dividendRun&&(
                   <React.Fragment>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,margin:"12px 0"}}>
@@ -3001,6 +3803,42 @@ export default function App(){
                       </table>
                     </div>
                   </React.Fragment>
+                )}
+              </div>
+
+              {/* Dividend Payout History */}
+              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>💰 Dividend Payout History <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({dividendPayouts.length} runs recorded)</span></div>
+                {dividendPayouts.length===0?(
+                  <div style={{fontSize:11,color:"var(--tmuted)",padding:"8px 0"}}>No dividend runs recorded yet. Calculate dividends in the section above and click "Save Payout Record" to log a run permanently.</div>
+                ):(
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                      <thead><tr style={{background:"var(--b50)"}}>
+                        {["Run Date","Members Paid","Gross Surplus","Statutory (20%)","Operational (10%)","Distributable","Recorded By","Status"].map(h=>(
+                          <th key={h} style={{padding:"7px 10px",textAlign:h==="Members Paid"||h==="Status"?"center":"right",textAlignLast:h==="Run Date"||h==="Recorded By"?"left":"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {[...dividendPayouts].sort((a,b)=>new Date(b.runDate)-new Date(a.runDate)).map(run=>(
+                          <tr key={run.id} style={{borderBottom:"1px solid #eef5ff"}}>
+                            <td style={{padding:"7px 10px",fontFamily:"var(--mono)",fontSize:10,whiteSpace:"nowrap"}}>{fmtD(run.runDate)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"center",fontWeight:700}}>{run.totalMembers}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:10}}>{fmt(run.grossSurplus)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:10,color:"#e65100"}}>{fmt(run.statutory)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:10,color:"#f57f17"}}>{fmt(run.operational)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#1b5e20",fontSize:11}}>{fmt(run.distributable)}</td>
+                            <td style={{padding:"7px 10px",fontSize:10,color:"var(--tmuted)",whiteSpace:"nowrap"}}>{run.recordedBy}</td>
+                            <td style={{padding:"7px 10px",textAlign:"center"}}>
+                              <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20,background:run.status==="paid"?"#e8f5e9":"#e3f2fd",color:run.status==="paid"?"#1b5e20":"#1565c0",border:"1px solid "+(run.status==="paid"?"#a5d6a7":"#90caf9")}}>
+                                {run.status==="paid"?"✅ Paid":"📋 Declared"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
 
@@ -3175,14 +4013,16 @@ export default function App(){
                     loadAllFromSupabase()
                       .then(data=>{
                         if(data.members&&data.members.length>0) setMembers(data.members);
-                        if(data.loans&&data.loans.length>0) setLoans(data.loans);
-                        if(data.expenses&&data.expenses.length>0) setExpenses(data.expenses);
-                        if(data.investments&&data.investments.length>0) setInvestments(data.investments);
+                        if(data.loans&&data.loans.length>=0) setLoans(data.loans);
+                        if(data.expenses&&data.expenses.length>=0) setExpenses(data.expenses);
+                        if(data.investments&&data.investments.length>=0) setInvestments(data.investments);
                         if(data.serviceProviders&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
+                        if(data.contribLog&&data.contribLog.length>=0) setContribLog(data.contribLog);
+                        if(data.dividendPayouts&&data.dividendPayouts.length>=0) setDividendPayouts(data.dividendPayouts);
                         setDbLoaded(true);setSyncStatus("synced");
-                        alert("✅ Connected! Data loaded from Supabase.");
+                        alert("✅ Connected! All data loaded from Supabase.");
                       })
-                      .catch(e=>{setSyncStatus("error");alert("Connection failed: "+e.message);});
+                      .catch(e=>{setSyncStatus("error");alert("Connection failed: "+e.message+"\n\nCheck that your Supabase project is active.");});
                   }}>Connect &amp; Load Data</button>
                   {getSupaKey()&&<button className="btn bg sm" onClick={()=>{setSupaKey("");setSupaKeyInput("");setSyncStatus("idle");alert("API key cleared.");}}>Disconnect</button>}
                 </div>
@@ -3192,21 +4032,48 @@ export default function App(){
                   </div>
                 )}
               </div>
+              {/* Connected URL info */}
+              <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"9px 14px",marginBottom:12,fontSize:11,color:"#1b5e20",fontFamily:"var(--mono)"}}>
+                ✅ Connected to: <strong>gzoafxyinwysstpixlclw.supabase.co</strong> · Key active · Real-time sync every 15s
+              </div>
               {/* Manual sync */}
               {getSupaKey()&&(
                 <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                   <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:8}}>🔄 Manual Sync</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    <button className="btn bp sm" onClick={()=>{
+                    <button className="btn bp sm" onClick={async()=>{
                       setSyncStatus("loading");
-                      loadAllFromSupabase().then(data=>{
-                        if(data.members&&data.members.length>0) setMembers(data.members);
-                        if(data.loans&&data.loans.length>0) setLoans(data.loans);
-                        if(data.expenses&&data.expenses.length>0) setExpenses(data.expenses);
-                        if(data.investments&&data.investments.length>0) setInvestments(data.investments);
+                      try{
+                        const data=await loadAllFromSupabase();
+                        // Safe merge — DB wins on conflict, local-only records preserved
+                        if(data.members&&data.members.length>0){
+                          setMembers(prev=>{
+                            const dbIds=new Set(data.members.map(m=>m.id));
+                            return [...data.members,...prev.filter(m=>!dbIds.has(m.id))];
+                          });
+                        }
+                        if(data.loans&&data.loans.length>=0){
+                          setLoans(prev=>{
+                            const dbIds=new Set(data.loans.map(l=>l.id));
+                            return [...data.loans,...prev.filter(l=>!dbIds.has(l.id))];
+                          });
+                        }
+                        if(data.expenses&&data.expenses.length>=0){
+                          setExpenses(prev=>{
+                            const dbIds=new Set(data.expenses.map(e=>e.id));
+                            return [...data.expenses,...prev.filter(e=>!dbIds.has(e.id))];
+                          });
+                        }
+                        if(data.investments&&data.investments.length>=0) setInvestments(data.investments);
                         if(data.serviceProviders&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
-                        setSyncStatus("synced");alert("✅ Data refreshed from Supabase.");
-                      }).catch(e=>{setSyncStatus("error");alert("Refresh failed: "+e.message);});
+                        if(data.contribLog&&data.contribLog.length>=0) setContribLog(data.contribLog);
+                        if(data.dividendPayouts&&data.dividendPayouts.length>=0) setDividendPayouts(data.dividendPayouts);
+                        setSyncStatus("synced");
+                        alert("✅ All data refreshed from Supabase.");
+                      }catch(e){
+                        setSyncStatus("error");
+                        alert("Refresh failed: "+e.message+"\n\nCheck your internet connection and try again.");
+                      }
                     }}>↓ Pull latest from database</button>
                     <button className="btn bg sm" onClick={()=>replayOfflineQueue(setSyncStatus)}>↑ Push offline changes</button>
                   </div>
@@ -3323,6 +4190,34 @@ export default function App(){
           {tab==="expenses" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>Expenses Register</div>
+
+              {/* Pending approval alert — shown to admin */}
+              {(()=>{
+                const pending=expenses.filter(e=>e.expApprovalStatus==="pending_approval");
+                if(pending.length===0) return null;
+                return (
+                  <div style={{background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:11,padding:"11px 14px",marginBottom:12}}>
+                    <div style={{fontWeight:800,fontSize:13,color:"#e65100",marginBottom:4}}>⏳ {pending.length} Expense{pending.length>1?"s":""} Awaiting Approval</div>
+                    <div style={{fontSize:11,color:"#795548",marginBottom:10,lineHeight:1.6}}>
+                      Expenses of UGX 100,000 and above require Administrator approval. {authUser?.role==="admin"?"Use the ✓ Approve / ✗ Reject buttons in the table below.":"Ask the Administrator to review these in the Expenses tab."}
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {pending.map(e=>(
+                        <div key={e.id} style={{background:"#fff",border:"1px solid #ffcc80",borderRadius:8,padding:"6px 10px",fontSize:11}}>
+                          <span style={{fontWeight:700,color:"#e65100"}}>{fmt(e.amount)}</span>
+                          <span style={{color:"var(--tmuted)",marginLeft:6}}>{e.activity?.substring(0,30)}{(e.activity?.length||0)>30?"…":""}</span>
+                          {authUser?.role==="admin"&&(
+                            <React.Fragment>
+                              <button onClick={()=>approveExpense(e.id)} style={{marginLeft:8,background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700,color:"#1b5e20",cursor:"pointer"}}>✓ Approve</button>
+                              <button onClick={()=>{const r=window.prompt("Reason for rejection:");if(r)rejectExpense(e.id,r);}} style={{marginLeft:4,background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700,color:"#c62828",cursor:"pointer"}}>✗ Reject</button>
+                            </React.Fragment>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Cash in Bank hero card */}
               <div style={{background:"linear-gradient(135deg,"+(cashInBank<0?"#b71c1c,#c62828":"#1b5e20,#2e7d32")+")",borderRadius:12,padding:"12px 16px",marginBottom:12,color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
@@ -3467,9 +4362,28 @@ export default function App(){
                                 {e.balAfter<0&&<div style={{fontSize:9,color:"#c62828"}}>⚠ Overdraft</div>}
                               </td>
                               <td style={{padding:"8px 10px",textAlign:"center"}}>
-                                <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                                {/* Approval badge for large expenses */}
+                                {(+e.amount||0)>=EXPENSE_APPROVAL_THRESHOLD&&(
+                                  <div style={{marginBottom:4}}>
+                                    {e.expApprovalStatus==="pending_approval"?(
+                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"#fff8e1",color:"#e65100",border:"1px solid #ffe082",display:"block",marginBottom:3}}>⏳ Awaiting Admin</span>
+                                    ):e.expApprovalStatus==="rejected"?(
+                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"#ffebee",color:"#c62828",border:"1px solid #ffcdd2",display:"block",marginBottom:3}}>❌ Rejected</span>
+                                    ):(
+                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"#e8f5e9",color:"#1b5e20",border:"1px solid #a5d6a7",display:"block",marginBottom:3}}>✅ Approved</span>
+                                    )}
+                                  </div>
+                                )}
+                                <div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
                                   <button className="btn bg xs" onClick={()=>openEditExp(e)}>✏️</button>
                                   <button className="btn bd xs" onClick={()=>delExp(e.id)}>🗑</button>
+                                  {/* Admin approve/reject for large pending expenses */}
+                                  {e.expApprovalStatus==="pending_approval"&&authUser?.role==="admin"&&(
+                                    <React.Fragment>
+                                      <button className="btn bk xs" style={{fontSize:9}} onClick={()=>approveExpense(e.id)}>✓ Approve</button>
+                                      <button className="btn bd xs" style={{fontSize:9}} onClick={()=>{const r=window.prompt("Reason for rejection:");if(r)rejectExpense(e.id,r);}}>✗ Reject</button>
+                                    </React.Fragment>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -3867,6 +4781,39 @@ export default function App(){
                     ))}
                   </div>
                 </div>
+                {/* ── NEXT OF KIN SECTION ── */}
+                {(()=>{
+                  const nok=profMember.nextOfKin||null;
+                  return (
+                    <div className="prof-section">
+                      <div className="prof-section-title">👨‍👩‍👧 Next of Kin & Benevolent Fund</div>
+                      {nok&&(nok.name||"").trim()?(
+                        <React.Fragment>
+                          <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
+                            <div style={{fontWeight:700,fontSize:11,color:"#1b5e20",marginBottom:6}}>✅ Benevolent Fund Active</div>
+                            <div className="prof-grid">
+                              {[["Name",nok.name],["Phone",nok.phone||"—"],["Relationship",nok.relationship||"—"],["NIN",nok.nin||"—"],["Address",nok.address||"—"],["BIDA Member",nok.isMember?"Yes":"No"]].map(([lb,v])=>(
+                                <div key={lb} className="prof-item">
+                                  <div className="prof-item-label">{lb}</div>
+                                  <div className="prof-item-val">{v}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{marginTop:8,fontSize:10,color:"#2e7d32",lineHeight:1.6}}>
+                              Min guaranteed payout: <strong>{fmt(Math.round(totBanked(profMember)*0.70))}</strong> (70% of {fmt(totBanked(profMember))})
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      ):(
+                        <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"10px 12px"}}>
+                          <div style={{fontWeight:700,fontSize:11,color:"#e65100",marginBottom:4}}>⚠ No Next of Kin on File</div>
+                          <div style={{fontSize:11,color:"#795548",lineHeight:1.6,marginBottom:8}}>This member cannot benefit from the BIDA Benevolent Fund until next of kin details are added.</div>
+                          <button className="btn bp xs" onClick={()=>setProfEdit(true)}>✏️ Add NOK Details</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {/* ── REFERRAL SECTION ── */}
                 {(()=>{
                   const referred=members.filter(m=>m.referredByMemberId===profMember.id);
@@ -3923,7 +4870,13 @@ export default function App(){
                                   <button className="btn bk xs" onClick={()=>setMembers(prev=>{
                                               const upd=prev.map(mb=>mb.id===profMember.id?{...mb,pendingCommissions:(mb.pendingCommissions||[]).map(c=>c.newMemberId===m.id?{...c,paid:true}:c)}:mb);
                                               const changed=upd.find(mb=>mb.id===profMember.id);
-                                              if(changed) saveRecord("members",changed,setSyncStatus);
+                                              if(changed){
+                                                const commSnap=prev.find(mb=>mb.id===profMember.id);
+                                                saveRecord("members",changed,setSyncStatus,(errMsg)=>{
+                                                  setMembers(prev=>prev.map(mb=>mb.id===profMember.id?commSnap:mb));
+                                                  alert("⚠️ Commission mark-paid NOT saved.\n\nError: "+errMsg+"\n\nReverted.");
+                                                });
+                                              }
                                               return upd;
                                             })}>Mark Paid</button>
                                 )}
@@ -4028,6 +4981,77 @@ export default function App(){
                     )}
                   </div>
                 </div>
+                {/* Contribution Log */}
+                {(()=>{
+                  const memberContribs=contribLog.filter(c=>c.memberId===profMember.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+                  const CONTRIB_LABELS={monthlySavings:"Monthly Savings",welfare:"Welfare",annualSub:"Annual Sub",membership:"Membership",shares:"Shares",voluntaryDeposit:"Voluntary Deposit"};
+                  return (
+                    <div className="prof-section">
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                        <div className="prof-section-title" style={{marginBottom:0}}>📒 Contribution History ({memberContribs.length})</div>
+                        <button className="btn bp xs" onClick={()=>{setContribF(f=>({...f,memberId:profMember.id}));setContribModal(true);}}>+ Record</button>
+                      </div>
+                      {memberContribs.length===0?(
+                        <div style={{fontSize:11,color:"var(--tmuted)",padding:"8px 0"}}>No contributions logged yet. Use + Record to log monthly payments.</div>
+                      ):(
+                        <div style={{maxHeight:220,overflowY:"auto"}}>
+                          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                            <thead><tr style={{background:"var(--b50)"}}>
+                              {["Date","Category","Amount","Note",""].map(h=>(
+                                <th key={h} style={{padding:"5px 7px",textAlign:h==="Amount"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
+                              ))}
+                            </tr></thead>
+                            <tbody>
+                              {memberContribs.map(c=>(
+                                <tr key={c.id} style={{borderBottom:"1px solid #eef5ff"}}>
+                                  <td style={{padding:"5px 7px",fontFamily:"var(--mono)",fontSize:10,whiteSpace:"nowrap"}}>{fmtD(c.date)}</td>
+                                  <td style={{padding:"5px 7px"}}><span style={{fontSize:9,background:"var(--b100)",color:"var(--b700)",borderRadius:6,padding:"1px 6px",fontWeight:600}}>{CONTRIB_LABELS[c.category]||c.category}</span></td>
+                                  <td style={{padding:"5px 7px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#1b5e20"}}>{fmt(c.amount)}</td>
+                                  <td style={{padding:"5px 7px",fontSize:10,color:"var(--tmuted)"}}>{c.note||"—"}</td>
+                                  <td style={{padding:"5px 7px"}}><button className="btn bd xs" style={{padding:"2px 6px",fontSize:9}} onClick={()=>delContrib(c.id)}>🗑</button></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Share Certificate */}
+                {(profMember.shares||0)>0&&(
+                  <div className="prof-section">
+                    <div className="prof-section-title">📜 Share Certificate</div>
+                    <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:10,padding:"12px 14px",color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                      <div>
+                        <div style={{fontSize:10,opacity:.7,textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>Share Holding</div>
+                        <div style={{fontSize:18,fontWeight:900,fontFamily:"var(--mono)"}}>{shareUnits(profMember)} unit{shareUnits(profMember)!==1?"s":""}</div>
+                        <div style={{fontSize:11,opacity:.8,marginTop:2}}>= {fmt(profMember.shares)} share capital</div>
+                      </div>
+                      <button
+                        className="btn sm"
+                        style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.3)",color:"#fff",fontWeight:700}}
+                        disabled={!!pdfGen}
+                        onClick={async()=>{
+                          setPdfGen("cert_"+profMember.id);
+                          try{
+                            const blob=await generateShareCertificate(profMember,shareUnits(profMember),profMember.shares);
+                            const fname="BIDA_ShareCert_"+profMember.name.replace(/\s+/g,"_")+".pdf";
+                            const url=URL.createObjectURL(blob);
+                            const a=document.createElement("a");a.href=url;a.download=fname;
+                            document.body.appendChild(a);a.click();
+                            setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
+                          }catch(e){alert("Certificate error: "+e.message);}
+                          finally{setPdfGen(null);}
+                        }}
+                      >
+                        {pdfGen===("cert_"+profMember.id)?"⏳...":"📜 Download Certificate"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {profLoans.length>0&&(
                   <div className="prof-section">
                     <div className="prof-section-title">Loan History ({profLoans.length})</div>
@@ -4138,9 +5162,24 @@ export default function App(){
                   {[["Membership Fee","membership"],["Annual Sub","annualSub"],["Monthly Savings","monthlySavings"],["Welfare","welfare"],["Shares","shares"]].map(([lb,k])=>(
                     <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={profF[k]||0} onChange={e=>setProfF(f=>({...f,[k]:e.target.value}))}/></div>
                   ))}
+                  <div className="fg"><label className="fl">Voluntary Deposit (UGX)</label><input className="fi" type="number" value={profF.voluntaryDeposit||0} onChange={e=>setProfF(f=>({...f,voluntaryDeposit:+e.target.value||0}))}/><span className="fhint">Extra savings deposited by member — added to total</span></div>
+                  <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>👨‍👩‍👧 Next of Kin</div></div>
+                  <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"7px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}>Required for Benevolent Fund. BIDA must know who to contact and support in case of member's death or serious illness.</div></div>
+                  <div className="fg"><label className="fl">NOK Full Name</label><input className="fi" value={(profF.nextOfKin||{}).name||""} onChange={e=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),name:e.target.value}}))}/></div>
+                  <div className="fg"><label className="fl">NOK Phone</label><input className="fi" type="tel" value={(profF.nextOfKin||{}).phone||""} onChange={e=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),phone:e.target.value}}))}/></div>
+                  <div className="fg"><label className="fl">Relationship</label><input className="fi" value={(profF.nextOfKin||{}).relationship||""} onChange={e=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),relationship:e.target.value}}))} placeholder="e.g. Spouse, Child, Sibling"/></div>
+                  <div className="fg"><label className="fl">NOK NIN</label><input className="fi" value={(profF.nextOfKin||{}).nin||""} onChange={e=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),nin:e.target.value}}))}/></div>
+                  <div className="fg ff"><label className="fl">NOK Address</label><input className="fi" value={(profF.nextOfKin||{}).address||""} onChange={e=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),address:e.target.value}}))} placeholder="Village, Parish, District"/></div>
+                  <div className="fg ff"><label className="fl">Is NOK a BIDA Member?</label>
+                    <div style={{display:"flex",gap:8,marginTop:4}}>
+                      {[["yes","Yes — BIDA Member"],["no","No — Non-Member"]].map(([v,lbl])=>(
+                        <button key={v} type="button" onClick={()=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),isMember:v==="yes"}}))} style={{flex:1,padding:"7px",borderRadius:8,border:((profF.nextOfKin||{}).isMember===true&&v==="yes")||((profF.nextOfKin||{}).isMember===false&&v==="no")?"2px solid var(--b600)":"2px solid var(--bdr)",background:((profF.nextOfKin||{}).isMember===true&&v==="yes")||((profF.nextOfKin||{}).isMember===false&&v==="no")?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:700}}>{lbl}</button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="div"/>
-                <div className="crow"><span className="cl">Total Banked</span><span className="cv ok">{fmt((+profF.membership||0)+(+profF.annualSub||0)+(+profF.monthlySavings||0)+(+profF.welfare||0)+(+profF.shares||0))}</span></div>
+                <div className="crow"><span className="cl">Total Banked</span><span className="cv ok">{fmt((+profF.membership||0)+(+profF.annualSub||0)+(+profF.monthlySavings||0)+(+profF.welfare||0)+(+profF.shares||0)+(+profF.voluntaryDeposit||0))}</span></div>
                 <div className="fa"><button className="btn bg" onClick={()=>setProfEdit(false)}>Cancel</button><button className="btn bp" onClick={saveProfile}>Save</button></div>
               </React.Fragment>
             )}
@@ -4238,9 +5277,18 @@ export default function App(){
               <div className="fg"><label className="fl">Join Date</label><input className="fi" type="date" value={addMF.joinDate} onChange={e=>setAddMF(f=>({...f,joinDate:e.target.value}))}/></div>
               <div className="fg ff"><label className="fl">Physical Address</label><input className="fi" value={addMF.address} onChange={e=>setAddMF(f=>({...f,address:e.target.value}))} placeholder="Village, Parish, District"/></div>
 
+              {/* Next of Kin */}
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>👨‍👩‍👧 Next of Kin <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required for Benevolent Fund)</span></div></div>
+              <div className="fg ff"><div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:8,padding:"7px 11px",fontSize:10,color:"#e65100",lineHeight:1.6}}>BIDA requires next-of-kin details to activate the Benevolent Fund for this member in case of death or serious illness.</div></div>
+              <div className="fg"><label className="fl">NOK Full Name</label><input className="fi" value={(addMF.nextOfKin||{}).name||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),name:e.target.value}}))}/></div>
+              <div className="fg"><label className="fl">NOK Phone</label><input className="fi" type="tel" value={(addMF.nextOfKin||{}).phone||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),phone:e.target.value}}))}/></div>
+              <div className="fg"><label className="fl">Relationship to Member</label><input className="fi" value={(addMF.nextOfKin||{}).relationship||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),relationship:e.target.value}}))} placeholder="e.g. Spouse, Child, Parent, Sibling"/></div>
+              <div className="fg"><label className="fl">NOK NIN</label><input className="fi" value={(addMF.nextOfKin||{}).nin||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),nin:e.target.value}}))}/></div>
+              <div className="fg ff"><label className="fl">NOK Physical Address</label><input className="fi" value={(addMF.nextOfKin||{}).address||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),address:e.target.value}}))} placeholder="Village, Parish, District"/></div>
+
               {/* Contributions */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💰 Initial Contributions</div></div>
-              <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"8px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}><strong>📌 Contribution Rules:</strong> Monthly savings minimum: UGX <strong>10,000</strong>. Members may contribute <strong>70,000 or more</strong> per month — no upper cap. <strong>30% of monthly savings is auto-allocated to welfare.</strong></div></div>
+              <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"8px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}><strong>📌 Contribution Rules:</strong> Monthly savings minimum: UGX <strong>10,000</strong>. Members may contribute <strong>70,000 or more</strong> per month — no upper cap. <strong>40% of monthly savings is auto-allocated to welfare pool.</strong></div></div>
               {[["Membership Fee","membership"],["Annual Sub","annualSub"]].map(([lb,k])=>(
                 <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={addMF[k]} onChange={e=>setAddMF(f=>({...f,[k]:e.target.value}))} placeholder="0"/></div>
               ))}
@@ -4435,6 +5483,68 @@ export default function App(){
       )}
 
       {/* ── SERVICE PROVIDER MODAL ── */}
+      {/* ── CONTRIBUTION LOG MODAL ───────────────────────────────────────── */}
+      {contribModal&&(
+        <div className="overlay" onClick={e=>e.target===e.currentTarget&&setContribModal(false)}>
+          <div className="modal" style={{maxWidth:420}}>
+            <div className="mhdr">
+              <div className="mtitle">📒 Record Contribution</div>
+              <button className="mclose" onClick={()=>setContribModal(false)}>✕</button>
+            </div>
+            <div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:9,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#1565c0",lineHeight:1.6}}>
+              This logs a single contribution payment from a member and adds it to their running total. Use this to record monthly payments as they come in.
+            </div>
+            <div className="fgrid">
+              <div className="fg ff">
+                <label className="fl">Member</label>
+                <select className="fi" value={contribF.memberId} onChange={e=>setContribF(f=>({...f,memberId:e.target.value}))}>
+                  <option value="">— Select member —</option>
+                  {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+              <div className="fg">
+                <label className="fl">Date Received</label>
+                <input className="fi" type="date" value={contribF.date} onChange={e=>setContribF(f=>({...f,date:e.target.value}))}/>
+              </div>
+              <div className="fg">
+                <label className="fl">Amount (UGX)</label>
+                <input className="fi" type="number" value={contribF.amount} onChange={e=>setContribF(f=>({...f,amount:e.target.value}))} placeholder="e.g. 70000"/>
+              </div>
+              <div className="fg ff">
+                <label className="fl">Category</label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+                  {[["monthlySavings","💰 Monthly Savings"],["welfare","🛡 Welfare"],["annualSub","📅 Annual Sub"],["shares","📈 Shares"],["voluntaryDeposit","➕ Voluntary"]].map(([v,lbl])=>(
+                    <button key={v} type="button" onClick={()=>setContribF(f=>({...f,category:v}))} style={{padding:"6px 11px",borderRadius:8,border:contribF.category===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:contribF.category===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:contribF.category===v?700:400,color:contribF.category===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="fg ff">
+                <label className="fl">Note <span style={{fontWeight:400,color:"var(--tmuted)"}}>(optional)</span></label>
+                <input className="fi" value={contribF.note} onChange={e=>setContribF(f=>({...f,note:e.target.value}))} placeholder="e.g. September payment, paid via MTN MoMo"/>
+              </div>
+            </div>
+            {contribF.memberId&&contribF.amount&&(()=>{
+              const m=members.find(mb=>mb.id===+contribF.memberId);
+              if(!m) return null;
+              const currentVal=+m[contribF.category]||0;
+              const newVal=currentVal+(+contribF.amount||0);
+              return (
+                <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"9px 12px",marginTop:8}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6,fontFamily:"var(--mono)"}}>Preview</div>
+                  <div className="crow"><span className="cl">{m.name} — current {contribF.category}</span><span className="cv">{fmt(currentVal)}</span></div>
+                  <div className="crow"><span className="cl">Adding</span><span className="cv ok">+ {fmt(+contribF.amount||0)}</span></div>
+                  <div className="crow" style={{borderTop:"1px solid var(--bdr)",paddingTop:4,marginTop:3}}><span className="cl">New total</span><span className="cv ok" style={{fontWeight:900}}>{fmt(newVal)}</span></div>
+                </div>
+              );
+            })()}
+            <div className="fa">
+              <button className="btn bg" onClick={()=>setContribModal(false)}>Cancel</button>
+              <button className="btn bp" onClick={saveContrib} disabled={!contribF.memberId||!contribF.amount}>✓ Record Contribution</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {spModal&&(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setSpModal(false)}>
           <div className="modal wide">
@@ -4808,4 +5918,8 @@ export default function App(){
       </React.Fragment>}
     </React.Fragment>
   );
+}
+
+export default function App(){
+  return React.createElement(ErrorBoundary,null,React.createElement(AppInner,null));
 }
