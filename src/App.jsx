@@ -8,29 +8,25 @@ const loadScript = (src) => new Promise((res, rej) => {
   document.head.appendChild(s);
 });
 
-
-// ══════════════════════════════════════════════════════════════════════════════
-// SUPABASE — Persistent storage + real-time sync across all devices
-// ══════════════════════════════════════════════════════════════════════════════
-const SUPA_URL = "https://gzoafxyinwysstpixlclw.supabase.co";
-const SYNC_INTERVAL_MS = 15000; // poll every 15 seconds for cross-device sync
-// anon/public key — safe to ship in frontend code.
-// Security enforced by Row Level Security on the database, not key secrecy.
-// Supabase explicitly designed this key to be public.
-const SUPA_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd6b2FmeHlpbnd5c3RwaXhsY2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyNzgzNDUsImV4cCI6MjA4Nzg1NDM0NX0.5RL38BcXpa_KYhRwLMeJwshGtFzEKZNF8xt9qbsx_nw";
+// =====================================================
+// YOUR CORRECT SUPABASE CONFIGURATION
+// =====================================================
+const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
+const SUPA_ANON_KEY = "sb_publishable_0E7N6CTQK7bzXfni8tG9-A_xxxCgGUC";
+const SYNC_INTERVAL_MS = 15000;
 
 let SUPA_KEY = SUPA_ANON_KEY;
 function getSupaKey(){ return localStorage.getItem("bida_supa_key")||SUPA_ANON_KEY; }
 function setSupaKey(k){ localStorage.setItem("bida_supa_key",k); SUPA_KEY=k; }
-SUPA_KEY = SUPA_ANON_KEY; // Always start with hardcoded key — localStorage overrides if set
+SUPA_KEY = SUPA_ANON_KEY;
 
-// Simple fetch wrapper for Supabase REST API
+// =====================================================
+// SUPABASE API WRAPPER
+// =====================================================
 async function supa(method, table, body=null, query=""){
   const key=SUPA_KEY||getSupaKey();
   if(!key) throw new Error("Supabase API key not set.");
   const url=SUPA_URL+"/rest/v1/"+table+(query?"?"+query:"");
-  // POST (upsert): merge-duplicates tells Supabase to UPDATE on conflict
-  // GET: no Prefer header — it causes PostgREST to error on reads
   const headers={
     "Content-Type":"application/json",
     "apikey":key,
@@ -55,36 +51,31 @@ async function supa(method, table, body=null, query=""){
   try{ return JSON.parse(text); }catch(e){ return []; }
 }
 
-// Upsert array of records into a table — safe for concurrent multi-user writes
-// Uses PostgreSQL upsert (INSERT ... ON CONFLICT DO UPDATE) via Supabase Prefer header
 async function supaUpsert(table, rows){
   if(!rows||!rows.length) return;
-  // Retry once on transient failure (handles simultaneous saves from different devices)
   try{
     await supa("POST", table, rows);
   }catch(e){
-    // Wait 500ms and retry once — handles race conditions between concurrent users
     await new Promise(r=>setTimeout(r,500));
     await supa("POST", table, rows);
   }
 }
 
-// Fetch all rows from a table
 async function supaFetch(table){ 
   try{ return await supa("GET", table, null, "order=id"); }
   catch(e){ console.warn("supaFetch("+table+") failed:",e.message); return []; }
 }
 
-// Delete a record by id
 async function supaDelete(table, id){ return supa("DELETE", table, null, "id=eq."+id); }
 
-// Offline queue — operations done while offline, replayed when back online
+// =====================================================
+// OFFLINE QUEUE
+// =====================================================
 const OFFLINE_Q_KEY="bida_offline_q";
 function offlineQ(){ try{return JSON.parse(localStorage.getItem(OFFLINE_Q_KEY)||"[]");}catch{return[];} }
 function saveOfflineQ(q){ localStorage.setItem(OFFLINE_Q_KEY,JSON.stringify(q)); }
 function queueOp(op){ const q=offlineQ(); q.push({...op,ts:Date.now()}); saveOfflineQ(q); }
 
-// Replay offline queue when back online
 async function replayOfflineQueue(setSync){
   const q=offlineQ();
   if(!q.length) return;
@@ -100,7 +91,6 @@ async function replayOfflineQueue(setSync){
   setSync(failed.length?"error":"synced");
 }
 
-// Save one record — tries Supabase, queues if offline
 async function saveRecord(table, row, setSync, onError){
   const key=getSupaKey();
   if(!key) return;
@@ -123,10 +113,9 @@ async function saveRecord(table, row, setSync, onError){
   }
 }
 
-// Delete one record — tries Supabase, queues if offline
 async function deleteRecord(table, id, setSync){
   const key=getSupaKey();
-  if(!key) return; // No key — skip silently
+  if(!key) return;
   try{
     await supaDelete(table,id);
     setSync("synced");
@@ -141,12 +130,11 @@ async function deleteRecord(table, id, setSync){
   }
 }
 
-// Load all data from Supabase on startup
-// Sanitise a member row coming back from Supabase —
-// coerce all numeric fields regardless of column name casing
+// =====================================================
+// SANITISE FUNCTIONS
+// =====================================================
 function sanitiseMember(r){
   if(!r) return r;
-  // approvalTrail and pendingCommissions come back as parsed arrays from JSONB
   const trail = Array.isArray(r.approvalTrail||r.approvaltrail)
     ? (r.approvalTrail||r.approvaltrail)
     : (typeof (r.approvalTrail||r.approvaltrail)==="string"
@@ -170,18 +158,15 @@ function sanitiseMember(r){
     approvalTrail: trail,
     pendingCommissions: commissions,
     nextOfKin:    r.nextOfKin||r.next_of_kin||null,
-    // Contact & profile fields
     phone:        r.phone||r.Phone||"",
     whatsapp:     r.whatsapp||r.Whatsapp||"",
     email:        r.email||r.Email||"",
     address:      r.address||r.Address||"",
     nin:          r.nin||r.NIN||"",
     photoUrl:     r.photoUrl||r.photourl||"",
-    // Referral fields
     referralCommission:  +(r.referralCommission||r.referralcommission||0),
     referralSource:       r.referralSource||r.referralsource||"",
     referredByMemberId:   r.referredByMemberId||r.referredbymemberid||null,
-    // Payment fields (stored from new member registration)
     payMode:      r.payMode||r.paymode||"cash",
     bankName:     r.bankName||r.bankname||"",
     bankAccount:  r.bankAccount||r.bankaccount||"",
@@ -192,6 +177,7 @@ function sanitiseMember(r){
     joinDate:     r.joinDate||r.joindate||null,
   };
 }
+
 function sanitiseLoan(r){
   if(!r) return r;
   const trail = Array.isArray(r.approvalTrail||r.approvaltrail)
@@ -215,19 +201,20 @@ function sanitiseLoan(r){
     payments:       payments,
   };
 }
+
 function sanitiseExpense(r){
   if(!r) return r;
   return {
     ...r,
     id:+r.id||0,
     amount:+(r.amount||0),
-    // Default approval status for all existing expenses — they are pre-approved
     expApprovalStatus: r.expApprovalStatus||"approved",
     expApprovedBy:     r.expApprovedBy||"",
     expApprovedAt:     r.expApprovedAt||"",
     expRejectionReason:r.expRejectionReason||"",
   };
 }
+
 function sanitiseInvestment(r){
   if(!r) return r;
   return {
@@ -244,7 +231,7 @@ async function loadAllFromSupabase(){
     supaFetch("loans"),
     supaFetch("expenses"),
     supaFetch("investments"),
-    supaFetch("service_providers"),
+    supaFetch("service_providers").catch(()=>[]),
     supaFetch("receipts").catch(()=>[]),
     supaFetch("contrib_log").catch(()=>[]),
     supaFetch("dividend_payouts").catch(()=>[]),
@@ -252,7 +239,6 @@ async function loadAllFromSupabase(){
     supaFetch("audit_log").catch(()=>[]),
     supaFetch("settings").catch(()=>[]),
   ]);
-  // Apply any PINs stored in Supabase settings
   if(Array.isArray(settings)){
     settings.forEach(row=>{
       if(row.key&&row.key.startsWith("pin_")&&row.value){
@@ -261,7 +247,6 @@ async function loadAllFromSupabase(){
       }
     });
   }
-  // Sanitise all numeric fields so no string values corrupt the cash formula
   const members     = Array.isArray(rawMembers)     ? rawMembers.map(sanitiseMember)     : [];
   const loans       = Array.isArray(rawLoans)       ? rawLoans.map(sanitiseLoan)         : [];
   const expenses    = Array.isArray(rawExpenses)    ? rawExpenses.map(sanitiseExpense)   : [];
@@ -269,6 +254,9 @@ async function loadAllFromSupabase(){
   return {members,loans,expenses,investments,serviceProviders:providers||[],receipts,ledger,auditLog,contribLog:rawContribLog||[],dividendPayouts:rawDividendPayouts||[]};
 }
 
+// =====================================================
+// UTILITY FUNCTIONS
+// =====================================================
 const fmt   = (n) => n == null ? "—" : "UGX " + Number(n).toLocaleString("en-UG");
 const fmtN  = (n) => n == null ? "0" : Number(n).toLocaleString("en-UG");
 const fmtD  = (d) => d ? new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}) : "—";
@@ -322,8 +310,6 @@ function calcLoan(l, _ignored) {
 const totBanked   = (m) => (m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0);
 const procFee     = (a) => 25000 + 0.01 * a;
 
-// ── BORROW LIMIT: strict 60% of (monthlySavings + welfare) ──
-// Defaulters >3 months overdue: principal limit reduced 0.5%/month. >6 months: frozen at 50%.
 function monthsOverdue(l){
   if(!l||l.status==="paid"||!l.dateBanked) return 0;
   const issued=new Date(l.dateBanked);
@@ -344,7 +330,7 @@ function effectiveBorrowLimit(m,loans){
   return Math.round(base*borrowCapacityRate(m,loans||[])*(1-defaultPrincipalPenalty(m,loans||[])));
 }
 const borrowLimit=(m,loans)=>effectiveBorrowLimit(m,loans||[]);
-// Service provider compliance: must have membership, annualSub >= 50,000, monthlySavings > 0
+
 const isProviderCompliant=(m)=>m&&(m.membership||0)>=50000&&(m.annualSub||0)>=50000&&(m.monthlySavings||0)>0;
 const spExpiryDate=(sp)=>{
   if(!sp.registeredDate)return null;
@@ -354,6 +340,192 @@ const spExpiryDate=(sp)=>{
 };
 const spIsActive=(sp)=>{const e=spExpiryDate(sp);return e?new Date()<=e:false;};
 
+// =====================================================
+// CONSTANTS (SINGLE DECLARATION - NO DUPLICATES!)
+// =====================================================
+const WELFARE_RATE = 0.40;
+const autoWelfare = (monthlySavings) => Math.round((monthlySavings||0) * WELFARE_RATE);
+const SHARE_UNIT_VALUE = 50000;
+const shareUnits = (m) => Math.round((m.shares||0)/SHARE_UNIT_VALUE);
+const SERVICE_TYPES = ["Printing & Stationery","Transport","Catering & Meetings","Legal & Registration","IT & Communications","Venue & Facilities","Audit & Accounting","Other"];
+const EXP_CATEGORIES = ["Operations","Meetings","Transport","Printing","Legal & Registration","Banking","Communications","Welfare Payouts","Refunds","Salaries","Other"];
+const INV_TYPE_LABELS = {unit_trust:"Unit Trust",treasury_bond:"Treasury Bond",fixed_deposit:"Fixed Deposit",money_market:"Money Market",other:"Other"};
+
+const ROLES = {
+  admin:        { label:"Administrator",  can:["all"] },
+  treasurer:    { label:"Treasurer",      can:["view","savings","loans","expenses","investments","reports","settings","approve","disburse"] },
+  loan_officer: { label:"Loan Officer",   can:["view","loans","reports"] },
+  auditor:      { label:"Auditor",        can:["view","reports","audit"] },
+  finance_mgr:  { label:"Finance Manager",can:["view","savings","loans","expenses","investments","reports"] },
+  member:       { label:"Member",         can:["view","own_profile"] },
+};
+
+const APPROVAL_STEPS = [
+  { step:1, role:"treasurer",     label:"Treasurer",        action:"Initiated",  verb:"Initiate"  },
+  { step:2, role:"finance_mgr",   label:"Finance Manager",  action:"Reviewed",   verb:"Review"    },
+  { step:3, role:"admin",         label:"Administrator",    action:"Approved",   verb:"Approve"   },
+  { step:4, role:"auditor",       label:"Auditor",          action:"Stamped",    verb:"Final Stamp"},
+];
+
+const APPROVAL_STATUS = {
+  draft:        { label:"Draft",              color:"#757575", bg:"#f5f5f5"  },
+  step1_done:   { label:"Pending Finance",    color:"#1565c0", bg:"#e3f2fd"  },
+  step2_done:   { label:"Pending Admin",      color:"#e65100", bg:"#fff3e0"  },
+  step3_done:   { label:"Pending Audit",      color:"#6a1b9a", bg:"#f3e5f5"  },
+  approved:     { label:"✅ Fully Approved",  color:"#1b5e20", bg:"#e8f5e9"  },
+  rejected:     { label:"❌ Rejected",        color:"#c62828", bg:"#ffebee"  },
+};
+
+const getNextStep = (status) => {
+  const map = { draft:1, step1_done:2, step2_done:3, step3_done:4 };
+  const stepNum = map[status];
+  if(!stepNum) return null;
+  return APPROVAL_STEPS.find(s=>s.step===stepNum)||null;
+};
+
+const canActOn = (authUser, item) => {
+  if(!authUser||!item) return false;
+  const next = getNextStep(item.approvalStatus||"draft");
+  if(!next) return false;
+  return authUser.role === next.role;
+};
+
+const mkApprovalStep = (step, actor, decision, note) => ({
+  step,
+  role: actor.role,
+  name: actor.name,
+  decision,
+  note: note||"",
+  ts: new Date().toISOString(),
+  date: new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),
+  time: new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}),
+});
+
+const advanceStatus = (currentStatus) => {
+  const map = { draft:"step1_done", step1_done:"step2_done", step2_done:"step3_done", step3_done:"approved" };
+  return map[currentStatus]||currentStatus;
+};
+
+const canDo=(user,action)=>{if(!user)return false;const r=ROLES[user.role];if(!r)return false;return r.can.includes("all")||r.can.includes(action);};
+
+const DEFAULT_PINS = {
+  treasurer:"1234", financemanager:"5678", admin:"9999", auditor:"7777"
+};
+const USER_DEFS = {
+  treasurer:     { role:"treasurer",     name:"Treasurer"        },
+  financemanager:{ role:"finance_mgr",   name:"Finance Manager"  },
+  admin:         { role:"admin",         name:"Administrator"    },
+  auditor:       { role:"auditor",       name:"Auditor"          },
+};
+function loadSavedPins(){
+  try{ return JSON.parse(localStorage.getItem("bida_pins")||"{}"); }
+  catch{ return {}; }
+}
+function getSavedPin(role){
+  const saved=loadSavedPins();
+  return saved[role]||DEFAULT_PINS[role]||"";
+}
+function savePin(role,pin){
+  const saved=loadSavedPins();
+  saved[role]=pin;
+  localStorage.setItem("bida_pins",JSON.stringify(saved));
+  const key=getSupaKey();
+  if(key){
+    supaUpsert("settings",[{key:"pin_"+role,value:pin,updated_at:new Date().toISOString()}])
+      .catch(e=>console.warn("PIN sync to Supabase failed:",e.message));
+  }
+}
+function isPinDefault(role){
+  return !loadSavedPins()[role];
+}
+function buildUsers(){
+  return Object.fromEntries(
+    Object.entries(USER_DEFS).map(([key,u])=>([key,{...u,pin:getSavedPin(key)}]))
+  );
+}
+const USERS = buildUsers();
+
+const classifyLoan=(l)=>{
+  const c=calcLoan(l);
+  if(l.status==="paid") return {class:"performing",label:"Paid",color:"#2e7d32"};
+  const missedMonths=c.months - Math.floor((l.amountPaid||0)/Math.max(c.monthlyPayment,1));
+  if(missedMonths<=0) return {class:"performing",label:"Performing",color:"#2e7d32"};
+  if(missedMonths<=1) return {class:"watch",label:"Watch",color:"#f57f17"};
+  if(missedMonths<=3) return {class:"substandard",label:"Substandard",color:"#e65100"};
+  if(missedMonths<=6) return {class:"doubtful",label:"Doubtful",color:"#c62828"};
+  return {class:"loss",label:"Loss",color:"#b71c1c"};
+};
+
+const liquidityCheck=(amount,cashInBank,totalInvested)=>{
+  const reserve=cashInBank*0.30;
+  const available=cashInBank-totalInvested-reserve;
+  return {ok:available>=amount,available:Math.max(0,available),reserve,shortfall:Math.max(0,amount-available)};
+};
+
+const mkEntry=(type,refId,description,debit,credit,account,actorRole,actorName)=>({
+  id:Date.now()+Math.random(),
+  ts:new Date().toISOString(),
+  type,
+  refId,
+  description,
+  debit:debit||0,
+  credit:credit||0,
+  account,
+  actorRole:actorRole||"system",
+  actorName:actorName||"System",
+  immutable:true,
+});
+
+const mkAudit=(action,entity,entityId,before,after,actorRole,actorName)=>({
+  id:Date.now()+Math.random(),
+  ts:new Date().toISOString(),
+  action,
+  entity,
+  entityId,
+  before:before?JSON.stringify(before):null,
+  after:after?JSON.stringify(after):null,
+  actorRole:actorRole||"system",
+  actorName:actorName||"System",
+});
+
+const calcDividends=(members,loans,expenses,investments,surplusOverride)=>{
+  const totalPool=members.reduce((s,m)=>s+totBanked(m),0);
+  const totalExpenses=expenses.reduce((s,e)=>s+(+e.amount||0),0);
+  const loanProfit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
+  const invReturns=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+  const grossSurplus=loanProfit+invReturns*0.4;
+  const statutory=Math.round(grossSurplus*0.20);
+  const operational=Math.round(grossSurplus*0.10);
+  const distributable=surplusOverride!=null?surplusOverride:Math.max(0,grossSurplus-statutory-operational);
+  const totalShares=members.reduce((s,m)=>s+(m.shares||0),0);
+  const perMember=members.map(m=>{
+    const shareRatio=totalShares>0?(m.shares||0)/totalShares:0;
+    const savingsRatio=totalPool>0?totBanked(m)/totalPool:0;
+    const shareDividend=Math.round(distributable*0.60*shareRatio);
+    const savingsDividend=Math.round(distributable*0.40*savingsRatio);
+    return {...m,shareDividend,savingsDividend,totalDividend:shareDividend+savingsDividend};
+  });
+  return {grossSurplus,statutory,operational,distributable,perMember,totalShares};
+};
+
+const riskIndicators=(m,loans)=>{
+  const mLoans=loans.filter(l=>l.memberId===m.id);
+  const active=mLoans.filter(l=>l.status!=="paid");
+  const totalOwed=active.reduce((s,l)=>s+calcLoan(l).balance,0);
+  const savingsBase=(m.monthlySavings||0)+(m.welfare||0);
+  const exposureRatio=savingsBase>0?totalOwed/savingsBase:0;
+  const hasDelinquent=active.some(l=>classifyLoan(l).class!=="performing");
+  const flags=[];
+  if(exposureRatio>3) flags.push({level:"high",msg:"Exposure ratio "+exposureRatio.toFixed(1)+"x savings base"});
+  if(hasDelinquent) flags.push({level:"high",msg:"Has delinquent loan(s)"});
+  if(mLoans.length>2) flags.push({level:"medium",msg:"Multiple loan history ("+mLoans.length+")"});
+  if((m.annualSub||0)<50000) flags.push({level:"medium",msg:"Annual sub below threshold"});
+  return {flags,risk:flags.some(f=>f.level==="high")?"high":flags.length>0?"medium":"low"};
+};
+
+// =====================================================
+// INITIAL DATA
+// =====================================================
 const INIT_MEMBERS = [
   {id:1,name:"LUKULA PATRICK",email:"",whatsapp:"",membership:50000,annualSub:150000,monthlySavings:60000,welfare:40000,shares:150000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
   {id:2,name:"NAMWASE LOY",email:"",whatsapp:"",membership:50000,annualSub:200000,monthlySavings:1030000,welfare:550000,shares:300000,joinDate:"2024-01-01",approvalStatus:"approved",approvalTrail:[]},
@@ -499,223 +671,12 @@ const INIT_EXPENSES    = [
   {id:84,date:"2025-11-01",activity:"Bank charges — November 2025",amount:11500,issuedBy:"Stanbic Bank",category:"banking",payMode:"bank",purpose:"Bank charges",bankName:"Stanbic Bank",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""}
 ]
 const INIT_RECEIPTS    = [];
-// Service providers: BIDA members who provide consistent services
-// Must be compliant: active membership, annualSub >= 50,000, monthlySavings > 0
 const INIT_SERVICE_PROVIDERS = [];
-const INIT_PENDING     = []; // pending approvals queue
+const INIT_PENDING     = [];
 
-// ── AUTH — two users only ──
-// PINs managed in USERS block below
-
-
-// ══════════════════════════════════════════════════════════════════════
-// FINTECH LAYER — Role-based access, ledger, audit trail, risk controls
-// ══════════════════════════════════════════════════════════════════════
-
-// ROLES with permission matrix
-const ROLES = {
-  admin:        { label:"Administrator",  can:["all"] },
-  treasurer:    { label:"Treasurer",      can:["view","savings","loans","expenses","investments","reports","settings","approve","disburse"] },
-  loan_officer: { label:"Loan Officer",   can:["view","loans","reports"] },
-  auditor:      { label:"Auditor",        can:["view","reports","audit"] },
-  finance_mgr:  { label:"Finance Manager",can:["view","savings","loans","expenses","investments","reports"] },
-  member:       { label:"Member",         can:["view","own_profile"] },
-};
-
-// ══════════════════════════════════════════════════════════════
-// 4-STEP APPROVAL WORKFLOW
-// Step 1: Treasurer initiates
-// Step 2: Finance Manager reviews numbers
-// Step 3: Administrator approves governance
-// Step 4: Auditor gives final stamp → PDF generated
-// ══════════════════════════════════════════════════════════════
-
-const APPROVAL_STEPS = [
-  { step:1, role:"treasurer",     label:"Treasurer",        action:"Initiated",  verb:"Initiate"  },
-  { step:2, role:"finance_mgr",   label:"Finance Manager",  action:"Reviewed",   verb:"Review"    },
-  { step:3, role:"admin",         label:"Administrator",    action:"Approved",   verb:"Approve"   },
-  { step:4, role:"auditor",       label:"Auditor",          action:"Stamped",    verb:"Final Stamp"},
-];
-
-const APPROVAL_STATUS = {
-  draft:        { label:"Draft",              color:"#757575", bg:"#f5f5f5"  },
-  step1_done:   { label:"Pending Finance",    color:"#1565c0", bg:"#e3f2fd"  },
-  step2_done:   { label:"Pending Admin",      color:"#e65100", bg:"#fff3e0"  },
-  step3_done:   { label:"Pending Audit",      color:"#6a1b9a", bg:"#f3e5f5"  },
-  approved:     { label:"✅ Fully Approved",  color:"#1b5e20", bg:"#e8f5e9"  },
-  rejected:     { label:"❌ Rejected",        color:"#c62828", bg:"#ffebee"  },
-};
-
-// Get next step info for a given current status
-const getNextStep = (status) => {
-  const map = { draft:1, step1_done:2, step2_done:3, step3_done:4 };
-  const stepNum = map[status];
-  if(!stepNum) return null;
-  return APPROVAL_STEPS.find(s=>s.step===stepNum)||null;
-};
-
-// Can this user act on this item?
-const canActOn = (authUser, item) => {
-  if(!authUser||!item) return false;
-  const next = getNextStep(item.approvalStatus||"draft");
-  if(!next) return false;
-  return authUser.role === next.role;
-};
-
-// Build an approval record
-const mkApprovalStep = (step, actor, decision, note) => ({
-  step,
-  role: actor.role,
-  name: actor.name,
-  decision,   // "approved" | "rejected"
-  note: note||"",
-  ts: new Date().toISOString(),
-  date: new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),
-  time: new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}),
-});
-
-// Advance status after approval
-const advanceStatus = (currentStatus) => {
-  const map = { draft:"step1_done", step1_done:"step2_done", step2_done:"step3_done", step3_done:"approved" };
-  return map[currentStatus]||currentStatus;
-};
-
-const canDo=(user,action)=>{if(!user)return false;const r=ROLES[user.role];if(!r)return false;return r.can.includes("all")||r.can.includes(action);};
-
-// Extended USERS with roles (keeps existing PINs)
-// Default PINs — immediately overridden by any saved PINs from Settings
-const DEFAULT_PINS = {
-  treasurer:"1234", financemanager:"5678", admin:"9999", auditor:"7777"
-};
-const USER_DEFS = {
-  treasurer:     { role:"treasurer",     name:"Treasurer"        },
-  financemanager:{ role:"finance_mgr",   name:"Finance Manager"  },
-  admin:         { role:"admin",         name:"Administrator"    },
-  auditor:       { role:"auditor",       name:"Auditor"          },
-};
-// Load saved PINs from localStorage (set by Admin in Settings)
-function loadSavedPins(){
-  try{ return JSON.parse(localStorage.getItem("bida_pins")||"{}"); }
-  catch{ return {}; }
-}
-function getSavedPin(role){
-  const saved=loadSavedPins();
-  return saved[role]||DEFAULT_PINS[role]||"";
-}
-function savePin(role,pin){
-  const saved=loadSavedPins();
-  saved[role]=pin;
-  localStorage.setItem("bida_pins",JSON.stringify(saved));
-  // Also persist to Supabase so all devices get the new PIN
-  const key=getSupaKey();
-  if(key){
-    supaUpsert("settings",[{key:"pin_"+role,value:pin,updated_at:new Date().toISOString()}])
-      .catch(e=>console.warn("PIN sync to Supabase failed:",e.message));
-  }
-}
-function isPinDefault(role){
-  return !loadSavedPins()[role];
-}
-// Build USERS object with current PINs
-function buildUsers(){
-  return Object.fromEntries(
-    Object.entries(USER_DEFS).map(([key,u])=>([key,{...u,pin:getSavedPin(key)}]))
-  );
-}
-const USERS = buildUsers(); // initial build — refreshed on login
-
-// Loan delinquency classification
-const classifyLoan=(l)=>{
-  const c=calcLoan(l);
-  if(l.status==="paid") return {class:"performing",label:"Paid",color:"#2e7d32"};
-  const missedMonths=c.months - Math.floor((l.amountPaid||0)/Math.max(c.monthlyPayment,1));
-  if(missedMonths<=0) return {class:"performing",label:"Performing",color:"#2e7d32"};
-  if(missedMonths<=1) return {class:"watch",label:"Watch",color:"#f57f17"};
-  if(missedMonths<=3) return {class:"substandard",label:"Substandard",color:"#e65100"};
-  if(missedMonths<=6) return {class:"doubtful",label:"Doubtful",color:"#c62828"};
-  return {class:"loss",label:"Loss",color:"#b71c1c"};
-};
-
-// Liquidity check before loan approval
-const liquidityCheck=(amount,cashInBank,totalInvested)=>{
-  const reserve=cashInBank*0.30; // must keep 30% liquid
-  const available=cashInBank-totalInvested-reserve;
-  return {ok:available>=amount,available:Math.max(0,available),reserve,shortfall:Math.max(0,amount-available)};
-};
-
-// Double-entry ledger entry builder
-const mkEntry=(type,refId,description,debit,credit,account,actorRole,actorName)=>({
-  id:Date.now()+Math.random(),
-  ts:new Date().toISOString(),
-  type,       // "savings_deposit"|"loan_disbursement"|"loan_repayment"|"expense"|"investment"|"reversal"
-  refId,      // reference to parent record
-  description,
-  debit:debit||0,
-  credit:credit||0,
-  account,    // "savings_pool"|"loan_book"|"expense_account"|"investment_account"|"welfare_pool"
-  actorRole:actorRole||"system",
-  actorName:actorName||"System",
-  immutable:true,
-});
-
-// Audit trail entry builder
-const mkAudit=(action,entity,entityId,before,after,actorRole,actorName)=>({
-  id:Date.now()+Math.random(),
-  ts:new Date().toISOString(),
-  action,    // "create"|"edit"|"delete"|"approve"|"reject"|"login"|"config_change"
-  entity,    // "member"|"loan"|"expense"|"investment"
-  entityId,
-  before:before?JSON.stringify(before):null,
-  after:after?JSON.stringify(after):null,
-  actorRole:actorRole||"system",
-  actorName:actorName||"System",
-});
-
-// Dividend calculation engine
-const calcDividends=(members,loans,expenses,investments,surplusOverride)=>{
-  const totalPool=members.reduce((s,m)=>s+totBanked(m),0);
-  const totalExpenses=expenses.reduce((s,e)=>s+(+e.amount||0),0);
-  const loanProfit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-  const invReturns=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
-  const grossSurplus=loanProfit+invReturns*0.4; // 40% of inv returns distributable
-  const statutory=Math.round(grossSurplus*0.20); // 20% statutory reserve
-  const operational=Math.round(grossSurplus*0.10); // 10% operational reserve
-  const distributable=surplusOverride!=null?surplusOverride:Math.max(0,grossSurplus-statutory-operational);
-  const totalShares=members.reduce((s,m)=>s+(m.shares||0),0);
-  const perMember=members.map(m=>{
-    const shareRatio=totalShares>0?(m.shares||0)/totalShares:0;
-    const savingsRatio=totalPool>0?totBanked(m)/totalPool:0;
-    const shareDividend=Math.round(distributable*0.60*shareRatio);
-    const savingsDividend=Math.round(distributable*0.40*savingsRatio);
-    return {...m,shareDividend,savingsDividend,totalDividend:shareDividend+savingsDividend};
-  });
-  return {grossSurplus,statutory,operational,distributable,perMember,totalShares};
-};
-
-// Risk indicators
-const riskIndicators=(m,loans)=>{
-  const mLoans=loans.filter(l=>l.memberId===m.id);
-  const active=mLoans.filter(l=>l.status!=="paid");
-  const totalOwed=active.reduce((s,l)=>s+calcLoan(l).balance,0);
-  const savingsBase=(m.monthlySavings||0)+(m.welfare||0);
-  const exposureRatio=savingsBase>0?totalOwed/savingsBase:0;
-  const hasDelinquent=active.some(l=>classifyLoan(l).class!=="performing");
-  const flags=[];
-  if(exposureRatio>3) flags.push({level:"high",msg:"Exposure ratio "+exposureRatio.toFixed(1)+"x savings base"});
-  if(hasDelinquent) flags.push({level:"high",msg:"Has delinquent loan(s)"});
-  if(mLoans.length>2) flags.push({level:"medium",msg:"Multiple loan history ("+mLoans.length+")"});
-  if((m.annualSub||0)<50000) flags.push({level:"medium",msg:"Annual sub below threshold"});
-  return {flags,risk:flags.some(f=>f.level==="high")?"high":flags.length>0?"medium":"low"};
-};
-
-const WELFARE_RATE = 0.40; // 40% of cumulative monthly savings auto-allocated to welfare
-const autoWelfare = (monthlySavings) => Math.round((monthlySavings||0) * WELFARE_RATE);
-const SHARE_UNIT_VALUE = 50000; // UGX 50,000 per share unit
-const shareUnits = (m) => Math.round((m.shares||0)/SHARE_UNIT_VALUE);
-const SERVICE_TYPES = ["Printing & Stationery","Transport","Catering & Meetings","Legal & Registration","IT & Communications","Venue & Facilities","Audit & Accounting","Other"];
-const EXP_CATEGORIES = ["Operations","Meetings","Transport","Printing","Legal & Registration","Banking","Communications","Welfare Payouts","Refunds","Salaries","Other"];
-const INV_TYPE_LABELS = {unit_trust:"Unit Trust",treasury_bond:"Treasury Bond",fixed_deposit:"Fixed Deposit",money_market:"Money Market",other:"Other"};
-
+// =====================================================
+// EMPTY OBJECTS
+// =====================================================
 const emptyInv = {
   id:null, platform:"", type:"unit_trust", amount:"", dateInvested:"",
   investmentYear:new Date().getFullYear(), interestEarned:0, lastUpdated:"", status:"active", notes:"",
@@ -731,6 +692,7 @@ const emptyE = {
   mobileNumber:"", transactionId:"", category:"operations", categoryCustom:"", bankCharges:0, approverMemberId:"",
   expApprovalStatus:"approved", expApprovedBy:"", expApprovedAt:"", expRejectionReason:""
 };
+
 const emptyL = {
   memberId:"", memberName:"", dateBanked:"", amountLoaned:"", processingFeePaid:"",
   datePaid:"", amountPaid:0, status:"active", term:12,
@@ -739,14 +701,16 @@ const emptyL = {
   guarantorName:"", guarantorPhone:"", guarantorAddress:"", guarantorNIN:"", guarantorMemberId:"",
   approvalStatus:"draft", approvalTrail:[], initiatedBy:"", approvedBy:"",
 };
+
 const emptyPay = {
   loanId:null, amount:"", date: new Date().toISOString().split("T")[0],
   payMode:"cash", bankName:"", bankAccount:"", depositorName:"",
   mobileNumber:"", transactionId:"", attachmentName:"", attachmentData:""
 };
 
-
-
+// =====================================================
+// COMPONENTS
+// =====================================================
 function Avatar({name,size=40,photoUrl}){
   if(photoUrl) return React.createElement("div",{style:{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,border:"2px solid var(--bdr2)"}},React.createElement("img",{src:photoUrl,alt:name,style:{width:"100%",height:"100%",objectFit:"cover"}}));
   const w=name.trim().split(" ");
@@ -785,7 +749,6 @@ function buildSavingsEmail(m){const mn=MONTHS[new Date().getMonth()],yr=new Date
 function buildLoanEmail(m,loan){const c=calcLoan(loan);return{subj:"BIDA Cooperative — Loan Settlement Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nThis is a reminder that you have an outstanding loan balance with BIDA Co-operative.\n\nLoan Details:\n  Principal:        "+fmt(loan.amountLoaned)+"\n  Issued:           "+fmtD(loan.dateBanked)+"\n  Months elapsed:   "+c.months+"\n  Monthly Payment:  "+fmt(c.monthlyPayment)+"\n  Total due:        "+fmt(c.totalDue)+"\n  ─────────────────────────\n  Outstanding:      "+fmt(c.balance)+"\n\nPlease arrange payment at your earliest convenience.\n\nBIDA Co-operative Multi-Purpose Society\n"+toStr()};}
 function buildDueEmail(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return{subj:"⚠️ BIDA Cooperative — Loan Due in 5 Days: "+dueFmt,body:"Dear "+m.name.split(" ")[0]+",\n\nThis is an automated reminder that your BIDA Co-operative loan is due for full settlement on "+dueFmt+".\n\nLoan Summary:\n  Principal:       "+fmt(loan.amountLoaned)+"\n  Monthly Payment: "+fmt(c.monthlyPayment)+"\n  ─────────────────────────\n  Balance Due:     "+fmt(c.balance)+"\n\nPlease ensure payment is made on or before the due date to avoid your account being marked overdue.\n\nBIDA Co-operative Multi-Purpose Society\n"+toStr()};}
 
-// Convert blob to base64 data URL — works in ALL environments including sandboxed iframes
 function blobToDataUrl(blob){
   return new Promise((resolve,reject)=>{
     const r=new FileReader();
@@ -796,14 +759,12 @@ function blobToDataUrl(blob){
 }
 
 async function shareViaPDF(blob, filename, memberName){
-  // Try native share (mobile)
   if(navigator.canShare&&navigator.canShare({files:[new File([blob],filename,{type:"application/pdf"})]})){
     try{
       await navigator.share({files:[new File([blob],filename,{type:"application/pdf"})],title:"BIDA Cooperative — "+(memberName||"Report"),text:"Please find your BIDA Cooperative statement attached."});
       return "shared";
     }catch(e){if(e.name!=="AbortError")console.warn("Share failed:",e);}
   }
-  // Fallback: URL.createObjectURL (works on all platforms unlike data URLs)
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   a.href=url; a.download=filename;
@@ -814,7 +775,6 @@ async function shareViaPDF(blob, filename, memberName){
   return "downloaded";
 }
 
-// ── Central PDF loader — loads jsPDF + autoTable once ──
 let _jspdfLoaded=false;
 async function loadJsPDF(){
   if(_jspdfLoaded&&window.jspdf&&window.jspdf.jsPDF)return;
@@ -823,15 +783,12 @@ async function loadJsPDF(){
   _jspdfLoaded=true;
 }
 
-
-// ── LOAN AGREEMENT PDF ──────────────────────────────────────────────────────
 async function generateLoanPDF(loan, member, calc){
   await loadJsPDF();
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
   const NAVY=[13,52,97],BLUE=[21,101,192],WHITE=[255,255,255],GREY=[94,127,160],RED=[198,40,40],GREEN=[27,94,32],BLITE=[227,242,253];
-  // Header
   doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
   doc.setFillColor(...BLUE);doc.rect(0,28,W,2,"F");
   (()=>{const cx=22,cy=15,r=8;doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");})();
@@ -840,7 +797,6 @@ async function generateLoanPDF(loan, member, calc){
   doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("LOAN AGREEMENT",W/2,12,{align:"center"});
   doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(187,222,251);doc.text("Official Loan Disbursement Record — Confidential",W/2,19,{align:"center"});
   doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Date: "+toStr(),W-12,12,{align:"right"});doc.text("Loan Ref: #"+loan.id,W-12,18,{align:"right"});
-  // Borrower block
   doc.setFillColor(...BLITE);doc.roundedRect(12,36,W-24,22,3,3,"F");
   doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...NAVY);doc.text("BORROWER DETAILS",16,44);
   doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(40,40,40);
@@ -849,7 +805,6 @@ async function generateLoanPDF(loan, member, calc){
   doc.text("Address: "+(loan.borrowerAddress||member.address||"—"),16,63);
   doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...BLUE);doc.text(fmt(loan.amountLoaned),W-14,50,{align:"right"});
   doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("PRINCIPAL AMOUNT",W-14,56,{align:"right"});
-  // Loan terms table
   doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("LOAN TERMS",14,73);
   const method=calc.method==="reducing"?"6% Reducing Balance":"4% Flat Rate";
   doc.autoTable({startY:77,
@@ -878,7 +833,6 @@ async function generateLoanPDF(loan, member, calc){
     },
     margin:{left:14,right:14}
   });
-  // Guarantor
   if(loan.guarantorName){
     const gy=doc.lastAutoTable.finalY+8;
     doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("GUARANTOR DETAILS",14,gy);
@@ -889,7 +843,6 @@ async function generateLoanPDF(loan, member, calc){
       margin:{left:14,right:14}
     });
   }
-  // Full approval trail in PDF
   const trail=loan.approvalTrail||[];
   const trailY=Math.min(doc.lastAutoTable?doc.lastAutoTable.finalY+10:190, H-100);
   doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);
@@ -897,7 +850,6 @@ async function generateLoanPDF(loan, member, calc){
   doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,60,60);
   doc.text("This loan has been reviewed and approved through the BIDA 4-step approval process.",14,trailY+6);
 
-  // Approval step boxes
   const steps=[
     {step:1,role:"Treasurer",      label:"Initiated"},
     {step:2,role:"Finance Manager",label:"Reviewed"},
@@ -925,7 +877,6 @@ async function generateLoanPDF(loan, member, calc){
     }
   });
 
-  // Borrower signature line
   const sigY2=trailY+48;
   doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(60,60,60);
   doc.text("I, "+member.name+", confirm receipt of "+fmt(loan.amountLoaned)+" and agree to repay as stated.",14,sigY2);
@@ -939,7 +890,6 @@ async function generateLoanPDF(loan, member, calc){
     doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...GREEN);
     doc.text("✓ FULLY APPROVED — "+finalApproval.date+" "+finalApproval.time,W/2,sigY2+28,{align:"center"});
   }
-  // Footer
   doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
   doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
   doc.text("BIDA Co-operative Multi-Purpose Society — Loan Agreement — Confidential",12,H-4);
@@ -947,7 +897,6 @@ async function generateLoanPDF(loan, member, calc){
   return doc.output("blob");
 }
 
-// ── PDF GENERATION ──────────────────────────────────────────────────────────
 async function generatePDF(type, members, loans, expenses, returnBlob=false){
   await loadJsPDF();
   const {jsPDF}=window.jspdf;
@@ -978,7 +927,6 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     sB(150,27,44,16,"Welfare Pool",fmt(tW),[66,165,245]);
     sB(198,27,44,16,"Cash in Bank",fmt(cashInBk),cashInBk<0?RED:GREEN);
     sB(246,27,40,16,"Total Expenses",fmt(totalExp),RED);
-    // Main member table with contact details
     const rows=members.map((m,i)=>{
       const bl=borrowLimit(m,loans);
       const activeLoan=loans.find(l=>l.memberId===m.id&&l.status!=="paid");
@@ -1012,7 +960,6 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
       margin:{left:8,right:8},
       didDrawPage:(d)=>dF(d.pageNumber)
     });
-    // Summary footer
     const fy=doc.lastAutoTable.finalY+5;
     doc.setFillColor(227,242,253);doc.roundedRect(8,fy,W-16,16,2,2,"F");
     doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...NAVY);
@@ -1040,12 +987,10 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     sB(148,27,48,16,"Cash in Bank",fmt(cashInBk),cashInBk<0?RED:GREEN);
     sB(200,27,38,16,"Transactions",""+expenses.length,GREY);
     sB(242,27,44,16,"Bank Charges",fmt(catTotals["banking"]||0),[13,52,97]);
-    // Category summary table first
     const catRows=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>[cat.replace(/_/g," ").toUpperCase(),fmtN(amt),((amt/totalExp)*100).toFixed(1)+"%"]);
     catRows.push(["TOTAL",fmtN(totalExp),"100.0%"]);
     doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("CATEGORY SUMMARY",10,50);
     doc.autoTable({startY:53,head:[["Category","Amount (UGX)","%"]],body:catRows,styles:{fontSize:7.5,cellPadding:2},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},columnStyles:{0:{cellWidth:60,fontStyle:"bold"},1:{halign:"right",cellWidth:40},2:{halign:"center",cellWidth:20}},didParseCell:(d)=>{if(d.row.index===catRows.length-1&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";}},tableWidth:120,margin:{left:10}});
-    // Main ledger with running balance
     const sortedExp=[...expenses].sort((a,b)=>new Date(a.date)-new Date(b.date));
     let running=pool+profit;
     const rows=sortedExp.map((e,i)=>{
@@ -1081,7 +1026,6 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     });
     return doc.output("blob");
   } else if(type==="projections"){
-    // ── DATA-DRIVEN PROJECTIONS based on actual activity ──
     const tM=members.reduce((s,m)=>s+(m.monthlySavings||0),0);
     const gT=members.reduce((s,m)=>s+totBanked(m),0);
     const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
@@ -1089,7 +1033,6 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const aI=aL.reduce((s,l)=>s+calcLoan(l).monthlyInt,0);
     const tP=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
     const cashInBk=gT+tP-totalExp;
-    // New members in last 6 months
     const now=new Date();const sixAgo=new Date(now);sixAgo.setMonth(sixAgo.getMonth()-6);
     const recentNewMembers=members.filter(m=>m.joinDate&&new Date(m.joinDate)>=sixAgo).length;
     const avgMbrSavings=members.length>0?Math.round(tM/members.length):50000;
@@ -1101,11 +1044,10 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     sB(138,27,44,16,"New Mbrs (6mo)",""+recentNewMembers,GREY);
     sB(186,27,40,16,"Avg Mbr/Mo",fmt(avgMbrSavings),[25,118,210]);
     sB(230,27,56,16,"Profit So Far",fmt(tP),GREEN);
-    // ── SCENARIO A: Current trajectory ──
     let pA=gT,rA=tM;
     const rA_rows=[];
     for(let i=0;i<12;i++){
-      rA+=Math.round((recentNewMembers/6)*avgMbrSavings); // new members joining monthly
+      rA+=Math.round((recentNewMembers/6)*avgMbrSavings);
       const wf=Math.round(rA*0.30);
       const int=Math.round(aI*(1+i*0.01));
       const inflow=rA+int;
@@ -1118,7 +1060,6 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
     doc.text("Monthly savings: "+fmt(tM)+" | "+recentNewMembers+" new members in last 6 months | Loan interest: "+fmt(aI)+"/mo",10,55);
     doc.autoTable({startY:58,head:[["Month","Monthly Savings","Welfare (30%)","Loan Interest","Total Inflow","Cumulative Pool"]],body:rA_rows,styles:{fontSize:7,cellPadding:1.8},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:7},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{fontStyle:"bold",cellWidth:28},1:{halign:"right"},2:{halign:"right"},3:{halign:"right"},4:{halign:"right",fontStyle:"bold"},5:{halign:"right",fontStyle:"bold",textColor:BLUE}},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
-    // ── SCENARIO B: All members pay UGX 25,000/month for 18 months ──
     let pB=gT,pC=gT;
     const rB=members.length*25000,rC=members.length*30000;
     const rB_rows=[],rC_rows=[];
@@ -1142,7 +1083,6 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
     doc.text("Total monthly: "+fmt(rC)+" | Pool after 18 months before expenses: "+fmt(Math.round(pC)),10,yC+5);
     doc.autoTable({startY:yC+8,head:[["Month","Monthly Savings","Welfare (30%)","Loan Interest","Total Inflow","Cumulative Pool"]],body:rC_rows,styles:{fontSize:7,cellPadding:1.8},headStyles:{fillColor:[191,54,12],textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:7},alternateRowStyles:{fillColor:[255,248,225]},columnStyles:{0:{fontStyle:"bold",cellWidth:28},1:{halign:"right"},2:{halign:"right"},3:{halign:"right"},4:{halign:"right",fontStyle:"bold"},5:{halign:"right",fontStyle:"bold",textColor:[191,54,12]}},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
-    // Final comparison summary
     const yS=doc.lastAutoTable.finalY+8;
     if(yS<H-30){
       doc.setFillColor(13,52,97);doc.roundedRect(10,yS,W-20,28,2,2,"F");
@@ -1165,7 +1105,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160];
 
-  // BIDA hexagon logo
   const drawLogo=(cx,cy,r)=>{
     doc.setFillColor(...BLUE);
     doc.rect(cx-r,cy-r,r*2,r*2,"F");
@@ -1175,7 +1114,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     doc.rect(cx+r*0.22,cy-r*0.54,r*0.20,r*1.06,"F");
   };
 
-  // Header
   doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
   doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
   drawLogo(22,16,9);
@@ -1190,7 +1128,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   doc.setFontSize(6.5);doc.setTextColor(187,222,251);
   doc.text("Generated: "+toStr(),W-10,13,{align:"right"});
 
-  // Stats banner
   const tb=totBanked(member);
   const allTotals=allMembers.map(m=>totBanked(m)).sort((a,b)=>b-a);
   const rank=allTotals.indexOf(tb)+1;
@@ -1211,7 +1148,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   sBox(12+2*(bW+bGap),"Rank","#"+rank+" / "+allMembers.length,NAVY);
   sBox(12+3*(bW+bGap),"Pool Share",pct+"% of pool",BLUE);
 
-  // Member detail card
   const cY=boxY+boxH+4;
   doc.setFillColor(248,252,255);doc.roundedRect(10,cY,W-20,22,2,2,"F");
   doc.setDrawColor(...BLUE);doc.roundedRect(10,cY,W-20,22,2,2,"S");
@@ -1223,7 +1159,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   if(member.phone||member.whatsapp) doc.text("Phone: "+(member.phone||member.whatsapp),c2,cY+14);
   if(member.nin) doc.text("NIN: "+member.nin,c2,cY+19);
 
-  // Savings breakdown
   const sY=cY+27;
   doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",12,sY);
   doc.autoTable({startY:sY+3,
@@ -1243,7 +1178,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     margin:{left:12,right:12}
   });
 
-  // Borrowing capacity
   const bRate=Math.round(borrowCapacityRate(member,allLoans||[])*100);
   const bBase=(member.monthlySavings||0)+(member.welfare||0);
   const bPenalty=defaultPrincipalPenalty(member,allLoans||[]);
@@ -1257,7 +1191,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     margin:{left:12,right:12}
   });
 
-  // Pool standing & peer comparison
   const psY=doc.lastAutoTable.finalY+5;
   doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("POOL STANDING & PEER COMPARISON",12,psY);
   doc.autoTable({startY:psY+3,
@@ -1282,7 +1215,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     margin:{left:12,right:12}
   });
 
-  // Loan history
   if(memberLoans&&memberLoans.length>0){
     const lY=doc.lastAutoTable.finalY+5;
     doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);
@@ -1305,7 +1237,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     });
   }
 
-  // Footer
   const pageCount=doc.internal.getNumberOfPages();
   for(let pg=1;pg<=pageCount;pg++){
     doc.setPage(pg);
@@ -1318,8 +1249,6 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   return doc.output("blob");
 }
 
-
-// ── SHARE CERTIFICATE PDF ─────────────────────────────────────────────────
 async function generateShareCertificate(member, shareUnitsCount, shareValue){
   await loadJsPDF();
   const {jsPDF}=window.jspdf;
@@ -1327,14 +1256,11 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
   const NAVY=[13,52,97],BLUE=[21,101,192],WHITE=[255,255,255],GOLD=[183,146,30],LIGHT=[227,242,253];
 
-  // Border
   doc.setDrawColor(...GOLD);doc.setLineWidth(1.5);doc.rect(6,6,W-12,H-12,"S");
   doc.setLineWidth(0.4);doc.rect(9,9,W-18,H-18,"S");
 
-  // Header band
   doc.setFillColor(...NAVY);doc.rect(9,9,W-18,22,"F");
 
-  // Logo block
   const cx=24,cy=20,r=7;
   doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");
   doc.setFillColor(...WHITE);
@@ -1357,26 +1283,21 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
   doc.text("Cert No: "+certNo,W-12,16,{align:"right"});
   doc.text("Date: "+toStr(),W-12,22,{align:"right"});
 
-  // Gold band under header
   doc.setFillColor(...GOLD);doc.rect(9,31,W-18,1,"F");
 
-  // THIS IS TO CERTIFY text
   doc.setFont("helvetica","italic");doc.setFontSize(9);doc.setTextColor(...NAVY);
   doc.text("This is to certify that",W/2,40,{align:"center"});
 
-  // Member name large
   doc.setFont("helvetica","bold");doc.setFontSize(18);doc.setTextColor(...NAVY);
   doc.text(member.name,W/2,51,{align:"center"});
   doc.setDrawColor(...GOLD);doc.setLineWidth(0.5);
   doc.line(W/2-50,53,W/2+50,53);
 
-  // Details
   doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(50,50,50);
   const midY=60;
   doc.text("Member ID: #"+member.id,W/2,midY,{align:"center"});
   doc.text("is the registered holder of",W/2,midY+7,{align:"center"});
 
-  // Share count — big
   doc.setFillColor(...LIGHT);doc.roundedRect(W/2-40,midY+10,80,18,3,3,"F");
   doc.setDrawColor(...GOLD);doc.setLineWidth(0.8);doc.roundedRect(W/2-40,midY+10,80,18,3,3,"S");
   doc.setFont("helvetica","bold");doc.setFontSize(20);doc.setTextColor(...NAVY);
@@ -1384,14 +1305,12 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
   doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(100,100,100);
   doc.text("("+shareUnitsCount+" share unit"+(shareUnitsCount>1?"s":"")+") at UGX 50,000 per unit",W/2,midY+26,{align:"center"});
 
-  // Share value
   doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...BLUE);
   doc.text("Total Share Capital: UGX "+Number(shareValue).toLocaleString("en-UG"),W/2,midY+34,{align:"center"});
 
   doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,60,60);
   doc.text("in BIDA Co-operative Multi-Purpose Society, subject to the rules and by-laws of the Society.",W/2,midY+41,{align:"center"});
 
-  // Signature lines
   const sigY=H-22;
   doc.setDrawColor(150,150,150);doc.setLineWidth(0.4);
   doc.line(18,sigY,65,sigY);doc.line(W-65,sigY,W-18,sigY);
@@ -1399,7 +1318,6 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
   doc.text("Chairperson Signature & Date",18,sigY+4);
   doc.text("Secretary / Treasurer Signature & Date",W-65,sigY+4);
 
-  // Footer
   doc.setFillColor(...NAVY);doc.rect(9,H-11,W-18,6,"F");
   doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(...WHITE);
   doc.text("BIDA Co-operative Multi-Purpose Society · "+certNo+" · bidacooperative@gmail.com",W/2,H-7,{align:"center"});
@@ -1407,8 +1325,6 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
   return doc.output("blob");
 }
 
-
-// ── ERROR BOUNDARY — catches render crashes and shows message instead of white screen ──
 class ErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state={hasError:false,error:null}; }
   static getDerivedStateFromError(error){ return {hasError:true,error}; }
@@ -1431,7 +1347,6 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// ── CSS ──────────────────────────────────────────────────────────────────────
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -1445,8 +1360,6 @@ const CSS = `
 html{-webkit-text-size-adjust:100%;}
 body{background:var(--b50);color:var(--td);font-family:var(--sans);min-height:100vh;font-size:14px;}
 .app{display:flex;flex-direction:column;min-height:100vh;}
-
-/* ── HEADER ── */
 .hdr{background:linear-gradient(130deg,var(--b900) 0%,var(--b800) 55%,var(--b700) 100%);
   box-shadow:0 3px 20px rgba(6,16,31,.5);position:sticky;top:0;z-index:100;}
 .hdr-top{padding:0 12px;height:50px;display:flex;align-items:center;justify-content:space-between;}
@@ -1459,13 +1372,9 @@ body{background:var(--b50);color:var(--td);font-family:var(--sans);min-height:10
 .nbtn{padding:6px 11px;border-radius:7px;border:none;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:rgba(255,255,255,.6);transition:all .18s;white-space:nowrap;}
 .nbtn:hover{color:#fff;background:rgba(255,255,255,.12);}
 .nbtn.on{background:#fff;color:var(--b800);box-shadow:0 2px 8px rgba(0,0,0,.2);}
-
-/* ── MAIN ── */
 .main{flex:1;padding:12px;width:100%;max-width:100%;overflow-x:hidden;}
 .ptitle{font-size:16px;font-weight:800;color:var(--b800);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 .ptdot{width:7px;height:7px;border-radius:50%;background:var(--b500);flex-shrink:0;}
-
-/* ── STAT CARDS ── */
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:12px;}
 @media(min-width:480px){.stats{grid-template-columns:repeat(3,1fr);}}
 @media(min-width:720px){.stats{grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}}
@@ -1478,8 +1387,6 @@ body{background:var(--b50);color:var(--td);font-family:var(--sans);min-height:10
 .cval{font-size:13px;font-weight:800;color:var(--b700);line-height:1.1;word-break:break-all;}
 .cval.ok{color:#2e7d32;}.cval.warn{color:#bf360c;}.cval.danger{color:#c62828;}
 .csub{font-size:9px;color:var(--tmuted);margin-top:2px;}
-
-/* ── TOOLBAR ── */
 .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
 .tl{display:flex;align-items:center;gap:8px;}
 .ttitle{font-size:13px;font-weight:700;color:var(--b800);}
@@ -1489,8 +1396,6 @@ body{background:var(--b50);color:var(--td);font-family:var(--sans);min-height:10
 .sinput{background:#fff;border:1.5px solid var(--bdr);border-radius:8px;padding:7px 10px 7px 28px;
   color:var(--td);font-family:var(--sans);font-size:13px;outline:none;width:140px;}
 .sinput:focus{border-color:var(--b500);}
-
-/* ── BUTTONS ── */
 .btn{display:inline-flex;align-items:center;gap:4px;padding:8px 13px;border-radius:8px;border:none;
   font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
 .btn:disabled{opacity:.4;cursor:not-allowed;}
@@ -1508,8 +1413,6 @@ body{background:var(--b50);color:var(--td);font-family:var(--sans);min-height:10
 .bsms:hover{background:#bf360c;}
 .sm{padding:5px 10px;font-size:11px;border-radius:7px;}
 .xs{padding:3px 7px;font-size:10px;border-radius:6px;}
-
-/* ── TABLE ── */
 .twrap{background:#fff;border-radius:11px;border:1px solid var(--bdr);overflow:hidden;overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
 thead tr{background:var(--b50);}
@@ -1534,8 +1437,6 @@ th.hi,td.hi{background:rgba(21,101,192,.04);}
 .bp-pos{color:#2e7d32;font-family:var(--mono);font-weight:600;}
 .bp-neg{color:var(--danger);font-family:var(--mono);font-weight:600;}
 .abtn{display:flex;gap:3px;}
-
-/* ── MODAL ── */
 .overlay{position:fixed;inset:0;background:rgba(6,16,31,.75);backdrop-filter:blur(4px);
   z-index:200;display:flex;align-items:flex-end;justify-content:center;padding:0;overflow-y:auto;}
 @media(min-width:600px){.overlay{align-items:center;padding:16px;}}
@@ -1565,8 +1466,6 @@ th.hi,td.hi{background:rgba(21,101,192,.04);}
 .cv.d{color:var(--danger);}.cv.ok{color:#2e7d32;}
 .fa{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;}
 select.fi{cursor:pointer;}
-
-/* ── MISC ── */
 .empty{text-align:center;padding:30px;color:var(--tmuted);font-size:13px;}
 .eico{font-size:26px;margin-bottom:6px;opacity:.3;}
 .int-rule{background:linear-gradient(135deg,var(--b800),var(--b700));border-radius:11px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;color:#fff;}
@@ -1587,8 +1486,6 @@ select.fi{cursor:pointer;}
 .spin{display:inline-block;animation:sp .7s linear infinite;}
 @keyframes sp{to{transform:rotate(360deg)}}
 @keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}
-
-/* ── PROFILE ── */
 .prof-hero{background:linear-gradient(135deg,var(--b800),var(--b600));border-radius:13px;padding:14px 16px;margin-bottom:14px;color:#fff;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;}
 .prof-info{flex:1;min-width:0;}
 .prof-name{font-size:16px;font-weight:900;}
@@ -1611,8 +1508,6 @@ select.fi{cursor:pointer;}
 .prof-loan-card.lactive{border-color:#ffcc80;background:#fffde7;}
 .prof-loan-card.loverdue{border-color:#ef9a9a;background:#ffebee;}
 .prof-loan-card.lpaid{border-color:#66bb6a;background:#f1f8e9;border-width:2px;}
-
-/* ── REMINDERS ── */
 .email-section{background:#fff;border:1px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:12px;}
 .email-sec-title{font-size:13px;font-weight:700;color:var(--b800);margin-bottom:3px;}
 .email-sec-sub{font-size:11px;color:var(--tmuted);margin-bottom:10px;}
@@ -1637,13 +1532,10 @@ select.fi{cursor:pointer;}
 .setup-banner h3{font-size:13px;font-weight:800;color:#bf360c;margin-bottom:8px;}
 .setup-banner ol{padding-left:18px;font-size:12px;color:#5d4037;line-height:1.9;}
 .setup-banner code{background:#ffe0b2;border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:11px;color:#bf360c;}
-
-/* ── DUE LOAN ALERTS ── */
 .due-alert{background:#fff3e0;border:1.5px solid #ffb74d;border-radius:11px;padding:12px 14px;margin-bottom:12px;}
 .due-alert-title{font-size:13px;font-weight:800;color:#bf360c;margin-bottom:6px;}
 .due-loan-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffe0b2;gap:8px;flex-wrap:wrap;}
 .due-loan-row:last-child{border-bottom:none;}
-/* ── EXPENSE ROWS ── */
 .exp-row{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid #eef5ff;flex-wrap:wrap;}
 .exp-row:last-child{border-bottom:none;}
 .exp-date{font-size:10px;font-family:var(--mono);color:var(--tmuted);white-space:nowrap;min-width:70px;padding-top:2px;}
@@ -1734,13 +1626,11 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
           );
         })}
       </div>
-      {/* Repayment Schedule — rendered via proper sub-component (hooks-safe) */}
       <LoanScheduleFooter l={l} markPd={markPd} closeProfile={closeProfile} openEditL={openEditL}/>
     </div>
   );
 }
 
-// Proper sub-component so useState is called at component level — not inside an IIFE
 function LoanScheduleFooter({l, markPd, closeProfile, openEditL}){
   const [showSched,setShowSched] = React.useState(false);
   const term=l.term||12;
@@ -1827,8 +1717,6 @@ function TermSelectorButtons({lF, setLF}){
   });
 }
 
-
-
 function InvestmentCard({inv, openEditInv, delInv}){
   const statusColor = inv.status==="active" ? "#1b5e20" : "#546e7a";
   const stats = [
@@ -1877,8 +1765,6 @@ function InvestmentCard({inv, openEditInv, delInv}){
     </div>
   );
 }
-
-
 
 function ExpCategoryButtons({expF, setExpF}){
   return EXP_CATEGORIES.map(function(cat){
@@ -1947,7 +1833,6 @@ function FlatLoanPreview({lFPreview, lF, setLF}){
   );
 }
 
-
 function PayModal({loan, mem, payF, setPayF, savePay, setPayModal}){
   if(!loan)return null;
   const previewPaid=(loan.amountPaid||0)+(+payF.amount||0);
@@ -2008,7 +1893,6 @@ function PayModal({loan, mem, payF, setPayF, savePay, setPayModal}){
   );
 }
 
-// ── SAVINGS & EXPENSES BAR CHART ────────────────────────────────────────────
 function SavingsExpensesChart({savingsData, expensesData}){
   const canvasRef = React.useRef(null);
   const chartRef  = React.useRef(null);
@@ -2055,7 +1939,7 @@ function SavingsExpensesChart({savingsData, expensesData}){
 
 function AppInner(){
   const [tab,setTab]        = useState("savings");
-  const [authUser,setAuthUser] = useState(null); // null = logged out
+  const [authUser,setAuthUser] = useState(null);
   const SESSION_MINUTES = 5;
 
   const [loginPin,setLoginPin] = useState("");
@@ -2067,28 +1951,24 @@ function AppInner(){
   const [loans,setLoans]    = useState(INIT_LOANS);
   const [expenses,setExpenses] = useState(INIT_EXPENSES.map(sanitiseExpense));
   const [serviceProviders,setServiceProviders] = useState(INIT_SERVICE_PROVIDERS);
-  // Sync state: "idle" | "loading" | "synced" | "syncing" | "offline" | "error"
   const [syncStatus,setSyncStatus] = useState("idle");
   const [benovSelMember,setBenovSelMember] = useState("");
-  // Contribution log: {memberId, date, category, amount, note}
   const [contribLog,setContribLog] = useState([]);
   const [contribModal,setContribModal] = useState(false);
   const [contribF,setContribF] = useState({memberId:"",date:new Date().toISOString().split("T")[0],category:"monthlySavings",amount:"",note:""});
-  // Dividend payout records
   const [dividendPayouts,setDividendPayouts] = useState([]);
   const [dividendModal,setDividendModal] = useState(false);
-  // Expense approval threshold
-  const EXPENSE_APPROVAL_THRESHOLD = 100000; // expenses >= 100k need Admin approval
+  const EXPENSE_APPROVAL_THRESHOLD = 100000;
   const [benovClaimType,setBenovClaimType] = useState("death");
   const [benovRetention,setBenovRetention] = useState("compensate");
   const [supaKeyInput,setSupaKeyInput] = useState(getSupaKey());
   const [pinMgmt,setPinMgmt]         = useState({});
-  const [approvalQueue,setApprovalQueue] = useState([]); // pending items across all workflows
+  const [approvalQueue,setApprovalQueue] = useState([]);
   const [rejectNote,setRejectNote]       = useState("");
-  const [rejectTarget,setRejectTarget]   = useState(null);     // role->newPin input
-  const [pinMsg,setPinMsg]           = useState({});      // role->success/error message
-  const [pinConfirm,setPinConfirm]   = useState({});      // role->confirmPin input
-  const [showPins,setShowPins]       = useState({});      // role->bool show/hide
+  const [rejectTarget,setRejectTarget]   = useState(null);
+  const [pinMsg,setPinMsg]           = useState({});
+  const [pinConfirm,setPinConfirm]   = useState({});
+  const [showPins,setShowPins]       = useState({});
   const [dbLoaded,setDbLoaded] = useState(false);
   const [spModal,setSpModal] = useState(false);
   const [spF,setSpF] = useState({
@@ -2100,16 +1980,15 @@ function AppInner(){
   });
   const [editSp,setEditSp] = useState(null);
   const [receipts,setReceipts] = useState(INIT_RECEIPTS);
-  const [pending,setPending]   = useState(INIT_PENDING); // pending approval queue
+  const [pending,setPending]   = useState(INIT_PENDING);
   const [expModal,setExpModal] = useState(false);
   const [editExp,setEditExp]   = useState(null);
   const [expF,setExpF]         = useState({...emptyE});
   const [investments,setInvestments] = useState(INIT_INVESTMENTS);
-  const [ledger,setLedger]           = useState([]); // double-entry ledger
-  const [auditLog,setAuditLog]       = useState([]); // immutable audit trail
-  const [schedules,setSchedules]     = useState({}); // repayment schedules keyed by loanId
-  const [dividendRun,setDividendRun] = useState(null); // last dividend calculation
-
+  const [ledger,setLedger]           = useState([]);
+  const [auditLog,setAuditLog]       = useState([]);
+  const [schedules,setSchedules]     = useState({});
+  const [dividendRun,setDividendRun] = useState(null);
   const [invModal,setInvModal] = useState(false);
   const [editInv,setEditInv]   = useState(null);
   const [invF,setInvF]         = useState({...emptyInv});
@@ -2130,18 +2009,15 @@ function AppInner(){
   const [addMModal,setAddMModal] = useState(false);
   const [addMF,setAddMF]    = useState({name:"",email:"",whatsapp:"",phone:"",address:"",nin:"",photoUrl:"",membership:50000,annualSub:0,monthlySavings:0,welfare:0,shares:0,shareUnitsInput:0,voluntaryDeposit:0,joinDate:new Date().toISOString().split("T")[0],referralSource:"",referredById:"",payMode:"cash",bankName:"",bankAccount:"",depositorName:"",mobileNumber:"",transactionId:"",initialPaymentReceived:false,initialPaymentNote:""});
 
-  // ── Live FX rates ──
   const [fxRates,setFxRates]=useState(null);
   const [fxLoading,setFxLoading]=useState(true);
   const [liveTime,setLiveTime]=useState(new Date());
 
-  // ── Live clock — ticks every second ──
   useEffect(()=>{
     const t=setInterval(()=>setLiveTime(new Date()),1000);
     return ()=>clearInterval(t);
   },[]);
 
-  // ── Session timeout: auto-logout after 10 min idle ──
   useEffect(()=>{
     if(!authUser) return;
     let timer;
@@ -2152,22 +2028,17 @@ function AppInner(){
     return ()=>{ clearTimeout(timer); events.forEach(e=>window.removeEventListener(e,reset)); };
   },[authUser]);
 
-  // ── Load all data from Supabase on first mount ──
   useEffect(()=>{
     const key=getSupaKey();
     if(!key||dbLoaded) return;
     setSyncStatus("loading");
     loadAllFromSupabase()
       .then(data=>{
-        // Safe initial load: DB is source of truth.
-        // INIT_ data is only used if DB returns nothing (first ever launch).
-        // Merge strategy: DB records win; INIT records not in DB are kept (safety net).
         if(data.members&&data.members.length>0){
           const hasValid=data.members.some(m=>(m.membership||0)>0||(m.monthlySavings||0)>0);
           if(hasValid){
             setMembers(prev=>{
               const dbIds=new Set(data.members.map(m=>m.id));
-              // Keep any local members not yet in DB (just registered, not yet synced)
               const localOnly=prev.filter(m=>!dbIds.has(m.id));
               return [...data.members,...localOnly];
             });
@@ -2202,13 +2073,10 @@ function AppInner(){
       .catch(e=>{ console.error("Supabase load failed:",e.message); setSyncStatus("idle"); });
   },[supaKeyInput]);
 
-  // ── When internet returns: replay queue then re-pull all data ──
   useEffect(()=>{
     const h=async()=>{
       setSyncStatus("syncing");
-      // First push any queued offline changes
       await replayOfflineQueue(setSyncStatus);
-      // Then pull fresh data from DB to catch anything others saved while we were offline
       try{
         const data=await loadAllFromSupabase();
         if(data.members&&data.members.length>0){
@@ -2239,14 +2107,11 @@ function AppInner(){
     return ()=>window.removeEventListener("online",h);
   },[]);
 
-  // ── Cross-device sync: poll Supabase every 15 seconds ──
-  // When another device saves a record, this pulls it in automatically
   useEffect(()=>{
     const key=getSupaKey();
-    if(!key||!authUser) return; // only poll when logged in with a key
+    if(!key||!authUser) return;
     const poll=async()=>{
       try{
-        // Fetch latest data silently in background
         const [freshMembers,freshLoans,freshExpenses,freshInvestments,freshSettings]=await Promise.all([
           supaFetch("members"),
           supaFetch("loans"),
@@ -2254,7 +2119,6 @@ function AppInner(){
           supaFetch("investments"),
           supaFetch("settings").catch(()=>[]),
         ]);
-        // Apply any PIN changes made on other devices
         if(Array.isArray(freshSettings)){
           freshSettings.forEach(row=>{
             if(row.key&&row.key.startsWith("pin_")&&row.value){
@@ -2262,13 +2126,8 @@ function AppInner(){
             }
           });
         }
-        // SAFE MERGE: DB is the source of truth. Only update state if DB has valid data.
-        // NEVER let a poll with fewer records wipe records only in local state —
-        // local state is merged with DB (DB wins on conflict, local additions are preserved
-        // until they appear in the next poll after being saved).
         if(freshMembers&&freshMembers.length>0&&freshMembers.some(m=>(m.membership||0)+(m.monthlySavings||0)+(m.membership||0)>0)){
           const sanitised=freshMembers.map(sanitiseMember);
-          // Merge: keep local members that haven't reached DB yet
           setMembers(prev=>{
             const dbIds=new Set(sanitised.map(m=>m.id));
             const localOnly=prev.filter(m=>!dbIds.has(m.id));
@@ -2299,7 +2158,6 @@ function AppInner(){
             return [...sanitised,...localOnly];
           });
         }
-        // Also pull contribution log and dividend payouts
         const [freshContrib,freshDividends]=await Promise.all([
           supaFetch("contrib_log").catch(()=>null),
           supaFetch("dividend_payouts").catch(()=>null),
@@ -2312,11 +2170,9 @@ function AppInner(){
         }
         if(freshDividends&&freshDividends.length>=0) setDividendPayouts(freshDividends);
       }catch(e){
-        // Silent fail — don't show error for background poll
         console.debug("Background sync poll failed:",e.message);
       }
     };
-    // Poll immediately on login, then every 15 seconds
     poll();
     const interval=setInterval(poll, SYNC_INTERVAL_MS);
     return ()=>clearInterval(interval);
@@ -2359,7 +2215,7 @@ function AppInner(){
     welfare:members.reduce((s,m)=>s+(m.welfare||0),0),
     shares:members.reduce((s,m)=>s+(m.shares||0),0),
     voluntary:members.reduce((s,m)=>s+(m.voluntaryDeposit||0),0),
-    total:members.reduce((s,m)=>s+totBanked(m),0)  // includes voluntaryDeposit via totBanked
+    total:members.reduce((s,m)=>s+totBanked(m),0)
   }),[members]);
   const lStat = useMemo(()=>{
     const act=loansCalc.filter(l=>l.status!=="paid"),pdd=loansCalc.filter(l=>l.status==="paid");
@@ -2367,31 +2223,23 @@ function AppInner(){
   },[loansCalc,loans]);
 
   const totalExpenses  = useMemo(()=>expenses.reduce((s,e)=>s+(+e.amount||0),0),[expenses]);
-  // True cash in bank = all deposits + loan profit realised - all expenses paid out
-  // (outstanding loans are already deployed as cash, not deducted from bank)
   const cashInBank     = useMemo(()=>{
-    // BIDA Coop Income = all member savings - all expenses (bank charges already included in expenses)
     const bidaIncome    = savT.total - totalExpenses;
-    // Subtract loans still outstanding (principal not yet recovered)
     const outstanding   = loans
       .filter(l=>l.status!=="paid")
       .reduce((s,l)=>s+(+l.amountLoaned||0),0);
-    // Add interest actually earned on fully repaid loans
     const interestEarned = loans
       .filter(l=>l.status==="paid")
       .reduce((s,l)=>s+calcLoan(l).profit,0);
-    // Add investment returns if any
     const invReturns    = investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
     const invMade       = investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0);
     return bidaIncome - outstanding + interestEarned + invReturns - invMade;
   },[savT.total,totalExpenses,loans,investments]);
-  const netCash        = cashInBank; // alias kept for compatibility
+  const netCash        = cashInBank;
   const totalInvested  = useMemo(()=>investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0),[investments]);
   const totalInvInterest = useMemo(()=>investments.reduce((s,i)=>s+(+i.interestEarned||0),0),[investments]);
-  // 40% of investment interest distributed to members; 60% retained in pool
   const distributableInterest = useMemo(()=>Math.round(totalInvInterest*0.4),[totalInvInterest]);
   const retainedInterest      = useMemo(()=>Math.round(totalInvInterest*0.6),[totalInvInterest]);
-  // Each member's share of distributable interest = their % of pool × distributable
   const memberInvShare = (m) => savT.total>0 ? Math.round((totBanked(m)/savT.total)*distributableInterest) : 0;
 
   const profMember = useMemo(()=>profId?members.find(m=>m.id===profId):null,[profId,members]);
@@ -2400,7 +2248,6 @@ function AppInner(){
   const profRank   = useMemo(()=>profMember?allTotals.indexOf(totBanked(profMember))+1:null,[profMember,allTotals]);
   const profPct    = useMemo(()=>(!profMember||!savT.total)?0:((totBanked(profMember)/savT.total)*100).toFixed(1),[profMember,savT]);
 
-  // ── 5-day due date detection ──────────────────────────────────────────────
   const today = useMemo(()=>{const d=new Date();d.setHours(0,0,0,0);return d;},[]);
   const dueSoonLoans = useMemo(()=>loansCalc.filter(l=>{
     if(l.status==="paid"||!l.dateBanked)return false;
@@ -2422,7 +2269,6 @@ function AppInner(){
     if(!profF.name.trim())return;
     const before=members.find(m=>m.id===profId);
     const monthlySavings=+profF.monthlySavings||0;
-    // Preserve manual welfare if set, otherwise auto-calc 40%
     const welfare=(+profF.welfare>0)?+profF.welfare:autoWelfare(monthlySavings);
     const updated={
       ...before||{},
@@ -2439,7 +2285,6 @@ function AppInner(){
       shares:+profF.shares||0,
       voluntaryDeposit:+profF.voluntaryDeposit||0,
       nextOfKin:profF.nextOfKin||before?.nextOfKin||null,
-      // preserve approval trail from DB — never overwrite
       approvalTrail:before?.approvalTrail||[],
       approvalStatus:before?.approvalStatus||"approved",
       pendingCommissions:before?.pendingCommissions||[],
@@ -2448,7 +2293,7 @@ function AppInner(){
     postAudit(mkAudit("edit","member",profId,before,updated,authUser?.role,authUser?.name));
     saveRecord("members",updated,setSyncStatus,(errMsg)=>{
       setMembers(prev=>prev.map(m=>m.id===profId?before:m));
-      alert("⚠️ Profile NOT saved to database.\n\nError: "+errMsg+"\n\nChanges have been reverted. Check your internet connection and try again.\nIf this keeps happening, run complete_schema.sql in Supabase.");
+      alert("⚠️ Profile NOT saved to database.\n\nError: "+errMsg+"\n\nChanges have been reverted. Check your internet connection and try again.\nIf this keeps happening, run the SQL schema in Supabase.");
     });
     setProfEdit(false);
   };
@@ -2476,12 +2321,9 @@ function AppInner(){
     if(!addMF.name.trim())return;
     const id=Math.max(...members.map(m=>m.id),0)+1;
     const joinDate=addMF.joinDate||new Date().toISOString().split("T")[0];
-    // Enforce 40% welfare auto-calc from monthly savings if not manually set
     const monthlySavings=+addMF.monthlySavings||0;
     const welfare=(+addMF.welfare>0)?+addMF.welfare:autoWelfare(monthlySavings);
-    // Voluntary deposit goes to savings total (counted in totBanked)
     const voluntaryDeposit=+addMF.voluntaryDeposit||0;
-    // Build approval trail inline so it is always synced
     const trail=[mkApprovalStep(1,authUser||{role:"treasurer",name:"Treasurer"},"approved","Member registration initiated")];
     const newMember={
       id,
@@ -2515,7 +2357,6 @@ function AppInner(){
       transactionId:addMF.transactionId||"",
     };
     let updatedMembers=[...members,newMember];
-    // Commission: 1% of referrer's (monthlySavings + welfare) — payable after 1 month
     if(addMF.referralSource==="member"&&addMF.referredById){
       const refId=+addMF.referredById;
       const referrer=members.find(m=>m.id===refId);
@@ -2533,7 +2374,6 @@ function AppInner(){
       }
     }
     setMembers(updatedMembers);
-    // Sync — trail is already baked into newMember object
     saveRecord("members",newMember,setSyncStatus,(errMsg)=>{
       setMembers(prev=>prev.filter(m=>m.id!==newMember.id));
       alert("⚠️ New member NOT saved to database.\n\nError: "+errMsg+"\n\nThe member has been removed from your local view. Please check your connection and try again.");
@@ -2583,7 +2423,6 @@ function AppInner(){
       postAudit([mkAudit("edit","loan",editL,before,savedLoan,authUser?.role,authUser?.name)]);
     } else {
       const id=Math.max(...loans.map(l=>l.id),0)+1;
-      // Treasurer initiates: step 1 auto-applied
       const trail=[mkApprovalStep(1,authUser||{role:"treasurer",name:"Treasurer"},"approved","Initiated by Treasurer")];
       savedLoan={id,...p,approvalStatus:"step1_done",approvalTrail:trail,initiatedBy:authUser?.name||"Treasurer",payments:[]};
       setLoans(prev=>[...prev,savedLoan]);
@@ -2595,8 +2434,6 @@ function AppInner(){
       postAudit([mkAudit("create","loan",id,null,savedLoan,authUser?.role,authUser?.name)]);
     }
     setLModal(false);
-    // Note: loan PDF is generated ONLY after full 4-step approval
-    // When Auditor approves (step 4), PDF auto-generates — see handleApprove
   };
   const delL=(id)=>{if(window.confirm("Delete this loan?")){setLoans(prev=>prev.filter(l=>l.id!==id));deleteRecord("loans",id,setSyncStatus);}};
   const markPd=(id)=>{
@@ -2614,7 +2451,6 @@ function AppInner(){
     }));
   };
 
-  // ── Contribution log handlers ────────────────────────────────────────────
   const saveContrib=()=>{
     if(!contribF.memberId||!contribF.amount||!contribF.date) return;
     const id=Date.now();
@@ -2626,7 +2462,6 @@ function AppInner(){
       setMembers(prev=>prev.map(m=>m.id===+contribF.memberId?memberBefore:m));
       alert("⚠️ Contribution NOT saved.\n\nError: "+errMsg+"\n\nContribution and member total reverted. Please try again.");
     });
-    // Also update the member's running total for that category
     setMembers(prev=>prev.map(m=>{
       if(m.id!==+contribF.memberId) return m;
       const updated={...m,[contribF.category]:(+m[contribF.category]||0)+(+contribF.amount||0)};
@@ -2645,7 +2480,6 @@ function AppInner(){
     deleteRecord("contrib_log",id,setSyncStatus);
   };
 
-  // ── Dividend payout handlers ──────────────────────────────────────────────
   const saveDividendPayout=(run)=>{
     if(!run||!run.distributable) return;
     const id=Date.now();
@@ -2670,15 +2504,11 @@ function AppInner(){
     setDividendModal(false);
   };
 
-  // ── Expense handlers ──────────────────────────────────────────────────────
   const openAddExp=()=>{setEditExp(null);setExpF({...emptyE});setExpModal(true);};
   const openEditExp=(e)=>{setEditExp(e.id);setExpF({...e});setExpModal(true);};
   const saveExp=()=>{
     if(!expF.activity||!expF.activity.trim()||!expF.amount)return;
     const amt=+expF.amount||0;
-    // Expenses >= UGX 100,000 require Admin approval before being counted as authorised
-    // Treasurer and Finance Manager can record them but they are flagged "pending_approval"
-    // Administrator approves directly from the expense list
     const needsApproval = amt >= EXPENSE_APPROVAL_THRESHOLD;
     const isAdmin = authUser?.role==="admin";
     const expApprovalStatus = needsApproval && !isAdmin ? "pending_approval" : "approved";
@@ -2713,7 +2543,6 @@ function AppInner(){
     setExpF({...emptyE,date:new Date().toISOString().split("T")[0]});
   };
 
-  // Approve a large expense — Admin only
   const approveExpense=(expId)=>{
     if(authUser?.role!=="admin"){alert("Only the Administrator can approve expenses.");return;}
     setExpenses(prev=>prev.map(e=>{
@@ -2729,7 +2558,6 @@ function AppInner(){
     }));
   };
 
-  // Reject a large expense — Admin only
   const rejectExpense=(expId,reason)=>{
     if(authUser?.role!=="admin") return;
     setExpenses(prev=>prev.map(e=>{
@@ -2745,7 +2573,6 @@ function AppInner(){
   };
   const delExp=(id)=>{if(window.confirm("Delete this expense?")){setExpenses(prev=>prev.filter(e=>e.id!==id));deleteRecord("expenses",id,setSyncStatus);}};
 
-  // ── Email / WA / SMS dispatch ─────────────────────────────────────────────
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename)=>{
     setEmailSending(s=>({...s,[key]:"sending"}));
     try{
@@ -2771,7 +2598,6 @@ function AppInner(){
     }catch(e){console.error("SMS error:",e);setEmailSending(s=>({...s,[key]:"err"}));setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),5000);}
   };
 
-  // WA — tries /api/send-whatsapp, falls back to wa.me deep link
   const dispatchWA=async(key,phone,message)=>{
     setEmailSending(s=>({...s,[key]:"sending"}));
     try{
@@ -2803,7 +2629,6 @@ function AppInner(){
     const labels={savings:"Savings Report",loans:"Loans Report",expenses:"Expenses Report",projections:"Projections Report"};
     try{
       const blob=await generatePDF(type,members,loans,expenses,true);
-      // Show modal — user taps Download button to save the file
       setSharedPDF({blob,filename:filenames[type],label:labels[type],type,show:true});
     }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
     finally{setPdfGen(null);}
@@ -2818,8 +2643,6 @@ function AppInner(){
     finally{setPdfGen(null);}
   };
 
-
-  // ── Supabase sync helpers ──
   const syncMember=(m)=>saveRecord("members",m,setSyncStatus);
   const syncLedgerEntry=(e)=>saveRecord("ledger",{...e,id:String(e.id)},setSyncStatus);
   const syncAuditEntry=(e)=>saveRecord("audit_log",{...e,id:String(e.id)},setSyncStatus);
@@ -2832,12 +2655,9 @@ function AppInner(){
   const delExpR=(id)=>{setExpenses(p=>p.filter(e=>e.id!==id));deleteRecord("expenses",id,setSyncStatus);};
   const delInvR=(id)=>{setInvestments(p=>p.filter(i=>i.id!==id));deleteRecord("investments",id,setSyncStatus);};
 
-
-  // ── Fintech helpers ──
   const postLedger=(entries)=>setLedger(p=>[...p,...(Array.isArray(entries)?entries:[entries])]);
   const postAudit=(entries)=>setAuditLog(p=>[...p,...(Array.isArray(entries)?entries:[entries])]);
 
-  // Build repayment schedule for a loan
   const buildSchedule=(loan)=>{
     const c=calcLoan(loan);
     const schedule=[];
@@ -2860,7 +2680,6 @@ function AppInner(){
     return schedule;
   };
 
-  // Post ledger entry when new loan is issued
   const postLoanLedger=(loan,actor)=>{
     postLedger([
       mkEntry("loan_disbursement",loan.id,"Loan disbursed to "+loan.memberName,loan.amountLoaned,0,"loan_book",actor?.role,actor?.name),
@@ -2870,25 +2689,19 @@ function AppInner(){
     setSchedules(p=>({...p,[loan.id]:buildSchedule(loan)}));
   };
 
-  // Post ledger entry when expense is recorded
   const postExpenseLedger=(exp,actor)=>{
     postLedger(mkEntry("expense",exp.id,exp.activity,+exp.amount,0,"expense_account",actor?.role,actor?.name));
     postAudit(mkAudit("create","expense",exp.id,null,exp,actor?.role,actor?.name));
   };
 
-  // Post ledger entry for savings deposit
   const postSavingsLedger=(member,amount,actor)=>{
     postLedger(mkEntry("savings_deposit",member.id,"Savings deposit — "+member.name,0,amount,"savings_pool",actor?.role,actor?.name));
   };
 
-  // Reversal (compensating transaction — never edits original)
   const postReversal=(originalEntryId,reason,actor)=>{
     postLedger(mkEntry("reversal",originalEntryId,"REVERSAL: "+reason,0,0,"savings_pool",actor?.role,actor?.name));
     postAudit(mkAudit("reversal","ledger",originalEntryId,null,{reason},actor?.role,actor?.name));
   };
-
-
-  // ── Approval workflow handlers ──────────────────────────────────────────
 
   const handleApprove = async(entityType, entityId, currentStatus, note) => {
     const next = getNextStep(currentStatus);
@@ -2912,7 +2725,6 @@ function AppInner(){
         return updated;
       }));
       postAudit([mkAudit("approve","loan",entityId,{status:currentStatus},{status:newStatus,step},authUser.role,authUser.name)]);
-      // AUTO-GENERATE LOAN AGREEMENT PDF when Auditor gives final stamp
       if(isFinal && finalLoan){
         const mem = members.find(m=>m.id===finalLoan.memberId);
         if(mem){
@@ -2981,7 +2793,6 @@ function AppInner(){
     setRejectTarget(null); setRejectNote("");
   };
 
-  // Items waiting for THIS user's action
   const myPendingItems = useMemo(()=>{
     if(!authUser) return [];
     const items = [];
@@ -3014,7 +2825,6 @@ function AppInner(){
     </div>
   );
 
-  // ── Status badge helper ───────────────────────────────────────────────────
   const ESt=({k})=>{const s=emailSending[k];return s==="ok"?<span className="estatus-ok">✓ Sent</span>:s==="sms_ok"?<span className="estatus-sms-ok">✓ SMS</span>:s==="err"?<span className="estatus-err">✗ Failed</span>:s==="nosetup"?<span className="estatus-nosetup">⚠ Setup</span>:s==="sending"?<span className="estatus-sending">⏳</span>:null;};
 
   const loginRoleOptions=[
@@ -3041,7 +2851,6 @@ function AppInner(){
       <style>{CSS}</style>
       <style>{`body{margin:0;font-family:'Outfit',sans-serif;}`}</style>
 
-      {/* ── LOGIN SCREEN ── */}
       {!authUser&&(
         <div style={{minHeight:"100vh",background:"linear-gradient(135deg,var(--b900),var(--b700))",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:"#fff",borderRadius:20,padding:"32px 28px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
@@ -3078,7 +2887,6 @@ function AppInner(){
 
       {authUser&&<React.Fragment>
       <div className="app">
-        {/* ── HEADER ─────────────────────────────────────────────────────── */}
         <header className="hdr">
           <div className="hdr-top">
             <div className="brand">
@@ -3093,7 +2901,6 @@ function AppInner(){
               <div><div className="brand-name">BIDA</div><div className="brand-sub">Co-Operative Multi-Purpose Society</div></div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              {/* ── SYNC STATUS DOT ── */}
               <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(0,0,0,.2)",borderRadius:20,padding:"3px 10px",border:"1px solid rgba(255,255,255,.1)"}}>
                 <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,
                   background:syncStatus==="synced"?"#69f0ae":syncStatus==="syncing"||syncStatus==="loading"?"#ffcc02":syncStatus==="offline"?"#ef5350":syncStatus==="error"?"#ef5350":"#607d8b",
@@ -3138,11 +2945,8 @@ function AppInner(){
         </header>
 
         <main className="main">
-
-          {/* ── SAVINGS TAB (MAIN DASHBOARD) ─────────────────────────────── */}
           {tab==="savings" && (
             <React.Fragment>
-              {/* ── LIVE DATE & TIME BANNER ── */}
               <div style={{background:"linear-gradient(135deg,#0a1931,#0d3461)",borderRadius:13,padding:"13px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:10,height:10,borderRadius:"50%",background:"#69f0ae",boxShadow:"0 0 8px #69f0ae",animation:"pu 1.5s ease-in-out infinite",flexShrink:0}}/>
@@ -3167,7 +2971,6 @@ function AppInner(){
               </div>
               <div className="ptitle"><div className="ptdot"/>Dashboard — Member Savings Ledger</div>
 
-              {/* ── TOP FINANCIAL SUMMARY ── */}
               <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:13,padding:"14px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{fontWeight:800,fontSize:13,marginBottom:10,opacity:.9,letterSpacing:.5,textTransform:"uppercase",fontFamily:"var(--mono)"}}>💳 BIDA Fund Summary</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
@@ -3189,7 +2992,6 @@ function AppInner(){
                 {cashInBank<0&&<div style={{marginTop:10,background:"rgba(239,83,80,.25)",border:"1px solid rgba(239,83,80,.5)",borderRadius:8,padding:"6px 10px",fontSize:10,color:"#ffcdd2",fontWeight:700}}>⚠️ Cash in bank is negative — expenses exceed total deposits + profit. Review immediately.</div>}
               </div>
 
-              {/* ── STATS CARDS ── */}
               <div className="stats">
                 <div className="card"><div className="clabel">Members</div><div className="cval">{members.length}</div></div>
                 <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
@@ -3205,9 +3007,7 @@ function AppInner(){
                 {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% members · 60% pool</div></div>}
               </div>
 
-              {/* ── SAVINGS/EXPENSES CHART ── */}
               <SavingsExpensesChart savingsData={SAVINGS_CHART_DATA} expensesData={EXPENSES_CHART_DATA}/>
-
 
               <div className="toolbar">
                 <div className="tl"><span className="ttitle">All Members</span><span className="tcount">{fmems.length}</span></div>
@@ -3243,7 +3043,6 @@ function AppInner(){
             </React.Fragment>
           )}
 
-          {/* ── LOANS TAB ────────────────────────────────────────────────── */}
           {tab==="loans" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>Loan Register</div>
@@ -3324,12 +3123,10 @@ function AppInner(){
             </React.Fragment>
           )}
 
-          {/* ── APPROVALS TAB ─────────────────────────────────────────── */}
           {tab==="approvals" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>✅ Approval Queue</div>
 
-              {/* Role context banner */}
               <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:12,padding:"12px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>
                   You are logged in as: <span style={{color:"#90caf9"}}>{authUser?.name}</span>
@@ -3347,7 +3144,6 @@ function AppInner(){
                 </div>
               </div>
 
-              {/* 4-step flow diagram */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 16px",marginBottom:12}}>
                 <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:10}}>Approval Process</div>
                 <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
@@ -3365,7 +3161,6 @@ function AppInner(){
                 </div>
               </div>
 
-              {/* My pending items */}
               {myPendingItems.length===0?(
                 <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"30px 16px",textAlign:"center"}}>
                   <div style={{fontSize:32,marginBottom:8}}>✅</div>
@@ -3380,7 +3175,6 @@ function AppInner(){
                     const trail=item.item.approvalTrail||[];
                     return (
                       <div key={idx} style={{background:"#fff",border:"1.5px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-                        {/* Header */}
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,flexWrap:"wrap",gap:8}}>
                           <div>
                             <div style={{fontWeight:800,fontSize:14,color:"var(--b800)"}}>{item.label}</div>
@@ -3392,7 +3186,6 @@ function AppInner(){
                           </div>
                         </div>
 
-                        {/* Approval trail so far */}
                         {trail.length>0&&(
                           <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"8px 12px",marginBottom:10}}>
                             <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Approval trail</div>
@@ -3409,7 +3202,6 @@ function AppInner(){
                           </div>
                         )}
 
-                        {/* Loan detail preview */}
                         {item.type==="loan"&&(()=>{
                           const l=item.item;
                           const c=calcLoan(l);
@@ -3423,7 +3215,6 @@ function AppInner(){
                           </div>;
                         })()}
 
-                        {/* Action buttons */}
                         {next&&(
                           <div style={{display:"flex",flexDirection:"column",gap:8}}>
                             <div style={{fontWeight:700,fontSize:11,color:"var(--b700)"}}>Your action as {next.label} (Step {next.step}):</div>
@@ -3435,7 +3226,6 @@ function AppInner(){
                                 ❌ Reject &amp; Return
                               </button>
                             </div>
-                            {/* Reject modal inline */}
                             {rejectTarget&&rejectTarget.id===item.id&&(
                               <div style={{background:"#ffebee",border:"1.5px solid #ef9a9a",borderRadius:9,padding:"10px 12px"}}>
                                 <div style={{fontSize:11,fontWeight:700,color:"#c62828",marginBottom:6}}>Reason for rejection (required):</div>
@@ -3454,7 +3244,6 @@ function AppInner(){
                 </div>
               )}
 
-              {/* All loans status overview */}
               {(canDo(authUser,"view"))&&(
                 <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginTop:12}}>
                   <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>All Loan Applications — Status</div>
@@ -3477,12 +3266,10 @@ function AppInner(){
             </React.Fragment>
           )}
 
-          {/* ── BENEVOLENT FUND TAB ─────────────────────────────────────── */}
           {tab==="benevolent" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>🕊 BIDA Benevolent Fund</div>
 
-              {/* Policy Banner */}
               <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:13,padding:"14px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{fontWeight:800,fontSize:14,marginBottom:6}}>BIDA Member Protection Policy</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:8,marginBottom:10}}>
@@ -3502,7 +3289,6 @@ function AppInner(){
                 </div>
               </div>
 
-              {/* Benevolent Fund Stats */}
               {(()=>{
                 const eligibleMembers = members.filter(m=>m.nextOfKin&&(m.nextOfKin.name||"").trim());
                 const noNOK = members.filter(m=>!m.nextOfKin||(!(m.nextOfKin.name||"").trim()));
@@ -3517,7 +3303,6 @@ function AppInner(){
                 );
               })()}
 
-              {/* Members Missing NOK — urgent */}
               {(()=>{
                 const noNOK = members.filter(m=>!m.nextOfKin||(!(m.nextOfKin.name||"").trim()));
                 if(noNOK.length===0) return null;
@@ -3536,7 +3321,6 @@ function AppInner(){
                 );
               })()}
 
-              {/* Benevolent Claim Calculator */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>💰 Benevolent Payout Calculator</div>
                 <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:12,lineHeight:1.6}}>
@@ -3550,24 +3334,17 @@ function AppInner(){
                   const retention=benovRetention;
                   const setRetention=setBenovRetention;
                   const m = members.find(mb=>mb.id===+selMemberId);
-                  // ── Calculation basis ──
-                  // 1. Member's total savings (all categories)
                   const totalSavings = m ? totBanked(m) : 0;
-                  // 2. Member's share of investment returns (by share capital ratio)
                   const totalShareCapital = Math.max(members.reduce((s,mb)=>s+(mb.shares||0),0),1);
                   const shareRatio = m ? (m.shares||0)/totalShareCapital : 0;
                   const invReturnsShare = Math.round(totalInvInterest * shareRatio);
-                  // 3. Member's pool contribution ratio (by savings)
                   const poolRatio = (savT.total>0&&m) ? totBanked(m)/savT.total : 0;
-                  // 4. Total base for DEATH = all savings + share of investment returns
                   const deathBase = totalSavings + invReturnsShare;
-                  // 5. Total base for ILLNESS = 50% of their pool share value (BIDA retains capacity)
                   const illnessBase = Math.round(cashInBank * poolRatio * 0.50);
                   const totalBase = claimType==="death" ? deathBase : illnessBase;
-                  // 6. Guaranteed minimum: 70% for passing, full amount for illness (already 50%)
                   const minPayout = claimType==="death" ? Math.round(deathBase * 0.70) : illnessBase;
-                  const remaining30 = deathBase - minPayout; // the 30% board decides on
-                  const fullPayout = deathBase; // if board agrees 100%
+                  const remaining30 = deathBase - minPayout;
+                  const fullPayout = deathBase;
                   const nok = m?.nextOfKin||null;
                   return (
                     <div>
@@ -3592,7 +3369,6 @@ function AppInner(){
                       </div>
                       {m&&(
                         <React.Fragment>
-                          {/* NOK info */}
                           {nok&&nok.name?(
                             <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                               <div style={{fontWeight:700,fontSize:12,color:"#1b5e20",marginBottom:4}}>✅ Next of Kin on File</div>
@@ -3607,7 +3383,6 @@ function AppInner(){
                               ⚠ No next of kin on file for {m.name}. Edit their profile to add NOK before activating benevolent fund.
                             </div>
                           )}
-                          {/* Breakdown */}
                           <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"12px 14px",marginBottom:10}}>
                             <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>📊 Payout Breakdown — {m.name}</div>
                             {(claimType==="death"?[
@@ -3629,7 +3404,6 @@ function AppInner(){
                               </div>
                             ))}
                           </div>
-                          {/* Retention option for death claims */}
                           {claimType==="death"&&(
                             <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
                               <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>Remaining 30% — Board Decision</div>
@@ -3646,7 +3420,6 @@ function AppInner(){
                               </div>
                             </div>
                           )}
-                          {/* Illness payout note */}
                           {claimType==="illness"&&(
                             <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 12px",marginBottom:10,fontSize:11,color:"#e65100",lineHeight:1.6}}>
                               <strong>🏥 Illness Support Logic:</strong> Member receives support equal to 50% of their pool share value. This is calculated after all active investments and loan positions. BIDA retains capacity to remain operational. The member continues their membership after recovery.
@@ -3674,7 +3447,6 @@ function AppInner(){
                 })()}
               </div>
 
-              {/* Members with NOK on file */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
                 <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>👥 All Members — Benevolent Status</div>
                 <div style={{overflowX:"auto"}}>
@@ -3715,13 +3487,10 @@ function AppInner(){
             </React.Fragment>
           )}
 
-
-          {/* ── AUDIT & LEDGER TAB ──────────────────────────────────────── */}
           {tab==="audit" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>🔒 Audit Trail, Ledger &amp; Finance</div>
 
-              {/* Financial Statements */}
               {(()=>{
                 const pool=savT.total;
                 const outstanding=lStat.outstanding;
@@ -3764,7 +3533,6 @@ function AppInner(){
                 );
               })()}
 
-              {/* Dividend Calculator */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:8}}>💰 Dividend &amp; Surplus Distribution</div>
                 <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:10,lineHeight:1.6}}>Calculates distributable surplus after 20% statutory reserve and 10% operational reserve. Distributed 60% by share capital and 40% by savings contribution.</div>
@@ -3806,7 +3574,6 @@ function AppInner(){
                 )}
               </div>
 
-              {/* Dividend Payout History */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>💰 Dividend Payout History <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({dividendPayouts.length} runs recorded)</span></div>
                 {dividendPayouts.length===0?(
@@ -3842,7 +3609,6 @@ function AppInner(){
                 )}
               </div>
 
-              {/* Double-Entry Ledger */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>📒 Double-Entry Ledger <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({ledger.length} entries — immutable)</span></div>
                 {ledger.length===0
@@ -3862,7 +3628,6 @@ function AppInner(){
                 }
               </div>
 
-              {/* Audit Trail */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                 <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>🔍 Audit Trail <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({auditLog.length} events — read only)</span></div>
                 {auditLog.length===0
@@ -3886,12 +3651,10 @@ function AppInner(){
             </React.Fragment>
           )}
 
-          {/* ── SETTINGS TAB ─────────────────────────────────────────────── */}
           {tab==="settings" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>⚙️ Settings &amp; Database</div>
 
-              {/* ── PIN MANAGEMENT — Admin only ── */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"16px",marginBottom:12}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:8}}>
                   <div>
@@ -3901,7 +3664,6 @@ function AppInner(){
                   {!canDo(authUser,"all")&&<div style={{fontSize:11,color:"#c62828",background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:7,padding:"4px 10px"}}>⛔ Admin access required to change PINs</div>}
                 </div>
 
-                {/* Warning if any role still has default PIN */}
                 {Object.keys(USER_DEFS).some(r=>isPinDefault(r))&&(
                   <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"9px 12px",marginBottom:12,fontSize:11,color:"#e65100",lineHeight:1.6}}>
                     ⚠ <strong>Security warning:</strong> {Object.keys(USER_DEFS).filter(r=>isPinDefault(r)).map(r=>USER_DEFS[r].name).join(", ")} {Object.keys(USER_DEFS).filter(r=>isPinDefault(r)).length===1?"is":"are"} still using the default PIN. Change all PINs before going live.
@@ -3988,7 +3750,7 @@ function AppInner(){
                   })}
                 </div>
               </div>
-              {/* Supabase Setup */}
+
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"16px",marginBottom:12}}>
                 <div style={{fontWeight:800,fontSize:14,color:"var(--b800)",marginBottom:4}}>🗄 Supabase Database Connection</div>
                 <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:12,lineHeight:1.6}}>
@@ -4032,11 +3794,11 @@ function AppInner(){
                   </div>
                 )}
               </div>
-              {/* Connected URL info */}
+
               <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"9px 14px",marginBottom:12,fontSize:11,color:"#1b5e20",fontFamily:"var(--mono)"}}>
-                ✅ Connected to: <strong>gzoafxyinwysstpixlclw.supabase.co</strong> · Key active · Real-time sync every 15s
+                ✅ Connected to: <strong>oscuauaifgaeauzvkihu.supabase.co</strong> · Key active · Real-time sync every 15s
               </div>
-              {/* Manual sync */}
+
               {getSupaKey()&&(
                 <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
                   <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:8}}>🔄 Manual Sync</div>
@@ -4045,7 +3807,6 @@ function AppInner(){
                       setSyncStatus("loading");
                       try{
                         const data=await loadAllFromSupabase();
-                        // Safe merge — DB wins on conflict, local-only records preserved
                         if(data.members&&data.members.length>0){
                           setMembers(prev=>{
                             const dbIds=new Set(data.members.map(m=>m.id));
@@ -4099,7 +3860,6 @@ function AppInner(){
                 </div>
               )}
 
-              {/* ── 5-day due date alerts (automated) ── */}
               {dueSoonLoans.length>0&&(
                 <div className="due-alert">
                   <div className="due-alert-title">🔔 Automated Due Date Alerts — {dueSoonLoans.length} loan{dueSoonLoans.length>1?"s":""} due within 5 days</div>
@@ -4110,7 +3870,6 @@ function AppInner(){
                 </div>
               )}
 
-              {/* ── Monthly savings reminders ── */}
               <div className="email-section">
                 <div className="email-sec-title">💰 Monthly Savings — {mn} {yr}</div>
                 <div className="email-sec-sub">Send reminders via Email (PDF attached), WhatsApp, or SMS.</div>
@@ -4148,7 +3907,6 @@ function AppInner(){
                 ))}
               </div>
 
-              {/* ── Loan reminders ── */}
               {loansCalc.filter(l=>l.status!=="paid").length>0&&(
                 <div className="email-section">
                   <div className="email-sec-title">⚠️ Loan Settlement Reminders</div>
@@ -4186,12 +3944,10 @@ function AppInner(){
             </React.Fragment>
           )}
 
-          {/* ── EXPENSES TAB ─────────────────────────────────────────────── */}
           {tab==="expenses" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>Expenses Register</div>
 
-              {/* Pending approval alert — shown to admin */}
               {(()=>{
                 const pending=expenses.filter(e=>e.expApprovalStatus==="pending_approval");
                 if(pending.length===0) return null;
@@ -4219,7 +3975,6 @@ function AppInner(){
                 );
               })()}
 
-              {/* Cash in Bank hero card */}
               <div style={{background:"linear-gradient(135deg,"+(cashInBank<0?"#b71c1c,#c62828":"#1b5e20,#2e7d32")+")",borderRadius:12,padding:"12px 16px",marginBottom:12,color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
                 <div>
                   <div style={{fontSize:10,opacity:.75,textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>💳 Cash in Bank (live)</div>
@@ -4244,7 +3999,6 @@ function AppInner(){
                 <div className="card cw"><div className="clabel">Transactions</div><div className="cval warn">{expenses.length}</div></div>
               </div>
 
-              {/* ── SERVICE PROVIDERS DIRECTORY ── */}
               <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:12,padding:"13px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:8}}>
                   <div>
@@ -4253,7 +4007,6 @@ function AppInner(){
                   </div>
                   <button className="btn sm" style={{background:"rgba(255,255,255,.15)",color:"#fff",border:"1px solid rgba(255,255,255,.3)",fontWeight:700}} onClick={()=>{setEditSp(null);setSpF({isMember:true,memberId:"",companyName:"",tin:"",directorName:"",phone:"",serviceType:"",description:"",registeredDate:new Date().toISOString().split("T")[0],regFee:0,regFeePaid:false,approvalStatus:"pending",approvedByMemberId:"",expiryDate:""});setSpModal(true);}}>＋ Register Provider</button>
                 </div>
-                {/* Policy pills */}
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
                   {[["👤 BIDA Member","12 months mandate","#a5d6a7"],["🏢 Non-Member","6 months · UGX 25,000 fee","#ffcc80"],["✅ Compliant","Active monthly savings + annual sub","#90caf9"],["⚠ Non-Compliant","Cannot receive new contracts","#ef9a9a"]].map(([l,sub,c])=>(
                     <div key={l} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",borderRadius:7,padding:"4px 10px",fontSize:9}}>
@@ -4305,7 +4058,6 @@ function AppInner(){
                 </div>
               </div>
 
-              {/* Full ledger table with running balance */}
               <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,overflow:"hidden"}}>
                 {expenses.length===0&&<div className="empty" style={{padding:"30px"}}><div className="eico">🧾</div>No expenses recorded yet. Click + Add Expense to begin.</div>}
                 {expenses.length>0&&(
@@ -4325,7 +4077,6 @@ function AppInner(){
                       </thead>
                       <tbody>
                         {(()=>{
-                          // Sort chronologically to compute running balance correctly
                           const sorted=[...expenses].sort((a,b)=>new Date(a.date)-new Date(b.date));
                           const _rr=loans.reduce((s,l)=>s+(+l.amountPaid||0),0);
                           const _dd=loans.filter(l=>l.approvalStatus==="approved"||!l.approvalStatus).reduce((s,l)=>s+(+l.amountLoaned||0),0);
@@ -4333,7 +4084,6 @@ function AppInner(){
                           const _ir=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
                           let running=savT.total+_rr+_ir-_dd-_ii;
                           const withBal=sorted.map(e=>{running-=(+e.amount||0);return{...e,balAfter:running};});
-                          // Display newest first
                           return [...withBal].reverse().map((e,i)=>(
                             <tr key={e.id} style={{borderBottom:"1px solid #eef5ff"}} onMouseOver={ev=>ev.currentTarget.style.background="#f0f7ff"} onMouseOut={ev=>ev.currentTarget.style.background=""}>
                               <td style={{padding:"8px 10px",fontSize:10,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{sorted.length-i}</td>
@@ -4362,7 +4112,6 @@ function AppInner(){
                                 {e.balAfter<0&&<div style={{fontSize:9,color:"#c62828"}}>⚠ Overdraft</div>}
                               </td>
                               <td style={{padding:"8px 10px",textAlign:"center"}}>
-                                {/* Approval badge for large expenses */}
                                 {(+e.amount||0)>=EXPENSE_APPROVAL_THRESHOLD&&(
                                   <div style={{marginBottom:4}}>
                                     {e.expApprovalStatus==="pending_approval"?(
@@ -4377,7 +4126,6 @@ function AppInner(){
                                 <div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
                                   <button className="btn bg xs" onClick={()=>openEditExp(e)}>✏️</button>
                                   <button className="btn bd xs" onClick={()=>delExp(e.id)}>🗑</button>
-                                  {/* Admin approve/reject for large pending expenses */}
                                   {e.expApprovalStatus==="pending_approval"&&authUser?.role==="admin"&&(
                                     <React.Fragment>
                                       <button className="btn bk xs" style={{fontSize:9}} onClick={()=>approveExpense(e.id)}>✓ Approve</button>
@@ -4403,12 +4151,10 @@ function AppInner(){
             </React.Fragment>
           )}
 
-          {/* ── INVESTMENTS TAB ──────────────────────────────────────────── */}
           {tab==="investments" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>Investment Portfolio — BIDA Projects Fund</div>
 
-              {/* Liquidity + Purpose Banner */}
               <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:13,padding:"13px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{fontWeight:800,fontSize:13,marginBottom:5}}>🏗️ Purpose &amp; Liquidity Policy</div>
                 <div style={{fontSize:11,lineHeight:1.7,opacity:.92}}>
@@ -4441,7 +4187,6 @@ function AppInner(){
                 </div>
               </div>
 
-              {/* Stats */}
               <div className="stats">
                 <div className="card ck"><div className="clabel">Total Invested</div><div className="cval ok">{fmt(totalInvested)}</div><div className="csub">Active positions</div></div>
                 <div className="card ck"><div className="clabel">Total Interest Earned</div><div className="cval ok">{fmt(totalInvInterest)}</div></div>
@@ -4451,7 +4196,6 @@ function AppInner(){
                 <div className="card"><div className="clabel">Positions</div><div className="cval">{investments.length}</div></div>
               </div>
 
-              {/* FX + MM Rates */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
                 <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 14px"}}>
                   <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>🌍 FX Rates (UGX indicative)</div>
@@ -4508,7 +4252,6 @@ function AppInner(){
             </React.Fragment>
           )}
 
-          {/* ── REPORTS TAB ──────────────────────────────────────────────── */}
           {tab==="reports" && (
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>PDF Reports & Analysis</div>
@@ -4541,7 +4284,6 @@ function AppInner(){
                 <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div></div>
               </div>
 
-              {/* Financial Statements */}
               {(()=>{
                 const pool=savT.total;
                 const outstanding=lStat.outstanding;
@@ -4551,11 +4293,10 @@ function AppInner(){
                 const grossIncome=profit+invReturns;
                 const netIncome=grossIncome-totalExpenses;
                 const totalAssets=cashInBank+outstanding+invTotal;
-                const totalLiabilities=pool; // members' savings are liabilities
+                const totalLiabilities=pool;
                 const equity=totalAssets-totalLiabilities;
                 return (
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12,marginBottom:12}}>
-                    {/* Income Statement */}
                     <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
                       <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr2)",paddingBottom:6}}>📊 Income Statement</div>
                       {[["Loan Interest Income",profit,"#2e7d32"],["Investment Returns",invReturns,"#2e7d32"],["Gross Income",grossIncome,"#1565c0"],["Less: Total Expenses",-totalExpenses,"#c62828"],["Net Surplus / Deficit",netIncome,netIncome>=0?"#2e7d32":"#c62828"]].map(([l,v,c],i)=>(
@@ -4565,7 +4306,6 @@ function AppInner(){
                         </div>
                       ))}
                     </div>
-                    {/* Balance Sheet */}
                     <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
                       <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr2)",paddingBottom:6}}>🏦 Balance Sheet</div>
                       <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Assets</div>
@@ -4612,67 +4352,58 @@ function AppInner(){
               )}
             </React.Fragment>
           )}
-        {/* ── PDF READY MODAL ── */}
-        {sharedPDF&&sharedPDF.show&&(
-          <div style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(13,52,97,.95)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setSharedPDF(null);}}>
-            <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
-              <div style={{fontSize:48,marginBottom:8}}>📄</div>
-              <div style={{fontWeight:900,fontSize:18,color:"#0d3461",marginBottom:4}}>{sharedPDF.label}</div>
-              <div style={{fontSize:12,color:"#888",marginBottom:24}}>BIDA Co-operative · {new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
 
-              {/* PRIMARY: Download button — tap to save file */}
-              <button
-                onClick={()=>{
-                  if(!sharedPDF.blob) return;
-                  const url=URL.createObjectURL(sharedPDF.blob);
-                  const a=document.createElement("a");
-                  a.href=url; a.download=sharedPDF.filename;
-                  document.body.appendChild(a); a.click();
-                  setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
-                }}
-                style={{width:"100%",padding:"16px",borderRadius:12,background:"linear-gradient(135deg,#1565c0,#0d3461)",color:"#fff",fontWeight:900,fontSize:16,border:"none",cursor:"pointer",marginBottom:10,letterSpacing:.5}}>
-                📥 Download PDF
-              </button>
-
-              {/* SECONDARY: Native share sheet — iOS saves to Files, Android shows share menu */}
-              <button
-                onClick={async()=>{
-                  if(!sharedPDF.blob) return;
-                  const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
-                  if(navigator.canShare&&navigator.canShare({files:[file]})){
-                    try{ await navigator.share({files:[file],title:"BIDA Co-operative",text:"Please find your BIDA statement attached."}); }
-                    catch(e){ if(e.name!=="AbortError") console.warn(e); }
-                  } else {
-                    // Open PDF in new tab — user can then share from there
+          {sharedPDF&&sharedPDF.show&&(
+            <div style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(13,52,97,.95)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setSharedPDF(null);}}>
+              <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
+                <div style={{fontSize:48,marginBottom:8}}>📄</div>
+                <div style={{fontWeight:900,fontSize:18,color:"#0d3461",marginBottom:4}}>{sharedPDF.label}</div>
+                <div style={{fontSize:12,color:"#888",marginBottom:24}}>BIDA Co-operative · {new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
+                <button
+                  onClick={()=>{
+                    if(!sharedPDF.blob) return;
                     const url=URL.createObjectURL(sharedPDF.blob);
-                    window.open(url,"_blank");
-                    setTimeout(()=>URL.revokeObjectURL(url),15000);
-                  }
-                }}
-                style={{width:"100%",padding:"14px",borderRadius:12,background:"#128C7E",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
-                📤 Share / Save to Files (iPhone & Android)
-              </button>
-
-              {/* WHATSAPP: Opens WA with pre-filled text — user attaches PDF from Downloads */}
-              {sharedPDF.waNumber&&(
-                <a
-                  href={"https://wa.me/"+sharedPDF.waNumber+"?text="+encodeURIComponent("Dear Member, please find your BIDA Co-operative statement attached. Download it from the link or check your Downloads folder.\n\n— BIDA Co-operative Multi-Purpose Society\nbidacooperative@gmail.com")}
-                  target="_blank" rel="noreferrer"
-                  style={{display:"block",width:"100%",padding:"14px",borderRadius:12,background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10,boxSizing:"border-box",textAlign:"center"}}>
-                  {WA_SVG} Send on WhatsApp
-                </a>
-              )}
-
-              <button onClick={()=>setSharedPDF(null)} style={{width:"100%",padding:"12px",borderRadius:12,background:"#f5f5f5",color:"#666",fontWeight:600,fontSize:13,border:"none",cursor:"pointer"}}>
-                Close
-              </button>
+                    const a=document.createElement("a");
+                    a.href=url; a.download=sharedPDF.filename;
+                    document.body.appendChild(a); a.click();
+                    setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
+                  }}
+                  style={{width:"100%",padding:"16px",borderRadius:12,background:"linear-gradient(135deg,#1565c0,#0d3461)",color:"#fff",fontWeight:900,fontSize:16,border:"none",cursor:"pointer",marginBottom:10,letterSpacing:.5}}>
+                  📥 Download PDF
+                </button>
+                <button
+                  onClick={async()=>{
+                    if(!sharedPDF.blob) return;
+                    const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
+                    if(navigator.canShare&&navigator.canShare({files:[file]})){
+                      try{ await navigator.share({files:[file],title:"BIDA Co-operative",text:"Please find your BIDA statement attached."}); }
+                      catch(e){ if(e.name!=="AbortError") console.warn(e); }
+                    } else {
+                      const url=URL.createObjectURL(sharedPDF.blob);
+                      window.open(url,"_blank");
+                      setTimeout(()=>URL.revokeObjectURL(url),15000);
+                    }
+                  }}
+                  style={{width:"100%",padding:"14px",borderRadius:12,background:"#128C7E",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
+                  📤 Share / Save to Files (iPhone & Android)
+                </button>
+                {sharedPDF.waNumber&&(
+                  <a
+                    href={"https://wa.me/"+sharedPDF.waNumber+"?text="+encodeURIComponent("Dear Member, please find your BIDA Co-operative statement attached. Download it from the link or check your Downloads folder.\n\n— BIDA Co-operative Multi-Purpose Society\nbidacooperative@gmail.com")}
+                    target="_blank" rel="noreferrer"
+                    style={{display:"block",width:"100%",padding:"14px",borderRadius:12,background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10,boxSizing:"border-box",textAlign:"center"}}>
+                    {WA_SVG} Send on WhatsApp
+                  </a>
+                )}
+                <button onClick={()=>setSharedPDF(null)} style={{width:"100%",padding:"12px",borderRadius:12,background:"#f5f5f5",color:"#666",fontWeight:600,fontSize:13,border:"none",cursor:"pointer"}}>
+                  Close
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
         </main>
       </div>
 
-      {/* ── MEMBER PROFILE MODAL ─────────────────────────────────────────── */}
       {profMember&&(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&closeProfile()}>
           <div className="modal wide">
@@ -4724,7 +4455,6 @@ function AppInner(){
                         ))}
                       </div>;
                     })()}
-                    {/* Approval status badge on profile */}
                     {profMember.approvalStatus&&profMember.approvalStatus!=="approved"&&(()=>{
                       const st=APPROVAL_STATUS[profMember.approvalStatus];
                       return st?<div style={{marginTop:3,display:"inline-block",fontSize:9,padding:"2px 8px",borderRadius:20,background:st.bg,color:st.color,fontWeight:700}}>{st.label}</div>:null;
@@ -4750,7 +4480,7 @@ function AppInner(){
                     </div>
                   </div>
                 </div>
-                {/* Initial payment status */}
+
                 {profMember.approvalStatus&&profMember.approvalStatus!=="approved"&&(
                   <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:10,padding:"10px 14px",marginBottom:8}}>
                     <div style={{fontWeight:700,fontSize:12,color:"#e65100",marginBottom:4}}>⏳ Member Registration Pending Approval</div>
@@ -4770,6 +4500,7 @@ function AppInner(){
                     )}
                   </div>
                 )}
+
                 <div className="prof-section">
                   <div className="prof-section-title">Savings Breakdown</div>
                   <div className="prof-grid">
@@ -4781,7 +4512,7 @@ function AppInner(){
                     ))}
                   </div>
                 </div>
-                {/* ── NEXT OF KIN SECTION ── */}
+
                 {(()=>{
                   const nok=profMember.nextOfKin||null;
                   return (
@@ -4814,7 +4545,7 @@ function AppInner(){
                     </div>
                   );
                 })()}
-                {/* ── REFERRAL SECTION ── */}
+
                 {(()=>{
                   const referred=members.filter(m=>m.referredByMemberId===profMember.id);
                   const pending=(profMember.pendingCommissions||[]).filter(c=>!c.paid);
@@ -4829,7 +4560,6 @@ function AppInner(){
                   return (
                     <div className="prof-section">
                       <div className="prof-section-title">🎁 Referral Programme</div>
-                      {/* Summary cards */}
                       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:10}}>
                         <div className="prof-item" style={{background:"#e8f5e9",borderColor:"#a5d6a7"}}>
                           <div className="prof-item-label">Members Referred</div>
@@ -4844,7 +4574,7 @@ function AppInner(){
                           <div className="prof-item-val" style={{color:totalOwed>0?"#e65100":"#2e7d32"}}>{fmt(totalOwed)}</div>
                         </div>
                       </div>
-                      {/* Members referred list */}
+
                       {referred.length>0&&(
                         <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
                           <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Members Introduced to BIDA</div>
@@ -4885,7 +4615,7 @@ function AppInner(){
                           })}
                         </div>
                       )}
-                      {/* Commission breakdown */}
+
                       {(profMember.pendingCommissions||[]).length>0&&(
                         <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#5d4037",lineHeight:1.7}}>
                           <strong>💡 How commission is calculated:</strong> 1% of your (Monthly Savings + Welfare) at the time each new member joins. Commission is payable 1 month after the new member's join date.
@@ -4896,7 +4626,6 @@ function AppInner(){
                   );
                 })()}
 
-                {/* ── MONTHLY SAVINGS ENCOURAGEMENT ── */}
                 {(()=>{
                   const ms=profMember.monthlySavings||0;
                   const annSub=profMember.annualSub||0;
@@ -4948,7 +4677,6 @@ function AppInner(){
                   );
                 })()}
 
-                {/* Risk indicators */}
                 {(()=>{
                   const risk=riskIndicators(profMember,loans);
                   if(risk.flags.length===0) return null;
@@ -4959,6 +4687,7 @@ function AppInner(){
                     {risk.flags.map((f,i)=><div key={i} style={{fontSize:10,color:"#555",marginTop:2}}>• {f.msg}</div>)}
                   </div>;
                 })()}
+
                 <div className="prof-section">
                   <div className="prof-section-title">Pool Contribution vs Peers</div>
                   <div className="prof-bar-wrap">
@@ -4981,7 +4710,7 @@ function AppInner(){
                     )}
                   </div>
                 </div>
-                {/* Contribution Log */}
+
                 {(()=>{
                   const memberContribs=contribLog.filter(c=>c.memberId===profMember.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
                   const CONTRIB_LABELS={monthlySavings:"Monthly Savings",welfare:"Welfare",annualSub:"Annual Sub",membership:"Membership",shares:"Shares",voluntaryDeposit:"Voluntary Deposit"};
@@ -5019,7 +4748,6 @@ function AppInner(){
                   );
                 })()}
 
-                {/* Share Certificate */}
                 {(profMember.shares||0)>0&&(
                   <div className="prof-section">
                     <div className="prof-section-title">📜 Share Certificate</div>
@@ -5060,6 +4788,7 @@ function AppInner(){
                     ))}
                   </div>
                 )}
+
                 {(profMember.email||profMember.whatsapp)&&(
                   <div className="prof-section">
                     <div className="prof-section-title">Quick Actions</div>
@@ -5077,7 +4806,6 @@ function AppInner(){
                               if(navigator.canShare&&navigator.canShare({files:[file]})){
                                 await navigator.share({files:[file],title:"BIDA — "+profMember.name,text:buildWAStatementMsg(profMember)});
                               } else {
-                                // Download PDF first then open WA with message
                                 const url=URL.createObjectURL(blob);
                                 const a=document.createElement("a");a.href=url;a.download=fname;
                                 document.body.appendChild(a);a.click();
@@ -5119,6 +4847,7 @@ function AppInner(){
                     ))}
                   </div>
                 )}
+
                 <div className="div"/>
                 {!confirmOpt
                   ?<button className="btn bd sm" onClick={()=>setConfirmOpt(true)}>🚪 Remove Member</button>
@@ -5187,7 +4916,6 @@ function AppInner(){
         </div>
       )}
 
-      {/* ── ADD MEMBER MODAL ─────────────────────────────────────────────── */}
       {addMModal&&(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setAddMModal(false)}>
           <div className="modal wide">
@@ -5201,10 +4929,7 @@ function AppInner(){
                   {addMF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"#c62828",cursor:"pointer"}} onClick={()=>setAddMF(f=>({...f,photoUrl:""}))}>✕</button>}
                 </div>
               </div>
-              {/* Personal details */}
               <div className="fg ff"><label className="fl">Full Name</label><input className="fi" value={addMF.name} onChange={e=>setAddMF(f=>({...f,name:e.target.value}))} placeholder="e.g. KATUNTU HANNAH"/></div>
-              {/* How did they hear about BIDA */}
-              {/* Initial Payment Section */}
               <div className="fg"><label className="fl">Voluntary Extra Deposit <span style={{fontSize:9,fontWeight:400,color:"var(--b500)"}}>— optional top-up savings</span></label>
                   <input className="fi" type="number" value={addMF.voluntaryDeposit||""} onChange={e=>setAddMF(f=>({...f,voluntaryDeposit:+e.target.value||0}))} placeholder="0 — member may deposit extra savings beyond regular contributions"/>
                 </div>
@@ -5235,7 +4960,6 @@ function AppInner(){
                 </div>
               </div>
 
-              {/* How did they hear about BIDA */}
               <div className="fg ff">
                 <label className="fl">How did they hear about BIDA? <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required)</span></label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
@@ -5277,7 +5001,6 @@ function AppInner(){
               <div className="fg"><label className="fl">Join Date</label><input className="fi" type="date" value={addMF.joinDate} onChange={e=>setAddMF(f=>({...f,joinDate:e.target.value}))}/></div>
               <div className="fg ff"><label className="fl">Physical Address</label><input className="fi" value={addMF.address} onChange={e=>setAddMF(f=>({...f,address:e.target.value}))} placeholder="Village, Parish, District"/></div>
 
-              {/* Next of Kin */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>👨‍👩‍👧 Next of Kin <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required for Benevolent Fund)</span></div></div>
               <div className="fg ff"><div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:8,padding:"7px 11px",fontSize:10,color:"#e65100",lineHeight:1.6}}>BIDA requires next-of-kin details to activate the Benevolent Fund for this member in case of death or serious illness.</div></div>
               <div className="fg"><label className="fl">NOK Full Name</label><input className="fi" value={(addMF.nextOfKin||{}).name||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),name:e.target.value}}))}/></div>
@@ -5286,7 +5009,6 @@ function AppInner(){
               <div className="fg"><label className="fl">NOK NIN</label><input className="fi" value={(addMF.nextOfKin||{}).nin||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),nin:e.target.value}}))}/></div>
               <div className="fg ff"><label className="fl">NOK Physical Address</label><input className="fi" value={(addMF.nextOfKin||{}).address||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),address:e.target.value}}))} placeholder="Village, Parish, District"/></div>
 
-              {/* Contributions */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💰 Initial Contributions</div></div>
               <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"8px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}><strong>📌 Contribution Rules:</strong> Monthly savings minimum: UGX <strong>10,000</strong>. Members may contribute <strong>70,000 or more</strong> per month — no upper cap. <strong>40% of monthly savings is auto-allocated to welfare pool.</strong></div></div>
               {[["Membership Fee","membership"],["Annual Sub","annualSub"]].map(([lb,k])=>(
@@ -5295,7 +5017,6 @@ function AppInner(){
               <div className="fg"><label className="fl">Monthly Savings (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(min 10,000)</span></label><input className="fi" type="number" value={addMF.monthlySavings} onChange={e=>{const v=Math.max(0,+e.target.value||0);setAddMF(f=>({...f,monthlySavings:v,welfare:autoWelfare(v)}));}} min={0}/></div>
               <div className="fg"><label className="fl">Welfare (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(auto 40% of monthly)</span></label><input className="fi" type="number" value={addMF.welfare} onChange={e=>setAddMF(f=>({...f,welfare:+e.target.value||0}))} placeholder="Auto-calculated"/><span className="fhint">40% of monthly savings auto-allocated to welfare pool. Adjust if needed.</span></div>
 
-              {/* Shares — unit selector */}
               <div className="fg ff">
                 <label className="fl">Share Units <span style={{fontWeight:400,color:"var(--b500)",fontSize:9}}>— UGX 50,000 per unit (equity in the cooperative)</span></label>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
@@ -5311,14 +5032,12 @@ function AppInner(){
                 {(addMF.shares||0)>0&&<div style={{fontSize:10,color:"var(--b600)",marginTop:4,fontFamily:"var(--mono)",fontWeight:600}}>Share capital: {fmt(addMF.shares||0)}</div>}
               </div>
 
-              {/* Voluntary extra deposit */}
               <div className="fg ff">
                 <label className="fl">Extra Voluntary Deposit <span style={{fontWeight:400,color:"var(--tmuted)",fontSize:9}}>(optional top-up beyond regular contributions)</span></label>
                 <input className="fi" type="number" value={addMF.voluntaryDeposit||""} onChange={e=>setAddMF(f=>({...f,voluntaryDeposit:+e.target.value||0}))} placeholder="0"/>
                 <span className="fhint">Member can deposit any extra amount at any time. This is counted in their total savings.</span>
               </div>
 
-              {/* Payment method for initial contribution */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 6px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💳 Mode of Initial Payment</div></div>
               <div className="fg ff">
                 <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
@@ -5347,14 +5066,11 @@ function AppInner(){
         </div>
       )}
 
-      {/* ── EXPENSE MODAL ────────────────────────────────────────────────── */}
-      {/* ── INVESTMENT MODAL ─────────────────────────────────────────────── */}
       {invModal&&(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setInvModal(false)}>
           <div className="modal wide">
             <div className="mhdr"><div className="mtitle">{editInv?"Update Investment":"Record New Investment"}</div><button className="mclose" onClick={()=>setInvModal(false)}>✕</button></div>
 
-            {/* Approval status banner */}
             <div style={{background:invF.approvalStatus==="approved"?"#e8f5e9":invF.approvalStatus==="rejected"?"#ffebee":"#fff8e1",border:"1.5px solid "+(invF.approvalStatus==="approved"?"#a5d6a7":invF.approvalStatus==="rejected"?"#ffcdd2":"#ffe082"),borderRadius:9,padding:"8px 12px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
               <div style={{fontWeight:700,fontSize:12,color:invF.approvalStatus==="approved"?"#1b5e20":invF.approvalStatus==="rejected"?"#c62828":"#f57f17"}}>
                 {invF.approvalStatus==="approved"?"✅ Approved — Ready to record":invF.approvalStatus==="rejected"?"❌ Rejected":"⏳ Pending Approval"}
@@ -5367,7 +5083,6 @@ function AppInner(){
             </div>
 
             <div className="fgrid">
-              {/* Investment details */}
               <div className="fg ff"><label className="fl">Platform / Fund Name</label><input className="fi" value={invF.platform} onChange={e=>setInvF(f=>({...f,platform:e.target.value}))} placeholder="e.g. UAP, Britam, Stanbic Treasury Bond"/></div>
               <div className="fg ff"><label className="fl">Investment Type</label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
@@ -5408,7 +5123,6 @@ function AppInner(){
               </div>
               <div className="fg ff"><label className="fl">Notes</label><input className="fi" value={invF.notes} onChange={e=>setInvF(f=>({...f,notes:e.target.value}))} placeholder="e.g. 12-month bond at 17% p.a., maturity date..."/></div>
 
-              {/* ── Approval Section ── */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>✅ Approval Details</div></div>
               <div className="fg ff">
                 <label className="fl">Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(active BIDA member)</span></label>
@@ -5423,7 +5137,6 @@ function AppInner(){
               </div>
               <div className="fg"><label className="fl">Approval Date</label><input className="fi" type="date" value={invF.approvalDate||""} onChange={e=>setInvF(f=>({...f,approvalDate:e.target.value}))}/></div>
 
-              {/* ── Document Upload — stored in BIDA ── */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>📎 Supporting Documents (stored in BIDA)</div></div>
               <div className="fg ff">
                 <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"8px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
@@ -5482,8 +5195,6 @@ function AppInner(){
         </div>
       )}
 
-      {/* ── SERVICE PROVIDER MODAL ── */}
-      {/* ── CONTRIBUTION LOG MODAL ───────────────────────────────────────── */}
       {contribModal&&(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setContribModal(false)}>
           <div className="modal" style={{maxWidth:420}}>
@@ -5553,7 +5264,6 @@ function AppInner(){
               <button className="mclose" onClick={()=>setSpModal(false)}>✕</button>
             </div>
 
-            {/* Member or Non-Member toggle */}
             <div style={{display:"flex",gap:8,marginBottom:14}}>
               {[[true,"👤 BIDA Member","1 year mandate, must maintain savings"],[false,"🏢 Non-Member","6 months · UGX 25,000 registration fee"]].map(([v,lbl,sub])=>(
                 <button key={String(v)} type="button" onClick={()=>setSpF(f=>({...f,isMember:v,memberId:v?f.memberId:"",regFee:v?0:25000}))}
@@ -5564,7 +5274,6 @@ function AppInner(){
               ))}
             </div>
 
-            {/* Policy info based on type */}
             <div style={{background:spF.isMember?"#e8f5e9":"#fff8e1",border:"1px solid "+(spF.isMember?"#a5d6a7":"#ffe082"),borderRadius:9,padding:"8px 12px",marginBottom:12,fontSize:10,color:spF.isMember?"#1b5e20":"#e65100",lineHeight:1.6}}>
               {spF.isMember
                 ?"✅ BIDA members get a 12-month mandate to provide services. Must maintain monthly savings and annual subscription ≥ UGX 50,000 to remain compliant. Non-compliance suspends their contract."
@@ -5572,7 +5281,6 @@ function AppInner(){
             </div>
 
             <div className="fgrid">
-              {/* If BIDA member — select from list */}
               {spF.isMember&&(
                 <div className="fg ff">
                   <label className="fl">BIDA Member</label>
@@ -5597,7 +5305,6 @@ function AppInner(){
                 </div>
               )}
 
-              {/* Company / Business details */}
               <div className="fg ff"><label className="fl">Company / Business Name</label><input className="fi" value={spF.companyName} onChange={e=>setSpF(f=>({...f,companyName:e.target.value}))} placeholder="e.g. Kasaka Printers Ltd"/></div>
               <div className="fg"><label className="fl">TIN (Tax ID)</label><input className="fi" value={spF.tin} onChange={e=>setSpF(f=>({...f,tin:e.target.value}))} placeholder="e.g. 1009876543"/></div>
               <div className="fg"><label className="fl">Director / Contact Name</label><input className="fi" value={spF.directorName} onChange={e=>setSpF(f=>({...f,directorName:e.target.value}))} placeholder="Full name"/></div>
@@ -5619,7 +5326,6 @@ function AppInner(){
                 <input className="fi" type="date" value={spF.expiryDate||""} readOnly style={{background:"var(--b50)",color:"var(--tmuted)"}}/>
               </div>
 
-              {/* Non-member registration fee */}
               {!spF.isMember&&(
                 <div className="fg ff">
                   <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
@@ -5635,7 +5341,6 @@ function AppInner(){
                 </div>
               )}
 
-              {/* Approval */}
               <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:6,borderTop:"1px solid var(--bdr)"}}>✅ Approval</div></div>
               <div className="fg ff">
                 <label className="fl">Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(BIDA member)</span></label>
@@ -5700,7 +5405,6 @@ function AppInner(){
                 {expF.category==="other"&&<input className="fi" style={{marginTop:7}} value={expF.categoryCustom} onChange={e=>setExpF(f=>({...f,categoryCustom:e.target.value}))} placeholder="Describe the expense category"/>}
               </div>
 
-              {/* Bank Charges toggle */}
               <div className="fg ff">
                 <div style={{display:"flex",alignItems:"center",gap:10,background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:9,padding:"8px 12px"}}>
                   <input type="checkbox" id="isBankCharge" checked={expF.category==="banking"} onChange={e=>setExpF(f=>({...f,category:e.target.checked?"banking":f.category==="banking"?"operations":f.category}))} style={{width:16,height:16,cursor:"pointer"}}/>
@@ -5708,7 +5412,6 @@ function AppInner(){
                 </div>
               </div>
 
-              {/* Issued By — must be BIDA member */}
               <div className="fg ff">
                 <label className="fl">Issued / Paid By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(must be BIDA member)</span></label>
                 <select className="fi" value={expF.issuedById||""} onChange={e=>{
@@ -5748,7 +5451,6 @@ function AppInner(){
               <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Approver Telephone</label><input className="fi" type="tel" value={expF.approverPhone||""} onChange={e=>setExpF(f=>({...f,approverPhone:e.target.value}))} placeholder="Auto-filled from profile" style={{borderColor:"#a5d6a7"}}/></div>
               <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Approver NIN</label><input className="fi" value={expF.approverNIN||""} onChange={e=>setExpF(f=>({...f,approverNIN:e.target.value}))} placeholder="Auto-filled from profile" style={{borderColor:"#a5d6a7"}}/></div>
 
-              {/* Payment mode */}
               <div className="fg ff"><label className="fl">Mode of Payment</label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
                   {[["cash","💵 Cash"],["bank","🏦 Bank Transfer"],["mtn","📱 MTN MoMo"],["airtel","📱 Airtel Money"]].map(([v,lbl])=>(
@@ -5778,14 +5480,12 @@ function AppInner(){
         </div>
       )}
 
-      {/* ── LOAN PAYMENT MODAL ── */}
       {payModal&&<PayModal
         loan={loansCalc.find(l=>l.id===payF.loanId)}
         mem={loansCalc.find(l=>l.id===payF.loanId)?members.find(m=>m.id===loansCalc.find(l=>l.id===payF.loanId).memberId):null}
         payF={payF} setPayF={setPayF} savePay={savePay} setPayModal={setPayModal}
       />}
 
-      {/* ── LOAN MODAL ───────────────────────────────────────────────────── */}
       {lModal&&(
         <div className="overlay" onClick={e=>e.target===e.currentTarget&&setLModal(false)}>
           <div className="modal wide">
@@ -5813,7 +5513,6 @@ function AppInner(){
               </div>
               <div className="fg ff"><label className="fl">Purpose of Loan <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required)</span></label><input className="fi" value={lF.loanPurpose} onChange={e=>setLF(f=>({...f,loanPurpose:e.target.value}))} placeholder="e.g. Purchase business stock, School fees for children, Medical bills..."/></div>
 
-              {/* ── Borrower Details ── */}
               <div className="fg ff" style={{gridColumn:"1/-1"}}>
                 <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>👤 Borrower Details</div>
                 {lF.memberId&&(()=>{
@@ -5830,7 +5529,6 @@ function AppInner(){
               <div className="fg"><label className="fl">National ID Number (NIN)</label><input className="fi" value={lF.borrowerNIN} onChange={e=>setLF(f=>({...f,borrowerNIN:e.target.value}))} placeholder="NIN e.g. CM90001234..."/></div>
               <div className="fg ff"><label className="fl">Physical Address</label><input className="fi" value={lF.borrowerAddress} onChange={e=>setLF(f=>({...f,borrowerAddress:e.target.value}))} placeholder="Village, Parish, District"/></div>
 
-              {/* ── Guarantor Details ── */}
               <div className="fg ff" style={{gridColumn:"1/-1"}}><div style={{fontSize:10,fontWeight:700,color:"#1b5e20",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>🛡 Guarantor Details <span style={{fontWeight:400,color:"var(--tmuted)"}}>(must be a BIDA member)</span></div></div>
               <div className="fg ff"><label className="fl">Select Guarantor</label>
                 <select className="fi" value={lF.guarantorMemberId} onChange={e=>{
@@ -5858,7 +5556,6 @@ function AppInner(){
               <div className="fg"><label className="fl">Guarantor NIN</label><input className="fi" value={lF.guarantorNIN} onChange={e=>setLF(f=>({...f,guarantorNIN:e.target.value}))} placeholder="NIN e.g. CM90001234..."/></div>
               <div className="fg ff"><label className="fl">Guarantor Address</label><input className="fi" value={lF.guarantorAddress} onChange={e=>setLF(f=>({...f,guarantorAddress:e.target.value}))} placeholder="Village, Parish, District"/></div>
 
-              {/* ── Term + settlement ── */}
               <div className="fg ff" style={{gridColumn:"1/-1"}}><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>📅 Repayment Terms</div></div>
               {(+lF.amountLoaned||0)>0&&(+lF.amountLoaned||0)<7000000&&(
                 <div className="fg ff" style={{gridColumn:"1/-1"}}>
@@ -5897,7 +5594,6 @@ function AppInner(){
                 )}
               </React.Fragment>
             )}
-            {/* Liquidity check */}
             {(+lF.amountLoaned>0)&&(()=>{
               const amt=+lF.amountLoaned;
               const _lr=loans.reduce((s,l)=>s+(+l.amountPaid||0),0);
