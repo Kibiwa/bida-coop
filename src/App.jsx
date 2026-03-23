@@ -726,11 +726,11 @@ function waLink(num,text){const n=waNum(num);if(!n)return null;return "https://w
 
 const WA_SVG = <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>;
 
-function buildWASavingsMsg(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return `Dear ${m.name.split(" ")[0]}, this is your Bida Multi-Purpose Co-Operative Society savings reminder for ${mn} ${yr}.\n\nYour monthly contribution of ${fmt(m.monthlySavings)} is due by the 5th.\nTotal banked to date: ${fmt(totBanked(m))}\n\n— Bida Multi-Purpose Co-Operative Society`;}
-function buildWALoanMsg(m,loan){const c=calcLoan(loan);return `Dear ${m.name.split(" ")[0]}, this is a Bida Multi-Purpose Co-Operative Society loan reminder.\n\nBalance outstanding: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\nTotal due: ${fmt(c.totalDue)}\n\nPlease arrange payment at your earliest convenience.\n— Bida Multi-Purpose Co-Operative Society`;}
+function buildWASavingsMsg(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return `Dear ${m.name.split(" ")[0]}, this is your Bida Multi-Purpose Co-operative Society savings reminder for ${mn} ${yr}.\n\nYour monthly contribution of ${fmt(m.monthlySavings)} is due by the 5th.\nTotal banked to date: ${fmt(totBanked(m))}\n\n— Bida Multi-Purpose Co-operative Society`;}
+function buildWALoanMsg(m,loan){const c=calcLoan(loan);return `Dear ${m.name.split(" ")[0]}, this is a Bida Multi-Purpose Co-operative Society loan reminder.\n\nBalance outstanding: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\nTotal due: ${fmt(c.totalDue)}\n\nPlease arrange payment at your earliest convenience.\n— Bida Multi-Purpose Co-operative Society`;}
 function buildWAStatementMsg(m){
   const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();
-  return `Dear ${m.name.split(" ")[0]}, please find your Bida Multi-Purpose Co-Operative Society Member Statement attached.
+  return `Dear ${m.name.split(" ")[0]}, please find your Bida Multi-Purpose Co-operative Society Member Statement attached.
 
 Summary as at ${mn} ${yr}:
   Total Banked:  ${fmt(totBanked(m))}
@@ -739,17 +739,17 @@ Summary as at ${mn} ${yr}:
   Shares:        ${fmt(m.shares)}
 
 Thank you for being a valued member.
-— Bida Multi-Purpose Co-Operative Society
+— Bida Multi-Purpose Co-operative Society
 bidacooperative@gmail.com`;
 }
-function buildWADueMsg(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return `⚠️ Dear ${m.name.split(" ")[0]}, your Bida Multi-Purpose Co-Operative Society loan of ${fmt(loan.amountLoaned)} is due for full settlement on ${dueFmt}.\n\nBalance due: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\n\nPlease arrange payment before the due date.\n— Bida Multi-Purpose Co-Operative Society`;}
+function buildWADueMsg(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return `⚠️ Dear ${m.name.split(" ")[0]}, your Bida Multi-Purpose Co-operative Society loan of ${fmt(loan.amountLoaned)} is due for full settlement on ${dueFmt}.\n\nBalance due: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\n\nPlease arrange payment before the due date.\n— Bida Multi-Purpose Co-operative Society`;}
 function buildSMSSavingsMsg(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return `BIDA Coop: Dear ${m.name.split(" ")[0]}, your ${mn} ${yr} savings of ${fmt(m.monthlySavings)} is due by the 5th. Total: ${fmt(totBanked(m))}.`;}
 function buildSMSLoanMsg(m,loan){const c=calcLoan(loan);return `BIDA Coop: Dear ${m.name.split(" ")[0]}, your loan balance is ${fmt(c.balance)}. Monthly pay: ${fmt(c.monthlyPayment)}. Total due: ${fmt(c.totalDue)}.`;}
 function buildSMSDueMsg(m,loan,daysLeft){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"short"});return `BIDA Coop: Dear ${m.name.split(" ")[0]}, your loan of ${fmt(loan.amountLoaned)} is due ${dueFmt} (${daysLeft} days). Balance: ${fmt(c.balance)}. Please pay on time.`;}
 
-function buildSavingsEmail(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return{subj:"BIDA Cooperative — "+mn+" "+yr+" Savings Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nYour monthly savings contribution of "+fmt(m.monthlySavings)+" is due by the 5th of "+mn+" "+yr+".\n\nYour contributions on record:\n  Membership:      "+fmt(m.membership)+"\n  Annual Sub:      "+fmt(m.annualSub)+"\n  Monthly Savings: "+fmt(m.monthlySavings)+"\n  Welfare:         "+fmt(m.welfare)+"\n  Shares:          "+fmt(m.shares)+"\n  ─────────────────────────\n  Total Banked:    "+fmt(totBanked(m))+"\n\nThank you,\nBida Multi-Purpose Co-Operative Society\n"+toStr()};}
-function buildLoanEmail(m,loan){const c=calcLoan(loan);return{subj:"BIDA Cooperative — Loan Settlement Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nThis is a reminder that you have an outstanding loan balance with Bida Multi-Purpose Co-Operative Society.\n\nLoan Details:\n  Principal:        "+fmt(loan.amountLoaned)+"\n  Issued:           "+fmtD(loan.dateBanked)+"\n  Months elapsed:   "+c.months+"\n  Monthly Payment:  "+fmt(c.monthlyPayment)+"\n  Total due:        "+fmt(c.totalDue)+"\n  ─────────────────────────\n  Outstanding:      "+fmt(c.balance)+"\n\nPlease arrange payment at your earliest convenience.\n\nBida Multi-Purpose Co-Operative Society\n"+toStr()};}
-function buildDueEmail(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return{subj:"⚠️ BIDA Cooperative — Loan Due in 5 Days: "+dueFmt,body:"Dear "+m.name.split(" ")[0]+",\n\nThis is an automated reminder that your Bida Multi-Purpose Co-Operative Society loan is due for full settlement on "+dueFmt+".\n\nLoan Summary:\n  Principal:       "+fmt(loan.amountLoaned)+"\n  Monthly Payment: "+fmt(c.monthlyPayment)+"\n  ─────────────────────────\n  Balance Due:     "+fmt(c.balance)+"\n\nPlease ensure payment is made on or before the due date to avoid your account being marked overdue.\n\nBida Multi-Purpose Co-Operative Society\n"+toStr()};}
+function buildSavingsEmail(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return{subj:"BIDA Cooperative — "+mn+" "+yr+" Savings Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nYour monthly savings contribution of "+fmt(m.monthlySavings)+" is due by the 5th of "+mn+" "+yr+".\n\nYour contributions on record:\n  Membership:      "+fmt(m.membership)+"\n  Annual Sub:      "+fmt(m.annualSub)+"\n  Monthly Savings: "+fmt(m.monthlySavings)+"\n  Welfare:         "+fmt(m.welfare)+"\n  Shares:          "+fmt(m.shares)+"\n  ─────────────────────────\n  Total Banked:    "+fmt(totBanked(m))+"\n\nThank you,\nBida Multi-Purpose Co-operative Society\n"+toStr()};}
+function buildLoanEmail(m,loan){const c=calcLoan(loan);return{subj:"BIDA Cooperative — Loan Settlement Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nThis is a reminder that you have an outstanding loan balance with Bida Multi-Purpose Co-operative Society.\n\nLoan Details:\n  Principal:        "+fmt(loan.amountLoaned)+"\n  Issued:           "+fmtD(loan.dateBanked)+"\n  Months elapsed:   "+c.months+"\n  Monthly Payment:  "+fmt(c.monthlyPayment)+"\n  Total due:        "+fmt(c.totalDue)+"\n  ─────────────────────────\n  Outstanding:      "+fmt(c.balance)+"\n\nPlease arrange payment at your earliest convenience.\n\nBida Multi-Purpose Co-operative Society\n"+toStr()};}
+function buildDueEmail(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return{subj:"⚠️ BIDA Cooperative — Loan Due in 5 Days: "+dueFmt,body:"Dear "+m.name.split(" ")[0]+",\n\nThis is an automated reminder that your Bida Multi-Purpose Co-operative Society loan is due for full settlement on "+dueFmt+".\n\nLoan Summary:\n  Principal:       "+fmt(loan.amountLoaned)+"\n  Monthly Payment: "+fmt(c.monthlyPayment)+"\n  ─────────────────────────\n  Balance Due:     "+fmt(c.balance)+"\n\nPlease ensure payment is made on or before the due date to avoid your account being marked overdue.\n\nBida Multi-Purpose Co-operative Society\n"+toStr()};}
 
 function blobToDataUrl(blob){
   return new Promise((resolve,reject)=>{
@@ -894,7 +894,7 @@ async function generateLoanPDF(loan, member, calc){
   }
   doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
   doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
-  doc.text("Bida Multi-Purpose Co-Operative Society — Loan Agreement — Confidential",12,H-4);
+  doc.text("Bida Multi-Purpose Co-operative Society — Loan Agreement — Confidential",12,H-4);
   doc.text(toStr(),W-12,H-4,{align:"right"});
   return doc.output("blob");
 }
@@ -914,7 +914,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(187,222,251);doc.text(sub,W/2,17,{align:"center"});
     doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Generated: "+toStr(),W-10,10,{align:"right"});doc.text("Confidential",W-10,17,{align:"right"});
   };
-  const dF=(n)=>{doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Bida Multi-Purpose Co-Operative Society — Confidential",10,H-4);doc.text("Page "+n,W/2,H-4,{align:"center"});doc.text(toStr(),W-10,H-4,{align:"right"});};
+  const dF=(n)=>{doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Bida Multi-Purpose Co-operative Society — Confidential",10,H-4);doc.text("Page "+n,W/2,H-4,{align:"center"});doc.text(toStr(),W-10,H-4,{align:"right"});};
   const sB=(x,y,w,h,lb,v,c)=>{doc.setFillColor(...BLITE);doc.roundedRect(x,y,w,h,2,2,"F");doc.setFillColor(...(c||BLUE));doc.roundedRect(x,y,3,h,1,1,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text(lb.toUpperCase(),x+6,y+5);doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(...NAVY);doc.text(v,x+6,y+11);};
 
   if(type==="savings"){
@@ -1245,7 +1245,7 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
     doc.setFillColor(...BLUE);doc.rect(0,H-10,W,0.8,"F");
     doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
-    doc.text("Bida Multi-Purpose Co-Operative Society — Confidential Member Statement",12,H-4);
+    doc.text("Bida Multi-Purpose Co-operative Society — Confidential Member Statement",12,H-4);
     doc.text("Page "+pg+" of "+pageCount+"  ·  "+toStr(),W-12,H-4,{align:"right"});
   }
   return doc.output("blob");
@@ -1311,7 +1311,7 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
   doc.text("Total Share Capital: UGX "+Number(shareValue).toLocaleString("en-UG"),W/2,midY+34,{align:"center"});
 
   doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,60,60);
-  doc.text("in Bida Multi-Purpose Co-Operative Society, subject to the rules and by-laws of the Society.",W/2,midY+41,{align:"center"});
+  doc.text("in Bida Multi-Purpose Co-operative Society, subject to the rules and by-laws of the Society.",W/2,midY+41,{align:"center"});
 
   const sigY=H-22;
   doc.setDrawColor(150,150,150);doc.setLineWidth(0.4);
@@ -1322,7 +1322,7 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
 
   doc.setFillColor(...NAVY);doc.rect(9,H-11,W-18,6,"F");
   doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(...WHITE);
-  doc.text("Bida Multi-Purpose Co-Operative Society · "+certNo+" · bidacooperative@gmail.com",W/2,H-7,{align:"center"});
+  doc.text("Bida Multi-Purpose Co-operative Society · "+certNo+" · bidacooperative@gmail.com",W/2,H-7,{align:"center"});
 
   return doc.output("blob");
 }
@@ -2870,7 +2870,7 @@ function AppInner(){
                 <polygon points="50,17 56,23 44,23" fill="#fff"/>
               </svg>
               <div style={{fontSize:22,fontWeight:900,color:"var(--b800)",letterSpacing:2}}>BIDA</div>
-              <div style={{fontSize:11,color:"var(--tmuted)",letterSpacing:1,textTransform:"uppercase",marginTop:2}}>Co-Operative Multi-Purpose Society</div>
+              <div style={{fontSize:11,color:"var(--tmuted)",letterSpacing:1,textTransform:"uppercase",marginTop:2}}>Multi-Purpose Co-operative Society</div>
             </div>
             <div style={{marginBottom:14}}>
               <label style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6}}>Sign in as</label>
@@ -2886,7 +2886,7 @@ function AppInner(){
             </div>
             {loginErr&&<div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#c62828",marginBottom:12,textAlign:"center"}}>{loginErr}</div>}
             <button onClick={doLogin} style={{width:"100%",padding:"13px",borderRadius:10,background:"linear-gradient(135deg,var(--b600),var(--b800))",color:"#fff",border:"none",fontSize:15,fontWeight:700,cursor:"pointer"}}>Sign In →</button>
-            <div style={{textAlign:"center",marginTop:14,fontSize:10,color:"var(--tmuted)"}}>Authorised personnel only · Bida Multi-Purpose Co-Operative Society</div>
+            <div style={{textAlign:"center",marginTop:14,fontSize:10,color:"var(--tmuted)"}}>Authorised personnel only · Bida Multi-Purpose Co-operative Society</div>
             <div style={{borderTop:"1px solid var(--bdr)",marginTop:16,paddingTop:14,textAlign:"center"}}>
               <div style={{fontSize:10,color:"var(--tmuted)",marginBottom:8}}>Are you a member?</div>
               <button onClick={()=>setShowMemberPortal(true)} style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",color:"#fff",border:"none",borderRadius:9,padding:"10px 24px",fontSize:12,fontWeight:700,cursor:"pointer",width:"100%"}}>👤 Member Portal Login →</button>
@@ -2908,7 +2908,7 @@ function AppInner(){
                 <rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff"/>
                 <polygon points="50,17 56,23 44,23" fill="#fff"/>
               </svg>
-              <div><div className="brand-name">BIDA</div><div className="brand-sub">Co-Operative Multi-Purpose Society</div></div>
+              <div><div className="brand-name">BIDA</div><div className="brand-sub">Multi-Purpose Co-operative Society</div></div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(0,0,0,.2)",borderRadius:20,padding:"3px 10px",border:"1px solid rgba(255,255,255,.1)"}}>
@@ -2961,7 +2961,7 @@ function AppInner(){
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:10,height:10,borderRadius:"50%",background:"#69f0ae",boxShadow:"0 0 8px #69f0ae",animation:"pu 1.5s ease-in-out infinite",flexShrink:0}}/>
                   <div>
-                    <div style={{fontSize:9,fontWeight:600,color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Bida Multi-Purpose Co-Operative Society · Live</div>
+                    <div style={{fontSize:9,fontWeight:600,color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Bida Multi-Purpose Co-operative Society · Live</div>
                     <div style={{fontSize:15,fontWeight:800,color:"#fff",lineHeight:1.2}}>
                       {liveTime.toLocaleDateString("en-GB",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}
                     </div>
@@ -3497,7 +3497,7 @@ function AppInner(){
                 const outstanding=lStat.outstanding;
                 const loanProfit=lStat.profit;
                 const invTotal=investments.reduce((s,i)=>s+(+i.amount||0),0);
-                const invReturns=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+                const invReturns=totalInvInterest;
                 const grossIncome=loanProfit+invReturns;
                 const netIncome=grossIncome-totalExpenses;
                 const totalAssets=cashInBank+outstanding+invTotal;
@@ -3853,7 +3853,7 @@ function AppInner(){
                   <h3>⚙️ API not connected — follow these steps to enable one-click sending</h3>
                   <ol>
                     <li>Create a free <a href="https://sendgrid.com" target="_blank" rel="noreferrer">SendGrid</a> account → Settings → API Keys → copy key</li>
-                    <li>In <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">Vercel</a> → Settings → Environment Variables, add:<br/><code>SENDGRID_API_KEY</code>, <code>FROM_EMAIL</code> = bidacooperative@gmail.com, <code>FROM_NAME</code> = Bida Multi-Purpose Co-Operative Society</li>
+                    <li>In <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">Vercel</a> → Settings → Environment Variables, add:<br/><code>SENDGRID_API_KEY</code>, <code>FROM_EMAIL</code> = bidacooperative@gmail.com, <code>FROM_NAME</code> = Bida Multi-Purpose Co-operative Society</li>
                     <li>Create <a href="https://africastalking.com" target="_blank" rel="noreferrer">Africa's Talking</a> account → add: <code>AT_API_KEY</code>, <code>AT_USERNAME</code>, <code>AT_SENDER_ID</code>=BIDACOOP</li>
                     <li>For WhatsApp API: add <code>WA_TOKEN</code> (Meta WhatsApp Business API token) and <code>WA_PHONE_ID</code></li>
                     <li>Redeploy on Vercel — all channels activate immediately.</li>
@@ -4164,11 +4164,8 @@ function AppInner(){
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:7,marginTop:10}}>
                   {(()=>{
-                    const repayments=loans.reduce((s,l)=>s+(+l.amountPaid||0),0);
-              const disbursed=loans.filter(l=>l.approvalStatus==="approved"||!l.approvalStatus).reduce((s,l)=>s+(+l.amountLoaned||0),0);
-              const invMade=investments.reduce((s,i)=>s+(+i.amount||0),0);
-              const invRet=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
-              const cashInBk=savT.total+repayments+invRet-disbursed-totalExpenses-invMade;
+                    const cashInBk=cashInBank; // unified with global cashInBank
+              const invMade=totalInvested;
                     const maxInv=Math.round(cashInBk*0.20);
                     const rem=Math.max(0,maxInv-totalInvested);
                     const ok=cashInBk-totalInvested>=cashInBk*0.80;
@@ -4290,7 +4287,7 @@ function AppInner(){
                 const outstanding=lStat.outstanding;
                 const profit=lStat.profit;
                 const invTotal=investments.reduce((s,i)=>s+(+i.amount||0),0);
-                const invReturns=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+                const invReturns=totalInvInterest;
                 const grossIncome=profit+invReturns;
                 const netIncome=grossIncome-totalExpenses;
                 const totalAssets=cashInBank+outstanding+invTotal;
@@ -4337,7 +4334,7 @@ function AppInner(){
                       if(!sharedPDF.blob)return;
                       const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                       if(navigator.canShare&&navigator.canShare({files:[file]})){
-                        try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label,text:"Bida Multi-Purpose Co-Operative Society "+sharedPDF.label+" — "+toStr()});}
+                        try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label,text:"Bida Multi-Purpose Co-operative Society "+sharedPDF.label+" — "+toStr()});}
                         catch(e){if(e.name!=="AbortError"){const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}}
                       } else {
                         const u=URL.createObjectURL(sharedPDF.blob);
@@ -4359,7 +4356,7 @@ function AppInner(){
               <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
                 <div style={{fontSize:48,marginBottom:8}}>📄</div>
                 <div style={{fontWeight:900,fontSize:18,color:"#0d3461",marginBottom:4}}>{sharedPDF.label}</div>
-                <div style={{fontSize:12,color:"#888",marginBottom:24}}>Bida Multi-Purpose Co-Operative Society · {new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
+                <div style={{fontSize:12,color:"#888",marginBottom:24}}>Bida Multi-Purpose Co-operative Society · {new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
                 <button
                   onClick={()=>{
                     if(!sharedPDF.blob) return;
@@ -4377,7 +4374,7 @@ function AppInner(){
                     if(!sharedPDF.blob) return;
                     const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                     if(navigator.canShare&&navigator.canShare({files:[file]})){
-                      try{ await navigator.share({files:[file],title:"Bida Multi-Purpose Co-Operative Society",text:"Please find your BIDA statement attached."}); }
+                      try{ await navigator.share({files:[file],title:"Bida Multi-Purpose Co-operative Society",text:"Please find your BIDA statement attached."}); }
                       catch(e){ if(e.name!=="AbortError") console.warn(e); }
                     } else {
                       const url=URL.createObjectURL(sharedPDF.blob);
@@ -4390,7 +4387,7 @@ function AppInner(){
                 </button>
                 {sharedPDF.waNumber&&(
                   <a
-                    href={"https://wa.me/"+sharedPDF.waNumber+"?text="+encodeURIComponent("Dear Member, please find your Bida Multi-Purpose Co-Operative Society statement attached. Download it from the link or check your Downloads folder.\n\n— Bida Multi-Purpose Co-Operative Society\nbidacooperative@gmail.com")}
+                    href={"https://wa.me/"+sharedPDF.waNumber+"?text="+encodeURIComponent("Dear Member, please find your Bida Multi-Purpose Co-operative Society statement attached. Download it from the link or check your Downloads folder.\n\n— Bida Multi-Purpose Co-operative Society\nbidacooperative@gmail.com")}
                     target="_blank" rel="noreferrer"
                     style={{display:"block",width:"100%",padding:"14px",borderRadius:12,background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10,boxSizing:"border-box",textAlign:"center"}}>
                     {WA_SVG} Send on WhatsApp
@@ -5987,33 +5984,37 @@ function MemberLoginScreenInline({ onLogin, onBack }) {
 
   const sendOTP = async () => {
     setPErr("");
-    const n = normPhoneInline(phone);
-    if (!n) { setPErr("Enter a valid Uganda number (e.g. 0772 123 456)"); return; }
+    const raw = phone.trim();
+    if (!raw) { setPErr("Enter your registered phone number"); return; }
+    const n256 = normPhoneInline(raw);
+    const n0   = n256 ? "0" + n256.slice(3) : null;
+    if (!n256) { setPErr("Enter a valid Uganda number (e.g. 0772 123 456)"); return; }
     setBusy(true);
     try {
-      const members = await mDb.get("members");
-      const member = members.find(m => m.phone === n || m.whatsapp === n);
+      const all = await mDb.get("members");
+      const member = all.find(m => {
+        const p = (m.phone||"").replace(/\s/g,"");
+        const w = (m.whatsapp||"").replace(/\s/g,"");
+        return p===n256||p===n0||w===n256||w===n0;
+      });
       if (!member) {
-        setPErr("Member not found. Contact your SACCO manager.");
+        setPErr("Member not found. Ask your manager to add your phone number to your profile first.");
         setBusy(false);
         return;
       }
       setName(member.name);
-      
       const code = String(Math.floor(100000 + Math.random() * 900000));
       const exp = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      
-      const old = await mDb.get("login_codes", `phone=eq.${n}&used=eq.false`);
+      const old = await mDb.get("login_codes", `phone=eq.${n256}&used=eq.false`);
       for (const c of old) await mDb.update("login_codes", `id=eq.${c.id}`, { used: true });
-      
-      await mDb.insert("login_codes", { phone: n, code, expires_at: exp, used: false, member_id: member.id });
+      await mDb.insert("login_codes", { phone: n256, code, expires_at: exp, used: false, member_id: member.id });
       setDevCode(code);
       setPhase("verify");
       setCR(false);
       setCd(60);
       setOtp("      ");
     } catch (e) {
-      setPErr("Failed to send code. Check your connection.");
+      setPErr("Failed to send code. Please check your connection and try again.");
     } finally {
       setBusy(false);
     }
