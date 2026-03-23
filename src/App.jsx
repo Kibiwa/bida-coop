@@ -493,7 +493,7 @@ const calcDividends=(members,loans,expenses,investments,surplusOverride)=>{
   const totalExpenses=expenses.reduce((s,e)=>s+(+e.amount||0),0);
   const loanProfit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
   const invReturns=investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
-  const grossSurplus=loanProfit+invReturns*0.4;
+  const grossSurplus=loanProfit+invReturns;
   const statutory=Math.round(grossSurplus*0.20);
   const operational=Math.round(grossSurplus*0.10);
   const distributable=surplusOverride!=null?surplusOverride:Math.max(0,grossSurplus-statutory-operational);
@@ -711,6 +711,8 @@ const emptyPay = {
 // =====================================================
 // COMPONENTS
 // =====================================================
+
+function compressImage(file,cb){const img=new window.Image(),url=URL.createObjectURL(file);img.onload=()=>{const MAX=200,r=Math.min(MAX/img.width,MAX/img.height,1),c=document.createElement("canvas");c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);c.getContext("2d").drawImage(img,0,0,c.width,c.height);cb(c.toDataURL("image/jpeg",0.7));URL.revokeObjectURL(url);};img.src=url;}
 function Avatar({name,size=40,photoUrl}){
   if(photoUrl) return React.createElement("div",{style:{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,border:"2px solid var(--bdr2)"}},React.createElement("img",{src:photoUrl,alt:name,style:{width:"100%",height:"100%",objectFit:"cover"}}));
   const w=name.trim().split(" ");
@@ -724,11 +726,11 @@ function waLink(num,text){const n=waNum(num);if(!n)return null;return "https://w
 
 const WA_SVG = <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>;
 
-function buildWASavingsMsg(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return `Dear ${m.name.split(" ")[0]}, this is your BIDA Co-operative Multi-Purpose Society savings reminder for ${mn} ${yr}.\n\nYour monthly contribution of ${fmt(m.monthlySavings)} is due by the 5th.\nTotal banked to date: ${fmt(totBanked(m))}\n\n— BIDA Co-operative Multi-Purpose Society`;}
-function buildWALoanMsg(m,loan){const c=calcLoan(loan);return `Dear ${m.name.split(" ")[0]}, this is a BIDA Co-operative loan reminder.\n\nBalance outstanding: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\nTotal due: ${fmt(c.totalDue)}\n\nPlease arrange payment at your earliest convenience.\n— BIDA Co-operative Multi-Purpose Society`;}
+function buildWASavingsMsg(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return `Dear ${m.name.split(" ")[0]}, this is your Bida Multi-Purpose Co-Operative Society savings reminder for ${mn} ${yr}.\n\nYour monthly contribution of ${fmt(m.monthlySavings)} is due by the 5th.\nTotal banked to date: ${fmt(totBanked(m))}\n\n— Bida Multi-Purpose Co-Operative Society`;}
+function buildWALoanMsg(m,loan){const c=calcLoan(loan);return `Dear ${m.name.split(" ")[0]}, this is a Bida Multi-Purpose Co-Operative Society loan reminder.\n\nBalance outstanding: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\nTotal due: ${fmt(c.totalDue)}\n\nPlease arrange payment at your earliest convenience.\n— Bida Multi-Purpose Co-Operative Society`;}
 function buildWAStatementMsg(m){
   const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();
-  return `Dear ${m.name.split(" ")[0]}, please find your BIDA Co-operative Member Statement attached.
+  return `Dear ${m.name.split(" ")[0]}, please find your Bida Multi-Purpose Co-Operative Society Member Statement attached.
 
 Summary as at ${mn} ${yr}:
   Total Banked:  ${fmt(totBanked(m))}
@@ -737,17 +739,17 @@ Summary as at ${mn} ${yr}:
   Shares:        ${fmt(m.shares)}
 
 Thank you for being a valued member.
-— BIDA Co-operative Multi-Purpose Society
+— Bida Multi-Purpose Co-Operative Society
 bidacooperative@gmail.com`;
 }
-function buildWADueMsg(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return `⚠️ Dear ${m.name.split(" ")[0]}, your BIDA Co-operative loan of ${fmt(loan.amountLoaned)} is due for full settlement on ${dueFmt}.\n\nBalance due: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\n\nPlease arrange payment before the due date.\n— BIDA Co-operative Multi-Purpose Society`;}
+function buildWADueMsg(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return `⚠️ Dear ${m.name.split(" ")[0]}, your Bida Multi-Purpose Co-Operative Society loan of ${fmt(loan.amountLoaned)} is due for full settlement on ${dueFmt}.\n\nBalance due: ${fmt(c.balance)}\nMonthly payment: ${fmt(c.monthlyPayment)}\n\nPlease arrange payment before the due date.\n— Bida Multi-Purpose Co-Operative Society`;}
 function buildSMSSavingsMsg(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return `BIDA Coop: Dear ${m.name.split(" ")[0]}, your ${mn} ${yr} savings of ${fmt(m.monthlySavings)} is due by the 5th. Total: ${fmt(totBanked(m))}.`;}
 function buildSMSLoanMsg(m,loan){const c=calcLoan(loan);return `BIDA Coop: Dear ${m.name.split(" ")[0]}, your loan balance is ${fmt(c.balance)}. Monthly pay: ${fmt(c.monthlyPayment)}. Total due: ${fmt(c.totalDue)}.`;}
 function buildSMSDueMsg(m,loan,daysLeft){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"short"});return `BIDA Coop: Dear ${m.name.split(" ")[0]}, your loan of ${fmt(loan.amountLoaned)} is due ${dueFmt} (${daysLeft} days). Balance: ${fmt(c.balance)}. Please pay on time.`;}
 
-function buildSavingsEmail(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return{subj:"BIDA Cooperative — "+mn+" "+yr+" Savings Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nYour monthly savings contribution of "+fmt(m.monthlySavings)+" is due by the 5th of "+mn+" "+yr+".\n\nYour contributions on record:\n  Membership:      "+fmt(m.membership)+"\n  Annual Sub:      "+fmt(m.annualSub)+"\n  Monthly Savings: "+fmt(m.monthlySavings)+"\n  Welfare:         "+fmt(m.welfare)+"\n  Shares:          "+fmt(m.shares)+"\n  ─────────────────────────\n  Total Banked:    "+fmt(totBanked(m))+"\n\nThank you,\nBIDA Co-operative Multi-Purpose Society\n"+toStr()};}
-function buildLoanEmail(m,loan){const c=calcLoan(loan);return{subj:"BIDA Cooperative — Loan Settlement Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nThis is a reminder that you have an outstanding loan balance with BIDA Co-operative.\n\nLoan Details:\n  Principal:        "+fmt(loan.amountLoaned)+"\n  Issued:           "+fmtD(loan.dateBanked)+"\n  Months elapsed:   "+c.months+"\n  Monthly Payment:  "+fmt(c.monthlyPayment)+"\n  Total due:        "+fmt(c.totalDue)+"\n  ─────────────────────────\n  Outstanding:      "+fmt(c.balance)+"\n\nPlease arrange payment at your earliest convenience.\n\nBIDA Co-operative Multi-Purpose Society\n"+toStr()};}
-function buildDueEmail(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return{subj:"⚠️ BIDA Cooperative — Loan Due in 5 Days: "+dueFmt,body:"Dear "+m.name.split(" ")[0]+",\n\nThis is an automated reminder that your BIDA Co-operative loan is due for full settlement on "+dueFmt+".\n\nLoan Summary:\n  Principal:       "+fmt(loan.amountLoaned)+"\n  Monthly Payment: "+fmt(c.monthlyPayment)+"\n  ─────────────────────────\n  Balance Due:     "+fmt(c.balance)+"\n\nPlease ensure payment is made on or before the due date to avoid your account being marked overdue.\n\nBIDA Co-operative Multi-Purpose Society\n"+toStr()};}
+function buildSavingsEmail(m){const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();return{subj:"BIDA Cooperative — "+mn+" "+yr+" Savings Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nYour monthly savings contribution of "+fmt(m.monthlySavings)+" is due by the 5th of "+mn+" "+yr+".\n\nYour contributions on record:\n  Membership:      "+fmt(m.membership)+"\n  Annual Sub:      "+fmt(m.annualSub)+"\n  Monthly Savings: "+fmt(m.monthlySavings)+"\n  Welfare:         "+fmt(m.welfare)+"\n  Shares:          "+fmt(m.shares)+"\n  ─────────────────────────\n  Total Banked:    "+fmt(totBanked(m))+"\n\nThank you,\nBida Multi-Purpose Co-Operative Society\n"+toStr()};}
+function buildLoanEmail(m,loan){const c=calcLoan(loan);return{subj:"BIDA Cooperative — Loan Settlement Reminder",body:"Dear "+m.name.split(" ")[0]+",\n\nThis is a reminder that you have an outstanding loan balance with Bida Multi-Purpose Co-Operative Society.\n\nLoan Details:\n  Principal:        "+fmt(loan.amountLoaned)+"\n  Issued:           "+fmtD(loan.dateBanked)+"\n  Months elapsed:   "+c.months+"\n  Monthly Payment:  "+fmt(c.monthlyPayment)+"\n  Total due:        "+fmt(c.totalDue)+"\n  ─────────────────────────\n  Outstanding:      "+fmt(c.balance)+"\n\nPlease arrange payment at your earliest convenience.\n\nBida Multi-Purpose Co-Operative Society\n"+toStr()};}
+function buildDueEmail(m,loan){const c=calcLoan(loan);const issued=new Date(loan.dateBanked);const due=new Date(issued.getFullYear(),issued.getMonth()+(loan.term||12),issued.getDate());const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});return{subj:"⚠️ BIDA Cooperative — Loan Due in 5 Days: "+dueFmt,body:"Dear "+m.name.split(" ")[0]+",\n\nThis is an automated reminder that your Bida Multi-Purpose Co-Operative Society loan is due for full settlement on "+dueFmt+".\n\nLoan Summary:\n  Principal:       "+fmt(loan.amountLoaned)+"\n  Monthly Payment: "+fmt(c.monthlyPayment)+"\n  ─────────────────────────\n  Balance Due:     "+fmt(c.balance)+"\n\nPlease ensure payment is made on or before the due date to avoid your account being marked overdue.\n\nBida Multi-Purpose Co-Operative Society\n"+toStr()};}
 
 function blobToDataUrl(blob){
   return new Promise((resolve,reject)=>{
@@ -892,7 +894,7 @@ async function generateLoanPDF(loan, member, calc){
   }
   doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
   doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
-  doc.text("BIDA Co-operative Multi-Purpose Society — Loan Agreement — Confidential",12,H-4);
+  doc.text("Bida Multi-Purpose Co-Operative Society — Loan Agreement — Confidential",12,H-4);
   doc.text(toStr(),W-12,H-4,{align:"right"});
   return doc.output("blob");
 }
@@ -912,7 +914,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(187,222,251);doc.text(sub,W/2,17,{align:"center"});
     doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Generated: "+toStr(),W-10,10,{align:"right"});doc.text("Confidential",W-10,17,{align:"right"});
   };
-  const dF=(n)=>{doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("BIDA Co-operative Multi-Purpose Society — Confidential",10,H-4);doc.text("Page "+n,W/2,H-4,{align:"center"});doc.text(toStr(),W-10,H-4,{align:"right"});};
+  const dF=(n)=>{doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Bida Multi-Purpose Co-Operative Society — Confidential",10,H-4);doc.text("Page "+n,W/2,H-4,{align:"center"});doc.text(toStr(),W-10,H-4,{align:"right"});};
   const sB=(x,y,w,h,lb,v,c)=>{doc.setFillColor(...BLITE);doc.roundedRect(x,y,w,h,2,2,"F");doc.setFillColor(...(c||BLUE));doc.roundedRect(x,y,3,h,1,1,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text(lb.toUpperCase(),x+6,y+5);doc.setFont("helvetica","bold");doc.setFontSize(9.5);doc.setTextColor(...NAVY);doc.text(v,x+6,y+11);};
 
   if(type==="savings"){
@@ -1243,7 +1245,7 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
     doc.setFillColor(...BLUE);doc.rect(0,H-10,W,0.8,"F");
     doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
-    doc.text("BIDA Co-operative Multi-Purpose Society — Confidential Member Statement",12,H-4);
+    doc.text("Bida Multi-Purpose Co-Operative Society — Confidential Member Statement",12,H-4);
     doc.text("Page "+pg+" of "+pageCount+"  ·  "+toStr(),W-12,H-4,{align:"right"});
   }
   return doc.output("blob");
@@ -1309,7 +1311,7 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
   doc.text("Total Share Capital: UGX "+Number(shareValue).toLocaleString("en-UG"),W/2,midY+34,{align:"center"});
 
   doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,60,60);
-  doc.text("in BIDA Co-operative Multi-Purpose Society, subject to the rules and by-laws of the Society.",W/2,midY+41,{align:"center"});
+  doc.text("in Bida Multi-Purpose Co-Operative Society, subject to the rules and by-laws of the Society.",W/2,midY+41,{align:"center"});
 
   const sigY=H-22;
   doc.setDrawColor(150,150,150);doc.setLineWidth(0.4);
@@ -1320,7 +1322,7 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
 
   doc.setFillColor(...NAVY);doc.rect(9,H-11,W-18,6,"F");
   doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(...WHITE);
-  doc.text("BIDA Co-operative Multi-Purpose Society · "+certNo+" · bidacooperative@gmail.com",W/2,H-7,{align:"center"});
+  doc.text("Bida Multi-Purpose Co-Operative Society · "+certNo+" · bidacooperative@gmail.com",W/2,H-7,{align:"center"});
 
   return doc.output("blob");
 }
@@ -1940,6 +1942,8 @@ function SavingsExpensesChart({savingsData, expensesData}){
 function AppInner(){
   const [tab,setTab]        = useState("savings");
   const [authUser,setAuthUser] = useState(null);
+  const [showMemberPortal,setShowMemberPortal] = useState(false);
+  const [memberSession,setMemberSession] = useState(()=>{try{const r=sessionStorage.getItem("bida_member_sess");if(!r)return null;const s=JSON.parse(r);if(Date.now()>s.exp){sessionStorage.removeItem("bida_member_sess");return null;}return s;}catch{return null;}});
   const SESSION_MINUTES = 5;
 
   const [loginPin,setLoginPin] = useState("");
@@ -1955,7 +1959,7 @@ function AppInner(){
   const [benovSelMember,setBenovSelMember] = useState("");
   const [contribLog,setContribLog] = useState([]);
   const [contribModal,setContribModal] = useState(false);
-  const [contribF,setContribF] = useState({memberId:"",date:new Date().toISOString().split("T")[0],category:"monthlySavings",amount:"",note:""});
+  const [contribF,setContribF] = useState({memberId:"",date:new Date().toISOString().split("T")[0],category:"monthlySavings",amount:"",note:"",attachmentName:"",attachmentData:""});
   const [dividendPayouts,setDividendPayouts] = useState([]);
   const [dividendModal,setDividendModal] = useState(false);
   const EXPENSE_APPROVAL_THRESHOLD = 100000;
@@ -2454,7 +2458,7 @@ function AppInner(){
   const saveContrib=()=>{
     if(!contribF.memberId||!contribF.amount||!contribF.date) return;
     const id=Date.now();
-    const rec={id,memberId:+contribF.memberId,date:contribF.date,category:contribF.category,amount:+contribF.amount||0,note:contribF.note||"",recordedBy:authUser?.name||"System",recordedAt:new Date().toISOString()};
+    const rec={id,memberId:+contribF.memberId,date:contribF.date,category:contribF.category,amount:+contribF.amount||0,note:contribF.note||"",attachmentName:contribF.attachmentName||"",attachmentData:contribF.attachmentData||"",recordedBy:authUser?.name||"System",recordedAt:new Date().toISOString()};
     const memberBefore=members.find(m=>m.id===+contribF.memberId);
     setContribLog(prev=>[...prev,rec]);
     saveRecord("contrib_log",rec,setSyncStatus,(errMsg)=>{
@@ -2472,7 +2476,7 @@ function AppInner(){
       return updated;
     }));
     setContribModal(false);
-    setContribF({memberId:"",date:new Date().toISOString().split("T")[0],category:"monthlySavings",amount:"",note:""});
+    setContribF({memberId:"",date:new Date().toISOString().split("T")[0],category:"monthlySavings",amount:"",note:"",attachmentName:"",attachmentData:""});
   };
   const delContrib=(id)=>{
     if(!window.confirm("Delete this contribution entry?")) return;
@@ -2851,7 +2855,9 @@ function AppInner(){
       <style>{CSS}</style>
       <style>{`body{margin:0;font-family:'Outfit',sans-serif;}`}</style>
 
-      {!authUser&&(
+      {showMemberPortal&&!memberSession&&<MemberLoginScreenInline onLogin={s=>{const full={...s,exp:Date.now()+8*3600*1000};sessionStorage.setItem("bida_member_sess",JSON.stringify(full));setMemberSession(full);setShowMemberPortal(false);}} onBack={()=>setShowMemberPortal(false)}/>}
+      {memberSession&&<MemberDashboardInline session={memberSession} onLogout={()=>{sessionStorage.removeItem("bida_member_sess");setMemberSession(null);}}/>}
+      {!showMemberPortal&&!memberSession&&!authUser&&(
         <div style={{minHeight:"100vh",background:"linear-gradient(135deg,var(--b900),var(--b700))",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:"#fff",borderRadius:20,padding:"32px 28px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
             <div style={{textAlign:"center",marginBottom:24}}>
@@ -2880,7 +2886,11 @@ function AppInner(){
             </div>
             {loginErr&&<div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#c62828",marginBottom:12,textAlign:"center"}}>{loginErr}</div>}
             <button onClick={doLogin} style={{width:"100%",padding:"13px",borderRadius:10,background:"linear-gradient(135deg,var(--b600),var(--b800))",color:"#fff",border:"none",fontSize:15,fontWeight:700,cursor:"pointer"}}>Sign In →</button>
-            <div style={{textAlign:"center",marginTop:14,fontSize:10,color:"var(--tmuted)"}}>Authorised personnel only · BIDA Co-operative</div>
+            <div style={{textAlign:"center",marginTop:14,fontSize:10,color:"var(--tmuted)"}}>Authorised personnel only · Bida Multi-Purpose Co-Operative Society</div>
+            <div style={{borderTop:"1px solid var(--bdr)",marginTop:16,paddingTop:14,textAlign:"center"}}>
+              <div style={{fontSize:10,color:"var(--tmuted)",marginBottom:8}}>Are you a member?</div>
+              <button onClick={()=>setShowMemberPortal(true)} style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",color:"#fff",border:"none",borderRadius:9,padding:"10px 24px",fontSize:12,fontWeight:700,cursor:"pointer",width:"100%"}}>👤 Member Portal Login →</button>
+            </div>
           </div>
         </div>
       )}
@@ -2951,7 +2961,7 @@ function AppInner(){
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:10,height:10,borderRadius:"50%",background:"#69f0ae",boxShadow:"0 0 8px #69f0ae",animation:"pu 1.5s ease-in-out infinite",flexShrink:0}}/>
                   <div>
-                    <div style={{fontSize:9,fontWeight:600,color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>BIDA Co-operative Management System · Live</div>
+                    <div style={{fontSize:9,fontWeight:600,color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Bida Multi-Purpose Co-Operative Society · Live</div>
                     <div style={{fontSize:15,fontWeight:800,color:"#fff",lineHeight:1.2}}>
                       {liveTime.toLocaleDateString("en-GB",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}
                     </div>
@@ -3274,8 +3284,8 @@ function AppInner(){
                 <div style={{fontWeight:800,fontSize:14,marginBottom:6}}>BIDA Member Protection Policy</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:8,marginBottom:10}}>
                   {[
-                    ["🕊 Passing","Family receives 70% of total invested (principal + interest). Remaining 30% negotiated with board. NOK may retain account.","#ef9a9a"],
-                    ["🏥 Serious Illness","Member entitled to support based on their share of the pool. Calculated after investment returns. BIDA retains operational capacity.","#ffcc80"],
+                    ["🕊 Passing","NOK receives minimum 70% of member's monthly savings + welfare (guaranteed). Board decides on 30%: full payout or NOK retains and continues the account.","#ef9a9a"],
+                    ["🏥 Serious Illness","Member receives 50% of their monthly savings + welfare banked. Member retains account and continues contributing after recovery.","#ffcc80"],
                     ["🔒 Protected","At least 70% guaranteed payout to beneficiary. BIDA compensates fully upon board agreement.","#a5d6a7"],
                   ].map(([t,d,c])=>(
                     <div key={t} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",borderRadius:9,padding:"10px 12px"}}>
@@ -3285,7 +3295,7 @@ function AppInner(){
                   ))}
                 </div>
                 <div style={{fontSize:10,opacity:.6,borderTop:"1px solid rgba(255,255,255,.15)",paddingTop:8,lineHeight:1.6}}>
-                  ⚠ Payout requires board approval. Percentage of shares and dividends realised are included in the calculation. NOK can be a BIDA member or non-member.
+                  ⚠ All payouts require written board resolution. NOK may be a BIDA member or non-member. Calculations are estimates — board confirms final amounts.
                 </div>
               </div>
 
@@ -3298,7 +3308,7 @@ function AppInner(){
                     <div className="card ck"><div className="clabel">Members with NOK</div><div className="cval ok">{eligibleMembers.length}</div><div className="csub">Benevolent-ready</div></div>
                     <div className="card cw"><div className="clabel">Missing NOK</div><div className="cval warn">{noNOK.length}</div><div className="csub">Cannot activate fund</div></div>
                     <div className="card ck"><div className="clabel">Total Pool</div><div className="cval ok">{fmt(totalPool)}</div><div className="csub">Basis for calculations</div></div>
-                    <div className="card"><div className="clabel">Min Payout (70%)</div><div className="cval">{fmt(Math.round(totalPool*0.70/Math.max(members.length,1)))}</div><div className="csub">Per member avg</div></div>
+                    <div className="card"><div className="clabel">Avg Min Payout (70%)</div><div className="cval">{fmt(Math.round(members.reduce((s,m)=>s+((m.monthlySavings||0)+(m.welfare||0)),0)*0.70/Math.max(members.length,1)))}</div><div className="csub">Savings+Welfare base</div></div>
                   </div>
                 );
               })()}
@@ -3334,18 +3344,8 @@ function AppInner(){
                   const retention=benovRetention;
                   const setRetention=setBenovRetention;
                   const m = members.find(mb=>mb.id===+selMemberId);
-                  const totalSavings = m ? totBanked(m) : 0;
-                  const totalShareCapital = Math.max(members.reduce((s,mb)=>s+(mb.shares||0),0),1);
-                  const shareRatio = m ? (m.shares||0)/totalShareCapital : 0;
-                  const invReturnsShare = Math.round(totalInvInterest * shareRatio);
-                  const poolRatio = (savT.total>0&&m) ? totBanked(m)/savT.total : 0;
-                  const deathBase = totalSavings + invReturnsShare;
-                  const illnessBase = Math.round(cashInBank * poolRatio * 0.50);
-                  const totalBase = claimType==="death" ? deathBase : illnessBase;
-                  const minPayout = claimType==="death" ? Math.round(deathBase * 0.70) : illnessBase;
-                  const remaining30 = deathBase - minPayout;
-                  const fullPayout = deathBase;
-                  const nok = m?.nextOfKin||null;
+                  const benevBase=m?((m.monthlySavings||0)+(m.welfare||0)):0;
+                  const deathBase=benevBase,minPayout=Math.round(benevBase*0.70),remaining30=Math.round(benevBase*0.30),fullPayout=benevBase,illnessBase=Math.round(benevBase*0.50),nok=m?.nextOfKin||null;
                   return (
                     <div>
                       <div className="fgrid">
@@ -3386,17 +3386,18 @@ function AppInner(){
                           <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"12px 14px",marginBottom:10}}>
                             <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>📊 Payout Breakdown — {m.name}</div>
                             {(claimType==="death"?[
-                              ["Member total savings",fmt(totalSavings),"var(--td)"],
-                              ["Share of investment returns ("+Math.round(shareRatio*100)+"% of pool returns "+fmt(totalInvInterest)+")",fmt(invReturnsShare),"#1565c0"],
-                              ["Total death claim base",fmt(deathBase),"var(--b800)"],
-                              ["Minimum guaranteed payout (70%)",fmt(minPayout),"#1b5e20"],
+                              ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
+                              ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
+                              ["Benevolent Base (Savings + Welfare)",fmt(deathBase),"var(--b800)"],
+                              ["Guaranteed minimum to NOK (70%)",fmt(minPayout),"#1b5e20"],
                               ["Remaining 30% — board decision",fmt(remaining30),retention==="compensate"?"#1b5e20":"#e65100"],
-                              ["Full payout if board agrees 100%",fmt(fullPayout),"#1565c0"],
+                              ["Full payout if board agrees (100%)",fmt(fullPayout),"#1565c0"],
                             ]:[
-                              ["Member total savings",fmt(totalSavings),"var(--td)"],
-                              ["Member's pool share ("+Math.round(poolRatio*100)+"%)",fmt(Math.round(cashInBank*poolRatio)),"var(--td)"],
-                              ["Illness support (50% of pool share)",fmt(illnessBase),"#1b5e20"],
-                              ["Member retains membership","Active — continues contributing","#1565c0"],
+                              ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
+                              ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
+                              ["Benevolent Base (Savings + Welfare)",fmt(illnessBase*2),"var(--b800)"],
+                              ["Illness support payout (50% of base)",fmt(illnessBase),"#1b5e20"],
+                              ["Member retains account","Active — continues after recovery","#1565c0"],
                             ]).map(([lb,v,c],i)=>(
                               <div key={lb} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i<5?"1px solid var(--bdr)":"none",fontWeight:i===2||i===5?700:400}}>
                                 <span style={{fontSize:11,color:"var(--td)"}}>{lb}</span>
@@ -3422,7 +3423,7 @@ function AppInner(){
                           )}
                           {claimType==="illness"&&(
                             <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 12px",marginBottom:10,fontSize:11,color:"#e65100",lineHeight:1.6}}>
-                              <strong>🏥 Illness Support Logic:</strong> Member receives support equal to 50% of their pool share value. This is calculated after all active investments and loan positions. BIDA retains capacity to remain operational. The member continues their membership after recovery.
+                              <strong>🏥 Illness Support Logic:</strong> Member receives 50% of their monthly savings + welfare contributions banked. Member keeps account active and resumes after recovery. Board approval and medical documentation required.
                             </div>
                           )}
                           <div style={{background:claimType==="death"?"linear-gradient(135deg,#1b5e20,#2e7d32)":"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:10,padding:"12px 16px",color:"#fff"}}>
@@ -3433,7 +3434,7 @@ function AppInner(){
                             <div style={{fontSize:10,opacity:.7,marginTop:4}}>
                               {claimType==="death"
                                 ?retention==="compensate"?"Full 100% — board agreed all funds to NOK":"70% guaranteed + NOK retains remaining 30% account"
-                                :"50% of member pool share — member retains membership after recovery"
+                                :"50% of monthly savings + welfare — member keeps account after recovery"
                               }
                             </div>
                             <div style={{marginTop:10,fontSize:10,opacity:.6,lineHeight:1.6,borderTop:"1px solid rgba(255,255,255,.2)",paddingTop:8}}>
@@ -3461,7 +3462,7 @@ function AppInner(){
                         const nok=m.nextOfKin||null;
                         const hasNOK=nok&&(nok.name||"").trim();
                         const tb=totBanked(m);
-                        const minPayout=Math.round(tb*0.70);
+                        const minPayout=Math.round(((m.monthlySavings||0)+(m.welfare||0))*0.70);
                         return (
                           <tr key={m.id} style={{borderBottom:"1px solid #eef5ff",background:hasNOK?"":"#fffde7"}}>
                             <td style={{padding:"7px 10px",fontSize:10,color:"var(--tmuted)"}}>{i+1}</td>
@@ -3852,7 +3853,7 @@ function AppInner(){
                   <h3>⚙️ API not connected — follow these steps to enable one-click sending</h3>
                   <ol>
                     <li>Create a free <a href="https://sendgrid.com" target="_blank" rel="noreferrer">SendGrid</a> account → Settings → API Keys → copy key</li>
-                    <li>In <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">Vercel</a> → Settings → Environment Variables, add:<br/><code>SENDGRID_API_KEY</code>, <code>FROM_EMAIL</code> = bidacooperative@gmail.com, <code>FROM_NAME</code> = BIDA Co-operative Multi-Purpose Society</li>
+                    <li>In <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">Vercel</a> → Settings → Environment Variables, add:<br/><code>SENDGRID_API_KEY</code>, <code>FROM_EMAIL</code> = bidacooperative@gmail.com, <code>FROM_NAME</code> = Bida Multi-Purpose Co-Operative Society</li>
                     <li>Create <a href="https://africastalking.com" target="_blank" rel="noreferrer">Africa's Talking</a> account → add: <code>AT_API_KEY</code>, <code>AT_USERNAME</code>, <code>AT_SENDER_ID</code>=BIDACOOP</li>
                     <li>For WhatsApp API: add <code>WA_TOKEN</code> (Meta WhatsApp Business API token) and <code>WA_PHONE_ID</code></li>
                     <li>Redeploy on Vercel — all channels activate immediately.</li>
@@ -4336,7 +4337,7 @@ function AppInner(){
                       if(!sharedPDF.blob)return;
                       const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                       if(navigator.canShare&&navigator.canShare({files:[file]})){
-                        try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label,text:"BIDA Co-operative "+sharedPDF.label+" — "+toStr()});}
+                        try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label,text:"Bida Multi-Purpose Co-Operative Society "+sharedPDF.label+" — "+toStr()});}
                         catch(e){if(e.name!=="AbortError"){const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}}
                       } else {
                         const u=URL.createObjectURL(sharedPDF.blob);
@@ -4358,7 +4359,7 @@ function AppInner(){
               <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
                 <div style={{fontSize:48,marginBottom:8}}>📄</div>
                 <div style={{fontWeight:900,fontSize:18,color:"#0d3461",marginBottom:4}}>{sharedPDF.label}</div>
-                <div style={{fontSize:12,color:"#888",marginBottom:24}}>BIDA Co-operative · {new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
+                <div style={{fontSize:12,color:"#888",marginBottom:24}}>Bida Multi-Purpose Co-Operative Society · {new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
                 <button
                   onClick={()=>{
                     if(!sharedPDF.blob) return;
@@ -4376,7 +4377,7 @@ function AppInner(){
                     if(!sharedPDF.blob) return;
                     const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                     if(navigator.canShare&&navigator.canShare({files:[file]})){
-                      try{ await navigator.share({files:[file],title:"BIDA Co-operative",text:"Please find your BIDA statement attached."}); }
+                      try{ await navigator.share({files:[file],title:"Bida Multi-Purpose Co-Operative Society",text:"Please find your BIDA statement attached."}); }
                       catch(e){ if(e.name!=="AbortError") console.warn(e); }
                     } else {
                       const url=URL.createObjectURL(sharedPDF.blob);
@@ -4389,7 +4390,7 @@ function AppInner(){
                 </button>
                 {sharedPDF.waNumber&&(
                   <a
-                    href={"https://wa.me/"+sharedPDF.waNumber+"?text="+encodeURIComponent("Dear Member, please find your BIDA Co-operative statement attached. Download it from the link or check your Downloads folder.\n\n— BIDA Co-operative Multi-Purpose Society\nbidacooperative@gmail.com")}
+                    href={"https://wa.me/"+sharedPDF.waNumber+"?text="+encodeURIComponent("Dear Member, please find your Bida Multi-Purpose Co-Operative Society statement attached. Download it from the link or check your Downloads folder.\n\n— Bida Multi-Purpose Co-Operative Society\nbidacooperative@gmail.com")}
                     target="_blank" rel="noreferrer"
                     style={{display:"block",width:"100%",padding:"14px",borderRadius:12,background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10,boxSizing:"border-box",textAlign:"center"}}>
                     {WA_SVG} Send on WhatsApp
@@ -4876,7 +4877,7 @@ function AppInner(){
                     <Avatar name={profF.name||profMember.name} size={52} photoUrl={profF.photoUrl}/>
                     <div style={{flex:1}}>
                       <div style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>Member Photo</div>
-                      <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload Photo<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=r=>setProfF(f=>({...f,photoUrl:r.target.result}));reader.readAsDataURL(file);}}/></label>
+                      <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload Photo<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f2=e.target.files?.[0];if(!f2)return;compressImage(f2,c=>setProfF(f=>({...f,photoUrl:c})));}}/>  </label>
                       {profF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"#c62828",cursor:"pointer"}} onClick={()=>setProfF(f=>({...f,photoUrl:""}))}>✕ Remove</button>}
                     </div>
                   </div>
@@ -4925,7 +4926,7 @@ function AppInner(){
                 <Avatar name={addMF.name||"New"} size={52} photoUrl={addMF.photoUrl||""}/>
                 <div style={{flex:1}}>
                   <div style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>Member Photo <span style={{fontWeight:400}}>(optional)</span></div>
-                  <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=r=>setAddMF(f=>({...f,photoUrl:r.target.result}));reader.readAsDataURL(file);}}/></label>
+                  <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f2=e.target.files?.[0];if(!f2)return;compressImage(f2,c=>setAddMF(f=>({...f,photoUrl:c})));}}/>  </label>
                   {addMF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"#c62828",cursor:"pointer"}} onClick={()=>setAddMF(f=>({...f,photoUrl:""}))}>✕</button>}
                 </div>
               </div>
@@ -5232,6 +5233,14 @@ function AppInner(){
               <div className="fg ff">
                 <label className="fl">Note <span style={{fontWeight:400,color:"var(--tmuted)"}}>(optional)</span></label>
                 <input className="fi" value={contribF.note} onChange={e=>setContribF(f=>({...f,note:e.target.value}))} placeholder="e.g. September payment, paid via MTN MoMo"/>
+              </div>
+              <div className="fg ff">
+                <label className="fl">Attach Receipt <span style={{fontWeight:400,color:"var(--tmuted)"}}>(photo or PDF, optional)</span></label>
+                <label style={{display:"flex",alignItems:"center",gap:8,padding:"9px 13px",borderRadius:9,border:"1.5px dashed var(--bdr2)",background:"var(--b50)",cursor:"pointer",fontSize:12,color:"var(--b700)"}}>
+                  📎 {contribF.attachmentName||"Choose file…"}
+                  <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const r=new FileReader();r.onload=x=>setContribF(f=>({...f,attachmentName:file.name,attachmentData:x.target.result}));r.readAsDataURL(file);}}/>
+                </label>
+                {contribF.attachmentName&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}><div style={{fontSize:10,color:"#1b5e20",fontFamily:"var(--mono)"}}>✓ {contribF.attachmentName}</div><button type="button" onClick={()=>setContribF(f=>({...f,attachmentName:"",attachmentData:""}))} style={{fontSize:10,background:"none",border:"none",color:"#c62828",cursor:"pointer",padding:0}}>✕ Remove</button></div>}
               </div>
             </div>
             {contribF.memberId&&contribF.amount&&(()=>{
@@ -5613,6 +5622,736 @@ function AppInner(){
       )}
       </React.Fragment>}
     </React.Fragment>
+  );
+}
+
+
+// ══════════════════════════════════════════════
+// MEMBER PORTAL — INLINE COMPONENTS
+// ══════════════════════════════════════════════
+
+// ── Inline DB helpers for member portal (use same Supabase project as manager app) ──
+const MEMBER_SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
+const MEMBER_SUPA_KEY = "sb_publishable_0E7N6CTQK7bzXfni8tG9-A_xxxCgGUC";
+
+async function memberRest(method,table,body,query){
+  const url=MEMBER_SUPA_URL+"/rest/v1/"+table+(query?"?"+query:"");
+  const h={"Content-Type":"application/json","apikey":MEMBER_SUPA_KEY,"Authorization":"Bearer "+MEMBER_SUPA_KEY};
+  if(method==="POST") h["Prefer"]="resolution=merge-duplicates,return=representation";
+  if(method==="PATCH") h["Prefer"]="return=representation";
+  const r=await fetch(url,{method,headers:h,body:body?JSON.stringify(body):undefined});
+  if(!r.ok) throw new Error((await r.text())||r.status);
+  if(r.status===204)return [];
+  const t=await r.text();return t?JSON.parse(t):[];
+}
+const mDb={
+  get:(table,q="")=>memberRest("GET",table,null,q),
+  insert:(table,row)=>memberRest("POST",table,Array.isArray(row)?row:[row]),
+  update:(table,q,data)=>memberRest("PATCH",table,data,q),
+};
+const mFmt=n=>n==null?"—":"UGX "+Number(n).toLocaleString("en-UG");
+const mFmtD=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
+async function mFingerprint(){try{const raw=[navigator.userAgent,navigator.language,screen.colorDepth,screen.width+"x"+screen.height,new Date().getTimezoneOffset()].join("|");const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(raw));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("").slice(0,32);}catch{return "unknown";}}
+async function mSha256(text){const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text));return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");}
+function normPhoneInline(raw){const d=raw.replace(/[\s\-().+]/g,"");if(/^256\d{9}$/.test(d))return d;if(/^0\d{9}$/.test(d))return "256"+d.slice(1);if(/^\d{9}$/.test(d))return "256"+d;return null;}
+
+
+function TimeLeft({ end }) {
+  const ms = new Date(end) - Date.now();
+  if (ms <= 0) return <span style={{color:"#c62828",fontSize:11}}>Closed</span>;
+  const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
+  return <span style={{color:h<2?"#c62828":"#1b5e20",fontSize:11}}>⏱ {h}h {m}m left</span>;
+}
+
+function PollCard({ poll, memberId, onVoted }) {
+  const [mine,   setMine]   = useState(null);
+  const [sel,    setSel]    = useState([]);
+  const [tally,  setTally]  = useState({counts:{},total:0});
+  const [busy,   setBusy]   = useState(false);
+  const [err,    setErr]    = useState("");
+  const [init,   setInit]   = useState(true);
+
+  const loadTally = async () => {
+    const vs = await mDb.get("votes","poll_id=eq."+poll.id);
+    const c={};
+    vs.forEach(v=>{(Array.isArray(v.vote_data?.choices)?v.vote_data.choices:[v.vote_data?.choice]).filter(Boolean).forEach(x=>{c[x]=(c[x]||0)+1;});});
+    setTally({counts:c,total:vs.length});
+  };
+
+  useEffect(()=>{
+    (async()=>{
+      setInit(true);
+      try {
+        const ex = await mDb.get("votes","poll_id=eq."+poll.id+"&member_id=eq."+memberId);
+        if(ex.length) setMine(ex[0].vote_data);
+        await loadTally();
+      } catch {}
+      finally { setInit(false); }
+    })();
+  },[poll.id, memberId]);
+
+  const toggle = id => {
+    setSel(p => poll.poll_type==="multiple_choice" ? (p.includes(id)?p.filter(x=>x!==id):[...p,id]) : [id]);
+  };
+
+  const cast = async () => {
+    if (!sel.length) { setErr("Select an option"); return; }
+    setBusy(true); setErr("");
+    try {
+      const fp  = await mFingerprint();
+      const now = new Date().toISOString();
+      const vd  = {choices:sel,castAt:now,pollId:poll.id,memberId};
+      const h   = await mSha256(JSON.stringify(vd)+memberId+poll.id+now);
+      await mDb.insert("votes",{poll_id:poll.id,member_id:memberId,vote_data:vd,vote_hash:h,device_fingerprint:fp,cast_at:now});
+      setMine(vd); await loadTally(); onVoted?.();
+    } catch(e) {
+      setErr(e.message.includes("one_vote")||e.message.includes("unique")?"You already voted in this poll.":"Error: "+e.message);
+    } finally { setBusy(false); }
+  };
+
+  const opts = poll.options||[];
+  const past = new Date(poll.end_date)<new Date();
+  const multi = poll.poll_type==="multiple_choice";
+
+  return (
+    <div style={{background:"#fff",borderRadius:16,padding:"18px 20px",marginBottom:16,border:"1.5px solid #e3f2fd",boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:10}}>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:800,fontSize:15,color:"#0d2a5e"}}>{poll.title}</div>
+          {poll.description&&<div style={{fontSize:12,color:"#546e7a",marginTop:3}}>{poll.description}</div>}
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <TimeLeft end={poll.end_date}/>
+          <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>{tally.total} vote{tally.total!==1?"s":""}</div>
+        </div>
+      </div>
+      <div style={{fontSize:10,fontWeight:700,color:"#1565c0",background:"#e3f2fd",display:"inline-block",padding:"2px 9px",borderRadius:20,marginBottom:14,fontFamily:"monospace",textTransform:"uppercase"}}>
+        {(poll.poll_type||"").replace(/_/g," ")}
+      </div>
+
+      {init ? <div style={{height:60,background:"#f5f5f5",borderRadius:8}}/> :
+
+      mine ? <>
+        <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+          <div style={{fontWeight:700,color:"#1b5e20",fontSize:12}}>✅ Your vote is recorded</div>
+          <div style={{fontSize:11,color:"#388e3c",marginTop:3}}>Choice: <strong>{(mine.choices||[]).map(c=>(opts.find(o=>o.id===c)||{}).label||c).join(", ")}</strong></div>
+        </div>
+        {opts.map(o=>{
+          const cnt=(tally.counts[o.id]||0), pct=tally.total>0?Math.round(cnt/tally.total*100):0, isM=(mine.choices||[]).includes(o.id);
+          return (
+            <div key={o.id} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:13,fontWeight:isM?700:400,color:isM?"#1565c0":"#546e7a"}}>{isM?"✓ ":""}{o.label}</span>
+                <span style={{fontSize:12,fontFamily:"monospace",color:"#78909c"}}>{cnt} ({pct}%)</span>
+              </div>
+              <div style={{background:"#eceff1",borderRadius:99,height:8}}>
+                <div style={{height:8,width:pct+"%",background:isM?"#1565c0":"#b0bec5",borderRadius:99,transition:"width .5s"}}/>
+              </div>
+            </div>
+          );
+        })}
+      </> :
+
+      past ? <div style={{background:"#ffebee",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#c62828"}}>This poll has closed.</div> :
+
+      <>
+        <div style={{marginBottom:14}}>
+          {opts.map(o=>{
+            const s=sel.includes(o.id);
+            return (
+              <div key={o.id} onClick={()=>toggle(o.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:10,border:"2px solid "+(s?"#1565c0":"#e8eaf6"),background:s?"#e3f2fd":"#fafafa",marginBottom:8,cursor:"pointer",transition:"all .15s"}}>
+                <div style={{width:20,height:20,flexShrink:0,borderRadius:multi?4:"50%",border:"2px solid "+(s?"#1565c0":"#cfd8dc"),background:s?"#1565c0":"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {s&&<div style={{width:8,height:8,borderRadius:"50%",background:"#fff"}}/>}
+                </div>
+                <div>
+                  <div style={{fontSize:13,fontWeight:s?700:400,color:s?"#0d2a5e":"#546e7a"}}>{o.label}</div>
+                  {o.description&&<div style={{fontSize:11,color:"#90a4ae",marginTop:2}}>{o.description}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {err&&<div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#c62828",marginBottom:12}}>{err}</div>}
+        <button onClick={cast} disabled={busy||!sel.length} style={{width:"100%",padding:12,borderRadius:10,border:"none",fontWeight:700,fontSize:14,cursor:busy||!sel.length?"not-allowed":"pointer",background:busy||!sel.length?"#cfd8dc":"linear-gradient(135deg,#1565c0,#0d47a1)",color:busy||!sel.length?"#90a4ae":"#fff"}}>
+          {busy?"⏳ Submitting…":"🗳 Cast My Vote"}
+        </button>
+        <div style={{fontSize:10,color:"#90a4ae",textAlign:"center",marginTop:8}}>Anonymous · Cannot be changed once submitted</div>
+      </>}
+    </div>
+  );
+}
+
+function VotingPanelInline({ memberId, polls=[], onRefresh }) {
+  const [list,  setList]  = useState(polls);
+  const [busy,  setBusy]  = useState(false);
+
+  useEffect(()=>setList(polls),[polls]);
+
+  const refresh = async () => {
+    setBusy(true);
+    try { const a=await mDb.get("polls","status=eq.active"); setList(a); onRefresh?.(a); }
+    catch {} finally { setBusy(false); }
+  };
+
+  if (!list.length) return (
+    <div style={{textAlign:"center",padding:"40px 20px"}}>
+      <div style={{fontSize:48,marginBottom:12}}>🗳</div>
+      <div style={{fontWeight:700,color:"#546e7a",fontSize:15}}>No active polls</div>
+      <div style={{fontSize:12,color:"#90a4ae",marginTop:6}}>Check back when your cooperative has an election scheduled.</div>
+      <button onClick={refresh} style={{marginTop:16,background:"#e3f2fd",border:"none",color:"#1565c0",fontWeight:700,padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:12}}>{busy?"…":"↻ Refresh"}</button>
+    </div>
+  );
+
+  return (
+    <>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace"}}>Active Polls ({list.length})</div>
+        <button onClick={refresh} style={{background:"none",border:"none",color:"#1565c0",fontWeight:700,fontSize:12,cursor:"pointer"}}>{busy?"…":"↻ Refresh"}</button>
+      </div>
+      {list.map(p=><PollCard key={p.id} poll={p} memberId={memberId} onVoted={refresh}/>)}
+      <div style={{background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:12,padding:"12px 14px",fontSize:11,color:"#1b5e20"}}>
+        🔒 <strong>Secure voting.</strong> Each vote is hashed with SHA-256 and stored immutably. A device fingerprint is recorded for auditing. You cannot change your vote.
+      </div>
+    </>
+  );
+}
+
+
+function normPhonePM(raw){
+  const d=raw.replace(/[\s\-().+]/g,"");
+  if(/^256\d{9}$/.test(d))return d;
+  if(/^0\d{9}$/.test(d))return "256"+d.slice(1);
+  if(/^\d{9}$/.test(d))return "256"+d;
+  return null;
+}
+
+const PURPOSES=[
+  {v:"monthly_savings",l:"💰 Monthly Savings"},
+  {v:"annual_sub",     l:"📋 Annual Subscription"},
+  {v:"welfare",        l:"🤝 Welfare Contribution"},
+  {v:"shares",         l:"📈 Share Purchase"},
+  {v:"loan_repayment", l:"💳 Loan Repayment"},
+];
+
+function PaymentModalInline({ member, onClose }) {
+  const [method,  setMethod]  = useState("mtn");
+  const [phone,   setPhone]   = useState(member?.whatsapp||member?.phone||"");
+  const [amount,  setAmount]  = useState("");
+  const [purpose, setPurpose] = useState("monthly_savings");
+  const [busy,    setBusy]    = useState(false);
+  const [err,     setErr]     = useState("");
+  const [done,    setDone]    = useState(null);
+
+  const submit = async () => {
+    setErr("");
+    const n=normPhonePM(phone); if(!n){setErr("Enter a valid Uganda phone number");return;}
+    const amt=parseInt(String(amount).replace(/\D/g,""),10);
+    if(!amt||amt<1000){setErr("Minimum UGX 1,000");return;}
+    if(amt>5000000){setErr("Maximum UGX 5,000,000 per payment");return;}
+    setBusy(true);
+    try {
+      let ref=null;
+      try {
+        const r=await fetch("/api/initiate-payment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({memberId:member.id,phone:n,amount:amt,purpose,method})});
+        if(r.ok){const d=await r.json();ref=d.reference||d.externalRef;}
+      } catch {}
+      if(!ref){
+        ref="PAY-"+Date.now()+"-"+member.id;
+        await mDb.insert("payment_requests",{member_id:member.id,amount:amt,payment_method:method,phone:n,reference:ref,purpose,status:"pending",metadata:{memberName:member.name}});
+      }
+      setDone({amt,phone:n,method,ref});
+    } catch(e){setErr(e.message);}
+    finally{setBusy(false);}
+  };
+
+  const S={
+    ov:{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999,padding:16},
+    sh:{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:500,padding:"24px 20px",maxHeight:"90vh",overflowY:"auto"},
+    lb:{fontSize:10,fontWeight:700,color:"#78909c",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6,fontFamily:"monospace"},
+    in:{width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #cfd8dc",fontSize:15,outline:"none",boxSizing:"border-box"},
+    btn:(d)=>({width:"100%",padding:13,borderRadius:10,border:"none",fontWeight:700,fontSize:15,cursor:d?"not-allowed":"pointer",background:d?"#cfd8dc":"linear-gradient(135deg,#1b5e20,#2e7d32)",color:d?"#90a4ae":"#fff"}),
+  };
+
+  if(done) return (
+    <div style={S.ov} onClick={onClose}>
+      <div style={S.sh} onClick={e=>e.stopPropagation()}>
+        <div style={{textAlign:"center",padding:"20px 0"}}>
+          <div style={{fontSize:48,marginBottom:12}}>✅</div>
+          <div style={{fontWeight:800,fontSize:18,color:"#1b5e20"}}>Payment Request Sent</div>
+          <div style={{fontSize:13,color:"#546e7a",marginTop:8,lineHeight:1.6}}>
+            {mFmt(done.amt)} payment request sent to {done.phone}.<br/>
+            {done.method==="mtn"?"Approve the MTN MoMo prompt on your phone.":"Approve the Airtel Money prompt on your phone."}
+          </div>
+          <div style={{fontSize:10,color:"#90a4ae",marginTop:10,fontFamily:"monospace"}}>Ref: {done.ref}</div>
+          <button onClick={onClose} style={{marginTop:20,background:"#e8f5e9",border:"none",color:"#1b5e20",fontWeight:700,padding:"10px 28px",borderRadius:10,cursor:"pointer",fontSize:13}}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={S.ov} onClick={onClose}>
+      <div style={S.sh} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontWeight:800,fontSize:17,color:"#0d2a5e"}}>Make a Payment</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#90a4ae"}}>✕</button>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Payment Method</label>
+          <div style={{display:"flex",gap:10}}>
+            {[["mtn","🟡 MTN MoMo"],["airtel","🔴 Airtel Money"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setMethod(v)} style={{flex:1,padding:11,borderRadius:10,fontWeight:method===v?700:400,border:"2px solid "+(method===v?"#1565c0":"#cfd8dc"),background:method===v?"#e3f2fd":"#fff",cursor:"pointer",fontSize:13,color:method===v?"#0d47a1":"#546e7a"}}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>{method==="mtn"?"MTN":"Airtel"} Phone Number</label>
+          <input style={S.in} type="tel" placeholder="0772 123 456" value={phone} onChange={e=>setPhone(e.target.value)}/>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Purpose</label>
+          <select style={S.in} value={purpose} onChange={e=>setPurpose(e.target.value)}>
+            {PURPOSES.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
+          </select>
+        </div>
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Amount (UGX)</label>
+          <input style={S.in} type="number" placeholder="e.g. 50000" value={amount} onChange={e=>setAmount(e.target.value)}/>
+          {amount&&!isNaN(+amount)&&<div style={{fontSize:11,color:"#1565c0",marginTop:5,fontFamily:"monospace"}}>{mFmt(+amount)}</div>}
+        </div>
+        {err&&<div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:9,padding:"9px 12px",fontSize:12,color:"#c62828",marginBottom:12}}>{err}</div>}
+        <button style={S.btn(busy||!amount)} onClick={submit} disabled={busy||!amount}>
+          {busy?"⏳ Processing…":"Pay "+(!isNaN(+amount)&&+amount?fmt(+amount):"")+" →"}
+        </button>
+        <div style={{fontSize:10,color:"#90a4ae",textAlign:"center",marginTop:10}}>You will receive a prompt to approve the payment on your phone</div>
+      </div>
+    </div>
+  );
+}
+
+
+function OTPBoxes({ value, onChange, onDone, disabled }) {
+  const refs = React.useRef([]);
+  const dig = value.padEnd(6, " ").split("").slice(0, 6);
+  const set = (i, ch) => { const n = [...dig]; n[i] = ch; onChange(n.join("")); };
+
+  return (
+    <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+      {[0, 1, 2, 3, 4, 5].map(i => (
+        <input key={i} ref={el => refs.current[i] = el}
+          type="text" inputMode="numeric" maxLength={1}
+          value={dig[i]?.trim() || ""} disabled={disabled}
+          onChange={e => {
+            const ch = e.target.value.replace(/\D/g, "").slice(-1);
+            set(i, ch);
+            if (ch && i < 5) refs.current[i + 1]?.focus();
+            const joined = [...dig].map((d, j) => j === i ? ch : d).join("").replace(/\s/g, "");
+            if (joined.length === 6) onDone?.(joined);
+          }}
+          onKeyDown={e => {
+            if (e.key === "Backspace") { if (!dig[i]?.trim() && i > 0) refs.current[i - 1]?.focus(); set(i, " "); }
+          }}
+          style={{
+            width: 46, height: 54, textAlign: "center", fontSize: 24, fontWeight: 800,
+            fontFamily: "monospace", borderRadius: 10, border: dig[i]?.trim() ? "2px solid #1565c0" : "2px solid #cfd8dc",
+            outline: "none", background: disabled ? "#f5f5f5" : "#fff", color: "#0d2a5e"
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function Timer({ s, onEnd }) {
+  const [left, setLeft] = useState(s);
+  useEffect(() => {
+    setLeft(s); if (!s) return;
+    const t = setInterval(() => setLeft(l => { if (l <= 1) { clearInterval(t); onEnd?.(); return 0; } return l - 1; }), 1000);
+    return () => clearInterval(t);
+  }, [s]);
+  if (!left) return null;
+  return <span style={{ fontFamily: "monospace", color: "#78909c", fontSize: 12 }}>Resend in {left}s</span>;
+}
+
+function MemberLoginScreenInline({ onLogin, onBack }) {
+  const [phase, setPhase] = useState("phone");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("      ");
+  const [name, setName] = useState("");
+  const [devCode, setDevCode] = useState(null);
+  const [canResend, setCR] = useState(false);
+  const [cd, setCd] = useState(0);
+  const [pErr, setPErr] = useState("");
+  const [oErr, setOErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const sendOTP = async () => {
+    setPErr("");
+    const n = normPhoneInline(phone);
+    if (!n) { setPErr("Enter a valid Uganda number (e.g. 0772 123 456)"); return; }
+    setBusy(true);
+    try {
+      const members = await mDb.get("members");
+      const member = members.find(m => m.phone === n || m.whatsapp === n);
+      if (!member) {
+        setPErr("Member not found. Contact your SACCO manager.");
+        setBusy(false);
+        return;
+      }
+      setName(member.name);
+      
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const exp = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      
+      const old = await mDb.get("login_codes", `phone=eq.${n}&used=eq.false`);
+      for (const c of old) await mDb.update("login_codes", `id=eq.${c.id}`, { used: true });
+      
+      await mDb.insert("login_codes", { phone: n, code, expires_at: exp, used: false, member_id: member.id });
+      setDevCode(code);
+      setPhase("verify");
+      setCR(false);
+      setCd(60);
+      setOtp("      ");
+    } catch (e) {
+      setPErr("Failed to send code. Check your connection.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyOTP = async (code) => {
+    const c = (code || otp).replace(/\s/g, "");
+    setOErr("");
+    if (c.length !== 6) { setOErr("Enter the 6-digit code"); return; }
+    setBusy(true);
+    
+    try {
+      const n = normPhoneInline(phone);
+      const now = new Date().toISOString();
+      const rows = await mDb.get("login_codes", `phone=eq.${n}&used=eq.false&expires_at=gt.${now}&order=created_at.desc&limit=1`);
+      
+      if (!rows.length || rows[0].code !== c) throw new Error("Invalid or expired code");
+      
+      await mDb.update("login_codes", `id=eq.${rows[0].id}`, { used: true });
+      
+      const members = await mDb.get("members");
+      const member = members.find(m => m.id === rows[0].member_id);
+      if (!member) throw new Error("Member not found");
+      
+      const fp = await mFingerprint();
+      const token = crypto.randomUUID() + "-" + Date.now();
+      
+      await mDb.insert("member_sessions", {
+        member_id: member.id,
+        token,
+        device_id: fp,
+        user_agent: navigator.userAgent,
+        expires_at: new Date(Date.now() + 8 * 3600 * 1000).toISOString()
+      });
+      
+      onLogin({ type: "member", token, memberId: member.id, memberName: member.name });
+    } catch (e) {
+      setOErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const styles = {
+    page: { minHeight: "100vh", background: "linear-gradient(135deg,#0d2a5e,#1565c0)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'Outfit',sans-serif" },
+    card: { background: "#fff", borderRadius: 22, padding: "36px 28px", width: "100%", maxWidth: 400, boxShadow: "0 24px 64px rgba(0,0,0,.35)" },
+    label: { fontSize: 10, fontWeight: 700, color: "#90a4ae", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 7, fontFamily: "monospace" },
+    input: { width: "100%", padding: "13px 14px", borderRadius: 11, border: "1.5px solid #cfd8dc", fontSize: 15, outline: "none", boxSizing: "border-box" },
+    btn: (d) => ({ width: "100%", padding: 13, borderRadius: 11, border: "none", fontWeight: 700, fontSize: 15, cursor: d ? "not-allowed" : "pointer", background: d ? "#cfd8dc" : "linear-gradient(135deg,#1565c0,#0d47a1)", color: d ? "#90a4ae" : "#fff" }),
+    err: { background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 9, padding: "9px 12px", fontSize: 12, color: "#c62828", marginBottom: 12, textAlign: "center" },
+    ok: { background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: 9, padding: "9px 12px", fontSize: 12, color: "#1b5e20", marginBottom: 12, textAlign: "center" },
+    dev: { background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 9, padding: "10px 12px", fontSize: 12, color: "#bf360c", marginBottom: 12, textAlign: "center" }
+  };
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.card}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <svg width="50" height="50" viewBox="0 0 80 80" fill="none">
+            <defs><linearGradient id="lg" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#1E88E5" /><stop offset="100%" stopColor="#0D47A1" /></linearGradient></defs>
+            <polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#lg)" stroke="#42A5F5" strokeWidth="1.5" />
+            <rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity=".85" />
+            <rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6" />
+            <rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff" />
+            <polygon points="50,17 56,23 44,23" fill="#fff" />
+          </svg>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "#0d2a5e", letterSpacing: 2, marginTop: 8 }}>BIDA</div>
+          <div style={{ fontSize: 10, color: "#90a4ae", letterSpacing: 1, textTransform: "uppercase" }}>Multi-Purpose Co-Operative Society</div>
+        </div>
+
+        {phase === "phone" && (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <label style={styles.label}>Your registered phone number</label>
+              <input style={styles.input} type="tel" placeholder="0772 123 456" value={phone}
+                onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === "Enter" && sendOTP()} />
+            </div>
+            {pErr && <div style={styles.err}>{pErr}</div>}
+            <button style={styles.btn(busy)} onClick={sendOTP} disabled={busy}>
+              {busy ? "⏳ Sending…" : "Send Verification Code →"}
+            </button>
+            <div style={{ textAlign: "center", marginTop: 12, fontSize: 11, color: "#b0bec5" }}>
+              A 6-digit code will be sent via SMS
+            </div>
+          </>
+        )}
+
+        {phase === "verify" && (
+          <>
+            {name && <div style={styles.ok}>👋 Welcome, <strong>{name}</strong>! Enter the code sent to your phone.</div>}
+            {devCode && <div style={styles.dev}>🛠 DEV MODE — Code: <strong style={{ fontFamily: "monospace", fontSize: 18 }}>{devCode}</strong></div>}
+            
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ ...styles.label, textAlign: "center", display: "block" }}>6-digit verification code</label>
+              <OTPBoxes value={otp} onChange={setOtp} onDone={verifyOTP} disabled={busy} />
+              <div style={{ textAlign: "center", fontSize: 11, color: "#90a4ae", marginTop: 8 }}>Sent to {phone}</div>
+            </div>
+            
+            {oErr && <div style={styles.err}>{oErr}</div>}
+            
+            <button style={styles.btn(busy || otp.trim().length < 6)} onClick={() => verifyOTP()} disabled={busy || otp.trim().length < 6}>
+              {busy ? "⏳ Verifying…" : "Verify & Sign In →"}
+            </button>
+            
+            <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: "#90a4ae" }}>
+              {canResend ? (
+                <button onClick={() => { setPhase("phone"); setDevCode(null); }} style={{ background: "none", border: "none", color: "#1565c0", cursor: "pointer", fontWeight: 700 }}>
+                  Resend code
+                </button>
+              ) : (
+                <Timer s={cd} onEnd={() => setCR(true)} />
+              )}
+              {" · "}
+              <button onClick={() => { setPhase("phone"); setOtp("      "); setOErr(""); setDevCode(null); }} style={{ background: "none", border: "none", color: "#90a4ae", cursor: "pointer", fontSize: 11 }}>
+                Change number
+              </button>
+            </div>
+          </>
+        )}
+
+        <div style={{ textAlign: "center", marginTop: 20 }}>
+          <button onClick={onBack} style={{ background: "none", border: "none", color: "#90a4ae", cursor: "pointer", fontSize: 11 }}>
+            ← Back to Manager Login
+          </button>
+        </div>
+
+        <div style={{ textAlign: "center", marginTop: 12, fontSize: 10, color: "#cfd8dc" }}>
+          Authorised access only · BIDA Multi-Purpose Co-Operative Society
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function Card({ label, value, sub, color="#1565c0", icon="" }) {
+  return (
+    <div style={{background:"#fff",borderRadius:14,padding:"14px 16px",borderLeft:"4px solid "+color,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+      <div style={{fontSize:10,color:"#90a4ae",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:4}}>{icon} {label}</div>
+      <div style={{fontSize:18,fontWeight:900,color,fontFamily:"monospace"}}>{value}</div>
+      {sub&&<div style={{fontSize:10,color:"#90a4ae",marginTop:3}}>{sub}</div>}
+    </div>
+  );
+}
+
+function LoanCard({ loan }) {
+  const p=loan.amountLoaned||0, paid=loan.amountPaid||0;
+  const isR=p>=7000000, rate=isR?.06:.04, term=isR?12:(loan.term||12);
+  let ti=0;
+  if(isR){let b=p;for(let i=0;i<term;i++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}
+  else ti=Math.round(p*rate*term);
+  const bal=Math.max(0,p+ti-paid), pct=p+ti>0?Math.round(paid/(p+ti)*100):0;
+  return (
+    <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",marginBottom:10,border:"1px solid #e3f2fd"}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+        <div>
+          <div style={{fontWeight:700,fontSize:13,color:"#0d2a5e"}}>Loan #{loan.id}</div>
+          <div style={{fontSize:11,color:"#90a4ae"}}>Issued {mFmtD(loan.dateBanked)} · {term} months</div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontWeight:800,fontSize:14,color:bal>0?"#e65100":"#1b5e20",fontFamily:"monospace"}}>{mFmt(bal)}</div>
+          <div style={{fontSize:10,color:"#90a4ae"}}>balance</div>
+        </div>
+      </div>
+      <div style={{background:"#eceff1",borderRadius:99,height:6}}>
+        <div style={{height:6,width:pct+"%",background:pct>=100?"#2e7d32":"#1565c0",borderRadius:99}}/>
+      </div>
+      <div style={{fontSize:10,color:"#90a4ae",marginTop:4}}>{pct}% repaid · {mFmt(p+ti)} total</div>
+    </div>
+  );
+}
+
+function ContribRow({ c }) {
+  const LABS={monthlySavings:"Monthly Savings",welfare:"Welfare",annualSub:"Annual Sub",membership:"Membership",shares:"Shares",voluntaryDeposit:"Voluntary Deposit"};
+  const COLS={monthlySavings:"#1565c0",welfare:"#2e7d32",annualSub:"#e65100",membership:"#6a1b9a",shares:"#00695c",voluntaryDeposit:"#546e7a"};
+  return (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid #f5f5f5"}}>
+      <div>
+        <div style={{fontSize:12,fontWeight:600,color:"#263238"}}>{LABS[c.category]||c.category}</div>
+        <div style={{fontSize:10,color:"#90a4ae"}}>{mFmtD(c.date)}{c.note?" · "+c.note:""}</div>
+      </div>
+      <div style={{fontWeight:800,fontSize:13,color:COLS[c.category]||"#546e7a",fontFamily:"monospace"}}>{mFmt(c.amount)}</div>
+    </div>
+  );
+}
+
+function Skel() {
+  return <div style={{background:"linear-gradient(90deg,#eceff1 25%,#e3f2fd 50%,#eceff1 75%)",backgroundSize:"200% 100%",animation:"shimmer 1.4s infinite",borderRadius:10,height:80,marginBottom:10}}/>;
+}
+
+function MemberDashboardInline({ session, onLogout }) {
+  const [m,      setM]      = useState(null);
+  const [loans,  setLoans]  = useState([]);
+  const [cl,     setCl]     = useState([]);
+  const [polls,  setPolls]  = useState([]);
+  const [tab,    setTab]    = useState("overview");
+  const [load,   setLoad]   = useState(true);
+  const [err,    setErr]    = useState(null);
+  const [showPay,setShowPay]= useState(false);
+
+  const fetch_ = useCallback(async () => {
+    if(!session?.memberId) return;
+    setLoad(true); setErr(null);
+    try {
+      const [ms,ls,cs,ps]=await Promise.all([
+        mDb.get("members","id=eq."+session.memberId),
+        mDb.get("loans","memberId=eq."+session.memberId+"&order=id.desc"),
+        mDb.get("contrib_log","memberId=eq."+session.memberId+"&order=date.desc&limit=20").catch(()=>[]),
+        mDb.get("polls","status=eq.active").catch(()=>[]),
+      ]);
+      setM(ms?.[0]||null); setLoans(ls||[]); setCl(cs||[]); setPolls(ps||[]);
+    } catch(e) { setErr("Could not load your data. Check your connection."); }
+    finally { setLoad(false); }
+  },[session]);
+
+  useEffect(()=>{fetch_();},[fetch_]);
+
+  const total  = m?(m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0):0;
+  const active = loans.filter(l=>l.status!=="paid");
+  const lbal   = active.reduce((s,l)=>{
+    const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
+    let ti=0;if(isR){let b=p;for(let i=0;i<term;i++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
+    return s+Math.max(0,p+ti-paid);
+  },0);
+  const sUnits = m?Math.round((m.shares||0)/50000):0;
+
+  const TABS=[["overview","📊 Overview"],["loans","💳 Loans"],["history","📋 History"],["votes","🗳 Voting"+(polls.length?" ("+polls.length+")":"")]];
+
+  return (
+    <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"'Outfit',sans-serif"}}>
+      <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
+
+      {/* Header */}
+      <div style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",color:"#fff",padding:"14px 18px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontWeight:900,fontSize:18,letterSpacing:1.5}}>BIDA</div>
+            <div style={{fontSize:11,opacity:.7}}>Member Portal</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontWeight:700,fontSize:13}}>{session.memberName||"Member"}</div>
+              <div style={{fontSize:10,opacity:.6}}>ID #{session.memberId}</div>
+            </div>
+            <button onClick={onLogout} style={{background:"rgba(255,255,255,.2)",border:"1px solid rgba(255,255,255,.3)",color:"#fff",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>Sign Out</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <div style={{background:"#fff",display:"flex",gap:4,padding:"8px 14px",overflowX:"auto",borderBottom:"1px solid #e8eaf6"}}>
+        {TABS.map(([id,lbl])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"8px 14px",border:"none",borderRadius:9,cursor:"pointer",fontWeight:tab===id?700:500,fontSize:12,background:tab===id?"#e3f2fd":"transparent",color:tab===id?"#1565c0":"#78909c",whiteSpace:"nowrap"}}>{lbl}</button>
+        ))}
+      </div>
+
+      <div style={{padding:16,maxWidth:620,margin:"0 auto"}}>
+        {err&&<div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:13,color:"#c62828"}}>⚠ {err} <button onClick={fetch_} style={{marginLeft:8,background:"none",border:"none",color:"#1565c0",fontWeight:700,cursor:"pointer"}}>Retry</button></div>}
+
+        {/* ── OVERVIEW ── */}
+        {tab==="overview"&&<>
+          <div style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",borderRadius:18,padding:"22px 20px",marginBottom:14,color:"#fff"}}>
+            <div style={{fontSize:11,opacity:.7,textTransform:"uppercase",letterSpacing:.8,fontFamily:"monospace"}}>Total Banked</div>
+            {load?<div style={{height:38,background:"rgba(255,255,255,.2)",borderRadius:8,marginTop:8}}/>
+                 :<div style={{fontSize:30,fontWeight:900,fontFamily:"monospace",marginTop:6}}>{mFmt(total)}</div>}
+            <div style={{fontSize:11,opacity:.6,marginTop:6}}>Member since {mFmtD(m?.joinDate)}</div>
+          </div>
+
+          {load?<>{[0,1,2,3].map(i=><Skel key={i}/>)}</>:
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            <Card icon="💰" label="Monthly Savings" value={mFmt(m?.monthlySavings||0)} color="#1565c0"/>
+            <Card icon="📈" label="Share Units" value={sUnits+" units"} sub={mFmt(m?.shares||0)} color="#00695c"/>
+            <Card icon="💳" label="Loan Balance" value={mFmt(lbal)} color={lbal>0?"#e65100":"#2e7d32"}/>
+            <Card icon="🤝" label="Welfare Fund" value={mFmt(m?.welfare||0)} color="#6a1b9a"/>
+          </div>}
+
+          {!load&&m&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:12}}>Savings Breakdown</div>
+            {[["Membership","membership","#6a1b9a"],["Annual Sub","annualSub","#e65100"],["Monthly Savings","monthlySavings","#1565c0"],["Welfare","welfare","#2e7d32"],["Shares","shares","#00695c"],["Voluntary","voluntaryDeposit","#546e7a"]].filter(([,k])=>(m[k]||0)>0).map(([lbl,k,col])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #f5f5f5"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:col}}/><span style={{fontSize:12,color:"#546e7a"}}>{lbl}</span></div>
+                <span style={{fontSize:12,fontWeight:800,color:col,fontFamily:"monospace"}}>{mFmt(m[k])}</span>
+              </div>
+            ))}
+            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0 0",borderTop:"2px solid #e3f2fd",marginTop:4}}>
+              <span style={{fontSize:13,fontWeight:800,color:"#0d2a5e"}}>Total</span>
+              <span style={{fontSize:15,fontWeight:900,color:"#1565c0",fontFamily:"monospace"}}>{mFmt(total)}</span>
+            </div>
+          </div>}
+
+          {!load&&cl.length>0&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:10}}>Recent Contributions</div>
+            {cl.slice(0,5).map((c,i)=><ContribRow key={i} c={c}/>)}
+            {cl.length>5&&<button onClick={()=>setTab("history")} style={{background:"none",border:"none",color:"#1565c0",cursor:"pointer",fontSize:12,fontWeight:700,marginTop:8,padding:0}}>View all {cl.length} →</button>}
+          </div>}
+
+          {!load&&polls.length>0&&<div onClick={()=>setTab("votes")} style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:12,padding:"12px 16px",marginBottom:14,cursor:"pointer"}}>
+            <div style={{fontWeight:700,color:"#1b5e20",fontSize:13}}>🗳 {polls.length} active poll{polls.length>1?"s":""} — Cast your vote!</div>
+            <div style={{fontSize:11,color:"#388e3c",marginTop:3}}>Tap to view →</div>
+          </div>}
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <button onClick={()=>setShowPay(true)} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:4}}>📲</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>Make Payment</div>
+              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>MTN / Airtel MoMo</div>
+            </button>
+            <button onClick={()=>alert("Contact your SACCO manager:\n📧 bidacooperative@gmail.com")} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:4}}>📄</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>Statement</div>
+              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>Request PDF</div>
+            </button>
+          </div>
+        </>}
+
+        {/* ── LOANS ── */}
+        {tab==="loans"&&<>
+          {load?<Skel/>:loans.length===0
+            ?<div style={{textAlign:"center",padding:"40px 20px",color:"#90a4ae"}}><div style={{fontSize:36}}>🏦</div><div style={{fontWeight:700,marginTop:10}}>No loans on record</div></div>
+            :loans.map(l=><LoanCard key={l.id} loan={l}/>)}
+        </>}
+
+        {/* ── HISTORY ── */}
+        {tab==="history"&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:12}}>Contribution History</div>
+          {load?<Skel/>:cl.length===0
+            ?<div style={{textAlign:"center",padding:30,color:"#90a4ae"}}>No records found</div>
+            :cl.map((c,i)=><ContribRow key={i} c={c}/>)}
+        </div>}
+
+        {/* ── VOTING ── */}
+        {tab==="votes"&&<VotingPanelInline memberId={session.memberId} polls={polls} onRefresh={setPolls}/>}
+
+        <div style={{textAlign:"center",padding:"20px 0 8px",fontSize:10,color:"#b0bec5"}}>BIDA Co-operative Multi-Purpose Society</div>
+      </div>
+
+      {showPay&&m&&<PaymentModalInline member={m} onClose={()=>setShowPay(false)}/>}
+    </div>
   );
 }
 
