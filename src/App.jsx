@@ -1,5 +1,5 @@
 import React from "react";
-const { useState, useMemo, useEffect } = React;
+const { useState, useMemo, useEffect, useCallback, useRef } = React;
 
 const loadScript = (src) => new Promise((res, rej) => {
   if (document.querySelector(`script[src="${src}"]`)) return res();
@@ -12,11 +12,13 @@ const loadScript = (src) => new Promise((res, rej) => {
 // YOUR CORRECT SUPABASE CONFIGURATION
 // =====================================================
 const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
-const SUPA_ANON_KEY = "sb_publishable_0E7N6CTQK7bzXfni8tG9-A_xxxCgGUC";
+const SUPA_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zY3VhdWFpZmdhZWF1enZraWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTU2MzEsImV4cCI6MjA4OTEzMTYzMX0.tsdr1vL7Q5DcrSt-0AMHeWpxfXCWvi4KXuYuYoLblI0";
 const SYNC_INTERVAL_MS = 15000;
 
 let SUPA_KEY = SUPA_ANON_KEY;
-function getSupaKey(){ return localStorage.getItem("bida_supa_key")||SUPA_ANON_KEY; }
+// Clear stale keys from old Supabase project
+try{const s=localStorage.getItem("bida_supa_key");if(s&&!s.startsWith("sb_")&&!s.startsWith("eyJ"))localStorage.removeItem("bida_supa_key");}catch(e){}
+function getSupaKey(){ const stored=localStorage.getItem("bida_supa_key"); return (stored&&stored!==SUPA_ANON_KEY&&stored.length>20)?stored:SUPA_ANON_KEY; }
 function setSupaKey(k){ localStorage.setItem("bida_supa_key",k); SUPA_KEY=k; }
 SUPA_KEY = SUPA_ANON_KEY;
 
@@ -2074,8 +2076,9 @@ function AppInner(){
         setDbLoaded(true); setSyncStatus("synced");
         replayOfflineQueue(setSyncStatus);
       })
-      .catch(e=>{ console.error("Supabase load failed:",e.message); setSyncStatus("idle"); });
-  },[supaKeyInput]);
+      .catch(e=>{ console.error("Supabase load failed:",e.message); setSyncStatus("error"); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   useEffect(()=>{
     const h=async()=>{
@@ -5629,7 +5632,7 @@ function AppInner(){
 
 // ── Inline DB helpers for member portal (use same Supabase project as manager app) ──
 const MEMBER_SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
-const MEMBER_SUPA_KEY = "sb_publishable_0E7N6CTQK7bzXfni8tG9-A_xxxCgGUC";
+const MEMBER_SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zY3VhdWFpZmdhZWF1enZraWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTU2MzEsImV4cCI6MjA4OTEzMTYzMX0.tsdr1vL7Q5DcrSt-0AMHeWpxfXCWvi4KXuYuYoLblI0";
 
 async function memberRest(method,table,body,query){
   const url=MEMBER_SUPA_URL+"/rest/v1/"+table+(query?"?"+query:"");
