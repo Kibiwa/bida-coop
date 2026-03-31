@@ -1,89 +1,88 @@
-// ============================================================
-// api/send-email.js  —  drop this into your project's /api/ folder
-// Uses Resend (free: 3,000 emails/month, no credit card needed)
-//
-// REQUIRED Vercel Environment Variables:
-//   RESEND_API_KEY  →  from resend.com dashboard → API Keys
-//   FROM_EMAIL      →  onboarding@resend.dev (works immediately, no domain)
-//                      OR your own domain once verified e.g. noreply@bidacoop.ug
-//   FROM_NAME       →  Bida Multi-Purpose Co-operative Society
-// ============================================================
-
+// api/send-email.js - Complete working version with PDF attachments
 export default async function handler(req, res) {
-  // CORS for browser requests
+  // Enable CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") return res.status(405).end();
 
   const { to, subject, text, html, attachment } = req.body || {};
-  if (!to || !subject) return res.status(400).json({ error: "Missing: to, subject" });
+  
+  if (!to || !subject) {
+    return res.status(400).json({ error: "Missing to or subject" });
+  }
 
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({
-      error: "RESEND_API_KEY not set in Vercel environment variables. Go to Vercel → Project → Settings → Environment Variables."
-    });
+    return res.status(500).json({ error: "RESEND_API_KEY not configured" });
   }
 
-  const fromEmail = process.env.FROM_EMAIL || "onboarding@resend.dev";
-  const fromName  = process.env.FROM_NAME  || "Bida Co-operative";
+  // Use Resend's default sender (works immediately)
+  const fromEmail = "onboarding@resend.dev";
+  const fromName = "Bida Multi-Purpose Co-operative Society";
 
-  // Build clean HTML from plain text if no HTML provided
+  // Create HTML email
   const htmlBody = html || `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-      <div style="background:#0d2a5e;padding:18px 20px;border-radius:8px 8px 0 0;">
-        <h2 style="color:#fff;margin:0;font-size:20px;letter-spacing:2px;">BIDA</h2>
-        <p style="color:#90caf9;margin:4px 0 0;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Multi-Purpose Co-operative Society</p>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #0d2a5e, #1565c0); padding: 20px; text-align: center;">
+        <h2 style="color: #fff; margin: 0;">BIDA</h2>
+        <p style="color: #90caf9; margin: 5px 0 0;">Multi-Purpose Co-operative Society</p>
       </div>
-      <div style="background:#fff;border:1px solid #e0e0e0;border-top:none;padding:24px 20px;border-radius:0 0 8px 8px;">
-        <pre style="font-family:Arial,sans-serif;white-space:pre-wrap;font-size:14px;line-height:1.7;color:#333;margin:0;">${
-          (text||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-        }</pre>
+      <div style="padding: 20px; border: 1px solid #e0e0e0; border-top: none;">
+        <pre style="font-family: Arial; white-space: pre-wrap; font-size: 14px; line-height: 1.6;">${(text || subject).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
       </div>
-      <p style="font-size:11px;color:#999;text-align:center;margin-top:16px;">
+      <div style="text-align: center; padding: 10px; font-size: 11px; color: #999;">
         Bida Multi-Purpose Co-operative Society · bidacooperative@gmail.com
-      </p>
+      </div>
     </div>
   `;
 
   const payload = {
     from: `${fromName} <${fromEmail}>`,
-    to:   Array.isArray(to) ? to : [to],
-    subject,
-    text:  text || subject,
-    html:  htmlBody,
+    to: [to],
+    subject: subject,
+    html: htmlBody,
+    text: text || subject,
   };
 
-  // Attach PDF if provided (base64 encoded from the app)
+  // Add PDF attachment if present
   if (attachment?.content && attachment?.filename) {
     payload.attachments = [{
       filename: attachment.filename,
-      content:  attachment.content,  // base64 string
+      content: attachment.content,
     }];
   }
 
   try {
     const response = await fetch("https://api.resend.com/emails", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body:    JSON.stringify(payload),
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();
+    
+    console.log("Resend response:", response.status, data);
 
     if (!response.ok) {
-      console.error("Resend error:", data);
-      return res.status(response.status).json({
-        error: data.message || data.error || "Resend API returned an error",
+      return res.status(response.status).json({ 
+        error: data.message || "Email send failed",
+        details: data 
       });
     }
 
-    return res.status(200).json({ ok: true, id: data.id });
-  } catch (err) {
-    console.error("send-email handler crash:", err);
-    return res.status(500).json({ error: err.message || "Internal server error" });
+    return res.status(200).json({ 
+      ok: true, 
+      id: data.id,
+      message: "Email sent successfully"
+    });
+  } catch (error) {
+    console.error("Email error:", error);
+    return res.status(500).json({ error: error.message });
   }
 }
-
