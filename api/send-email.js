@@ -46,7 +46,7 @@ export default async function handler(req, res) {
   `;
 
   const mailOptions = {
-    from: `"Bida Co-operative" <${user}>`,
+    from: `"Bida Multi-Purpose Co-operative Society" <${user}>`,
     to: to,
     subject: subject,
     text: text || subject,
