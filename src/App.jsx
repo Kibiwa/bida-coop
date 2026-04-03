@@ -9,16 +9,26 @@ const loadScript = (src) => new Promise((res, rej) => {
 });
 
 // =====================================================
-// YOUR CORRECT SUPABASE CONFIGURATION
+// SUPABASE CONFIGURATION — keys loaded from environment
+// Set NEXT_PUBLIC_SUPA_URL and NEXT_PUBLIC_SUPA_ANON_KEY
+// in your Vercel project settings (never hard-code here).
 // =====================================================
-const SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
-const SUPA_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zY3VhdWFpZmdhZWF1enZraWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTU2MzEsImV4cCI6MjA4OTEzMTYzMX0.tsdr1vL7Q5DcrSt-0AMHeWpxfXCWvi4KXuYuYoLblI0";
+const SUPA_URL = (
+  (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_SUPA_URL) ||
+  (typeof window !== "undefined" && window.__BIDA_SUPA_URL) ||
+  ""
+);
+const SUPA_ANON_KEY = (
+  (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_SUPA_ANON_KEY) ||
+  (typeof window !== "undefined" && window.__BIDA_SUPA_ANON_KEY) ||
+  ""
+);
 const SYNC_INTERVAL_MS = 15000;
 
 let SUPA_KEY = SUPA_ANON_KEY;
 // Clear stale keys from old Supabase project
 try{const s=localStorage.getItem("bida_supa_key");if(s&&!s.startsWith("sb_")&&!s.startsWith("eyJ"))localStorage.removeItem("bida_supa_key");}catch(e){}
-function getSupaKey(){ const stored=localStorage.getItem("bida_supa_key"); return (stored&&stored!==SUPA_ANON_KEY&&stored.length>20)?stored:SUPA_ANON_KEY; }
+function getSupaKey(){ const stored=localStorage.getItem("bida_supa_key"); return (stored&&stored!==SUPA_ANON_KEY&&stored.length>20)?stored:SUPA_ANON_KEY||SUPA_ANON_KEY; }
 function setSupaKey(k){ localStorage.setItem("bida_supa_key",k); SUPA_KEY=k; }
 SUPA_KEY = SUPA_ANON_KEY;
 
@@ -1357,173 +1367,263 @@ class ErrorBoundary extends React.Component {
 }
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
+  --p900:#0a1931;--p800:#0d3461;--p700:#1350a0;--p600:#1565c0;--p500:#1976d2;
+  --p400:#42a5f5;--p300:#90caf9;--p100:#e3f2fd;--p50:#f0f7ff;
+  /* keep old aliases so no existing JSX breaks */
   --b900:#0a1931;--b800:#0d3461;--b700:#1350a0;--b600:#1565c0;--b500:#1976d2;
   --b400:#42a5f5;--b300:#90caf9;--b100:#e3f2fd;--b50:#f0f7ff;
+  --mint-600:#00C853;--mint-500:#00E5A0;--mint-100:#E8F5E9;
+  --success:#00C853;--warning:#FF6D00;--error:#E53935;--info:#29B6F6;
+  --g900:#1A1A2E;--g700:#4A5568;--g500:#718096;--g300:#CBD5E0;--g100:#EDF2F7;
   --td:#0d2137;--tm:#1a3a5c;--tmuted:#5e7fa0;--bdr:#c5dcf5;--bdr2:#90caf9;
-  --danger:#c62828;--dbg:#ffebee;--ok:#1b5e20;--okbg:#e8f5e9;--warn:#bf360c;--wbg:#fff3e0;
-  --sans:'Outfit',sans-serif;--mono:'JetBrains Mono',monospace;
+  --danger:#E53935;--dbg:#ffebee;--ok:#00C853;--okbg:#E8F5E9;--warn:#FF6D00;--wbg:#fff3e0;
+  --sans:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;
+  --radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:20px;
+  --shadow-sm:0 1px 3px rgba(10,25,49,.08),0 1px 2px rgba(10,25,49,.06);
+  --shadow-md:0 4px 16px rgba(10,25,49,.12),0 2px 6px rgba(10,25,49,.08);
+  --shadow-lg:0 12px 40px rgba(10,25,49,.18),0 4px 12px rgba(10,25,49,.1);
+  --shadow-xl:0 24px 64px rgba(10,25,49,.24);
+  --trans:all .18s cubic-bezier(.4,0,.2,1);
 }
 html{-webkit-text-size-adjust:100%;}
-body{background:var(--b50);color:var(--td);font-family:var(--sans);min-height:100vh;font-size:14px;}
+body{background:var(--p50);color:var(--td);font-family:var(--sans);min-height:100vh;font-size:14px;-webkit-font-smoothing:antialiased;}
 .app{display:flex;flex-direction:column;min-height:100vh;}
-.hdr{background:linear-gradient(130deg,var(--b900) 0%,var(--b800) 55%,var(--b700) 100%);
-  box-shadow:0 3px 20px rgba(6,16,31,.5);position:sticky;top:0;z-index:100;}
-.hdr-top{padding:0 12px;height:50px;display:flex;align-items:center;justify-content:space-between;}
-.hdr-nav{padding:0 8px 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+
+/* ── Header ── */
+.hdr{background:rgba(10,25,49,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(255,255,255,.08);box-shadow:0 2px 20px rgba(0,0,0,.3);
+  position:sticky;top:0;z-index:100;}
+.hdr-top{padding:0 14px;height:54px;display:flex;align-items:center;justify-content:space-between;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-name{font-size:18px;font-weight:900;letter-spacing:3px;color:#fff;line-height:1;}
+.brand-sub{font-size:7px;letter-spacing:1px;color:rgba(144,202,249,.7);text-transform:uppercase;margin-top:2px;line-height:1.3;}
+
+/* ── Desktop inline nav ── */
+.hdr-nav{padding:0 10px 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .hdr-nav::-webkit-scrollbar{display:none;}
-.brand{display:flex;align-items:center;gap:9px;}
-.brand-name{font-size:17px;font-weight:900;letter-spacing:3px;color:#fff;line-height:1;}
-.brand-sub{font-size:7px;letter-spacing:.8px;color:var(--b300);text-transform:uppercase;margin-top:2px;line-height:1.3;}
-.nav{display:inline-flex;gap:2px;background:rgba(255,255,255,.1);padding:3px;border-radius:10px;border:1px solid rgba(255,255,255,.15);white-space:nowrap;}
-.nbtn{padding:6px 11px;border-radius:7px;border:none;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:rgba(255,255,255,.6);transition:all .18s;white-space:nowrap;}
-.nbtn:hover{color:#fff;background:rgba(255,255,255,.12);}
-.nbtn.on{background:#fff;color:var(--b800);box-shadow:0 2px 8px rgba(0,0,0,.2);}
-.main{flex:1;padding:12px;width:100%;max-width:100%;overflow-x:hidden;}
-.ptitle{font-size:16px;font-weight:800;color:var(--b800);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
-.ptdot{width:7px;height:7px;border-radius:50%;background:var(--b500);flex-shrink:0;}
-.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:12px;}
+.nav{display:inline-flex;gap:2px;background:rgba(255,255,255,.06);padding:3px;border-radius:10px;border:1px solid rgba(255,255,255,.1);white-space:nowrap;}
+.hdr-nav{touch-action:pan-x;}
+.nbtn{padding:6px 12px;border-radius:8px;border:none;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:rgba(255,255,255,.55);transition:var(--trans);white-space:nowrap;flex-shrink:0;letter-spacing:.01em;}
+.nbtn:hover{color:#fff;background:rgba(255,255,255,.1);}
+.nbtn.on{background:rgba(255,255,255,.15);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);}
+@media(min-width:600px){.hamburger-btn{display:none!important;}.hdr-nav{display:block;}.desktop-logout{display:flex!important;}}
+@media(max-width:599px){.hdr-nav{display:none!important;}.desktop-logout{display:none!important;}}
+
+/* ── Hamburger ── */
+.hamburger-btn{display:none;align-items:center;justify-content:center;width:38px;height:38px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:10px;cursor:pointer;flex-shrink:0;transition:var(--trans);}
+.hamburger-btn:hover{background:rgba(255,255,255,.18);}
+@media(max-width:599px){.hamburger-btn{display:flex;}}
+
+/* ── Drawer overlay ── */
+.drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:999;opacity:0;pointer-events:none;transition:opacity .25s;}
+.drawer-overlay.open{opacity:1;pointer-events:all;}
+
+/* ── Drawer panel ── */
+.drawer{position:fixed;top:0;left:0;height:100%;width:288px;
+  background:linear-gradient(170deg,#0a1931 0%,#0d2f58 50%,#0f3d73 100%);
+  border-right:1px solid rgba(255,255,255,.08);
+  z-index:1000;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+  overflow-y:auto;display:flex;flex-direction:column;box-shadow:4px 0 32px rgba(0,0,0,.4);}
+.drawer.open{transform:translateX(0);}
+.drawer-hdr{padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.drawer-close{width:34px;height:34px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:9px;color:rgba(255,255,255,.7);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--trans);}
+.drawer-close:hover{background:rgba(255,255,255,.15);color:#fff;}
+.drawer-nav{flex:1;padding:10px 10px;overflow-y:auto;}
+.drawer-section{font-size:9px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,.28);padding:12px 10px 5px;margin-top:2px;}
+.dnbtn{display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;border-radius:11px;border:none;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:rgba(255,255,255,.6);transition:var(--trans);text-align:left;position:relative;letter-spacing:.01em;}
+.dnbtn:hover{color:#fff;background:rgba(255,255,255,.08);}
+.dnbtn:active{transform:scale(.98);}
+.dnbtn.on{background:rgba(255,255,255,.12);color:#fff;font-weight:700;}
+.dnbtn.on::before{content:'';position:absolute;left:0;top:25%;bottom:25%;width:3px;background:var(--mint-500);border-radius:0 3px 3px 0;}
+.dnbtn .dbadge{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:var(--error);color:#fff;border-radius:20px;font-size:9px;font-weight:700;padding:2px 7px;min-width:20px;text-align:center;font-family:var(--mono);}
+.dnbtn .dicon{font-size:15px;width:22px;text-align:center;flex-shrink:0;}
+.drawer-footer{padding:14px;border-top:1px solid rgba(255,255,255,.08);flex-shrink:0;background:rgba(0,0,0,.15);}
+.drawer-user{display:flex;align-items:center;gap:10px;}
+.drawer-user-info{flex:1;min-width:0;}
+.drawer-user-name{font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.drawer-user-role{font-size:10px;color:rgba(255,255,255,.4);margin-top:2px;text-transform:capitalize;letter-spacing:.02em;}
+.drawer-logout{background:rgba(229,57,53,.15);border:1px solid rgba(229,57,53,.3);border-radius:9px;padding:6px 12px;color:#ff8a80;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:var(--trans);}
+.drawer-logout:hover{background:rgba(229,57,53,.25);color:#ffcdd2;}
+
+/* ── Main content ── */
+.main{flex:1;padding:14px;width:100%;max-width:100%;overflow-x:hidden;}
+@media(min-width:1024px){.main{max-width:1280px;margin:0 auto;padding:20px 24px;}}
+
+/* ── Page title ── */
+.ptitle{font-size:17px;font-weight:800;color:var(--p800);margin-bottom:14px;display:flex;align-items:center;gap:8px;letter-spacing:-.01em;}
+.ptdot{width:7px;height:7px;border-radius:50%;background:var(--mint-500);flex-shrink:0;}
+
+/* ── Stats grid ── */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;}
 @media(min-width:480px){.stats{grid-template-columns:repeat(3,1fr);}}
-@media(min-width:720px){.stats{grid-template-columns:repeat(auto-fit,minmax(130px,1fr));}}
-.card{background:#fff;border:1px solid var(--bdr);border-radius:11px;padding:10px 12px;position:relative;overflow:hidden;}
-.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--b500),var(--b400));}
-.card.ck::before{background:linear-gradient(90deg,#43a047,#2e7d32);}
-.card.cw::before{background:linear-gradient(90deg,#fb8c00,#e65100);}
-.card.cd::before{background:linear-gradient(90deg,#ef5350,#c62828);}
-.clabel{font-size:9px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--tmuted);margin-bottom:4px;}
-.cval{font-size:13px;font-weight:800;color:var(--b700);line-height:1.1;word-break:break-all;}
-.cval.ok{color:#2e7d32;}.cval.warn{color:#bf360c;}.cval.danger{color:#c62828;}
-.csub{font-size:9px;color:var(--tmuted);margin-top:2px;}
-.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+@media(min-width:720px){.stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));}}
+
+/* ── Stat card ── */
+.card{background:#fff;border:1px solid rgba(197,220,245,.6);border-radius:var(--radius-lg);padding:12px 14px;position:relative;overflow:hidden;transition:var(--trans);box-shadow:var(--shadow-sm);}
+.card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--p600),var(--p400));}
+.card.ck::before{background:linear-gradient(90deg,var(--mint-600),#00897B);}
+.card.cw::before{background:linear-gradient(90deg,#FF6D00,#E65100);}
+.card.cd::before{background:linear-gradient(90deg,#E53935,#B71C1C);}
+.clabel{font-size:9px;font-weight:600;letter-spacing:.9px;text-transform:uppercase;color:var(--tmuted);margin-bottom:5px;}
+.cval{font-size:13px;font-weight:800;color:var(--p700);line-height:1.1;word-break:break-all;font-family:var(--mono);}
+.cval.ok{color:var(--mint-600);}.cval.warn{color:var(--warning);}.cval.danger{color:var(--error);}
+.csub{font-size:9px;color:var(--tmuted);margin-top:3px;}
+
+/* ── Toolbar ── */
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;}
 .tl{display:flex;align-items:center;gap:8px;}
-.ttitle{font-size:13px;font-weight:700;color:var(--b800);}
-.tcount{font-size:10px;font-family:var(--mono);background:var(--b100);color:var(--b700);padding:2px 7px;border-radius:20px;}
+.ttitle{font-size:13px;font-weight:700;color:var(--p800);}
+.tcount{font-size:10px;font-family:var(--mono);background:var(--p100);color:var(--p700);padding:2px 8px;border-radius:20px;font-weight:600;}
 .swrap{position:relative;}
-.sico{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--tmuted);font-size:11px;pointer-events:none;}
-.sinput{background:#fff;border:1.5px solid var(--bdr);border-radius:8px;padding:7px 10px 7px 28px;
-  color:var(--td);font-family:var(--sans);font-size:13px;outline:none;width:140px;}
-.sinput:focus{border-color:var(--b500);}
-.btn{display:inline-flex;align-items:center;gap:4px;padding:8px 13px;border-radius:8px;border:none;
-  font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.sico{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--tmuted);font-size:11px;pointer-events:none;}
+.sinput{background:#fff;border:1.5px solid var(--bdr);border-radius:var(--radius-sm);padding:8px 10px 8px 30px;color:var(--td);font-family:var(--sans);font-size:13px;outline:none;width:150px;transition:var(--trans);}
+.sinput:focus{border-color:var(--p500);box-shadow:0 0 0 3px rgba(21,101,192,.12);}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;border-radius:var(--radius-sm);border:none;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:var(--trans);white-space:nowrap;letter-spacing:.01em;}
 .btn:disabled{opacity:.4;cursor:not-allowed;}
-.bp{background:linear-gradient(135deg,var(--b600),var(--b700));color:#fff;}
-.bg{background:#fff;color:var(--b700);border:1.5px solid var(--bdr2);}
-.bg:hover{border-color:var(--b500);background:var(--b50);}
-.bk{background:linear-gradient(135deg,#43a047,#2e7d32);color:#fff;}
+.btn:not(:disabled):active{transform:scale(.97);}
+.bp{background:linear-gradient(135deg,var(--p600),var(--p700));color:#fff;box-shadow:0 2px 8px rgba(21,101,192,.35);}
+.bp:hover:not(:disabled){box-shadow:0 4px 16px rgba(21,101,192,.45);filter:brightness(1.08);}
+.bg{background:#fff;color:var(--p700);border:1.5px solid var(--bdr2);}
+.bg:hover:not(:disabled){border-color:var(--p500);background:var(--p50);}
+.bk{background:linear-gradient(135deg,var(--mint-600),#00897B);color:#fff;box-shadow:0 2px 8px rgba(0,200,83,.3);}
+.bk:hover:not(:disabled){box-shadow:0 4px 16px rgba(0,200,83,.4);filter:brightness(1.05);}
 .bd{background:var(--dbg);color:var(--danger);border:1.5px solid #ffcdd2;}
-.bpdf{background:linear-gradient(135deg,#e53935,#b71c1c);color:#fff;}
-.bemail{background:linear-gradient(135deg,#6a1b9a,#4a148c);color:#fff;}
-.bstmt{background:linear-gradient(135deg,#00695c,#004d40);color:#fff;}
+.bpdf{background:linear-gradient(135deg,#E53935,#B71C1C);color:#fff;}
+.bemail{background:linear-gradient(135deg,#6A1B9A,#4A148C);color:#fff;}
+.bstmt{background:linear-gradient(135deg,#00695C,#004D40);color:#fff;}
 .bwa{background:#25D366;color:#fff;}
-.bwa:hover{background:#1ebe5d;}
-.bsms{background:#e65100;color:#fff;}
-.bsms:hover{background:#bf360c;}
+.bwa:hover:not(:disabled){background:#1ebe5d;}
+.bsms{background:#FF6D00;color:#fff;}
+.bsms:hover:not(:disabled){background:#E65100;}
 .sm{padding:5px 10px;font-size:11px;border-radius:7px;}
-.xs{padding:3px 7px;font-size:10px;border-radius:6px;}
-.twrap{background:#fff;border-radius:11px;border:1px solid var(--bdr);overflow:hidden;overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;}
+.xs{padding:3px 8px;font-size:10px;border-radius:6px;}
+
+/* ── Table wrapper ── */
+.twrap{background:#fff;border-radius:var(--radius-lg);border:1px solid rgba(197,220,245,.6);overflow:hidden;overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;box-shadow:var(--shadow-sm);}
 table{width:100%;border-collapse:collapse;font-size:12px;}
-thead tr{background:var(--b50);}
-th{padding:8px 9px;text-align:left;font-size:9px;font-family:var(--mono);font-weight:600;color:var(--b700);
-  text-transform:uppercase;letter-spacing:.6px;border-bottom:1.5px solid var(--bdr);white-space:nowrap;}
-td{padding:8px 9px;border-bottom:1px solid #eef5ff;vertical-align:middle;white-space:nowrap;}
+thead tr{background:var(--p50);}
+th{padding:9px 10px;text-align:left;font-size:9px;font-family:var(--mono);font-weight:700;color:var(--p700);text-transform:uppercase;letter-spacing:.7px;border-bottom:1.5px solid var(--bdr);white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid #eef5ff;vertical-align:middle;white-space:nowrap;}
 tr:last-child td{border-bottom:none;}
-tbody tr:hover td{background:#f0f7ff;}
-.trow td{background:linear-gradient(to right,var(--b100),var(--b50));font-weight:700;font-family:var(--mono);
-  color:var(--b800);border-top:2px solid var(--bdr2);font-size:10px;}
+tbody tr:hover td{background:var(--p50);}
+.trow td{background:linear-gradient(to right,var(--p100),var(--p50));font-weight:700;font-family:var(--mono);color:var(--p800);border-top:2px solid var(--bdr2);font-size:10px;}
 th.hi,td.hi{background:rgba(21,101,192,.04);}
-.nc{font-weight:700;color:var(--b700);cursor:pointer;text-decoration:underline;text-decoration-color:var(--bdr2);text-underline-offset:3px;}
-.nc:hover{color:var(--b500);}
+.nc{font-weight:700;color:var(--p700);cursor:pointer;text-decoration:underline;text-decoration-color:var(--bdr2);text-underline-offset:3px;}
+.nc:hover{color:var(--p500);}
 .mc{font-family:var(--mono);font-size:11px;color:var(--tm);}
-.mct{font-family:var(--mono);font-weight:700;color:var(--b700);}
-.mcd{font-family:var(--mono);font-weight:700;color:#bf360c;}
+.mct{font-family:var(--mono);font-weight:700;color:var(--p700);}
+.mcd{font-family:var(--mono);font-weight:700;color:var(--warning);}
 .sn{font-family:var(--mono);font-size:10px;color:var(--tmuted);}
+
+/* ── Badges ── */
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;font-family:var(--mono);white-space:nowrap;}
 .bpaid{background:#c8e6c9;color:#1b5e20;font-weight:800;}
-.bactive{background:var(--wbg);color:var(--warn);}
+.bactive{background:#fff3e0;color:#E65100;}
 .bover{background:#ffcdd2;color:#b71c1c;font-weight:800;}
-.bp-pos{color:#2e7d32;font-family:var(--mono);font-weight:600;}
-.bp-neg{color:var(--danger);font-family:var(--mono);font-weight:600;}
-.abtn{display:flex;gap:3px;}
-.overlay{position:fixed;inset:0;background:rgba(6,16,31,.75);backdrop-filter:blur(4px);
-  z-index:200;display:flex;align-items:flex-end;justify-content:center;padding:0;overflow-y:auto;}
+.bp-pos{color:var(--mint-600);font-family:var(--mono);font-weight:700;}
+.bp-neg{color:var(--danger);font-family:var(--mono);font-weight:700;}
+.abtn{display:flex;gap:4px;}
+
+/* ── Modal overlay ── */
+.overlay{position:fixed;inset:0;background:rgba(6,16,31,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:200;display:flex;align-items:flex-end;justify-content:center;padding:0;overflow-y:auto;}
 @media(min-width:600px){.overlay{align-items:center;padding:16px;}}
-.modal{background:#fff;border:1px solid var(--bdr);width:100%;max-width:560px;
-  max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  border-radius:18px 18px 0 0;padding:20px 16px 30px;animation:su .2s ease;}
-@media(min-width:600px){.modal{border-radius:18px;padding:22px 20px;}.modal.wide{max-width:680px;}}
-@keyframes su{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-.mhdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
-.mtitle{font-size:15px;font-weight:800;color:var(--b800);}
-.mclose{background:var(--b50);border:none;border-radius:8px;width:32px;height:32px;
-  cursor:pointer;font-size:16px;color:var(--tmuted);display:flex;align-items:center;justify-content:center;}
-.mclose:hover{background:var(--b100);}
-.fgrid{display:grid;grid-template-columns:1fr;gap:10px;}
+
+/* ── Modal panel ── */
+.modal{background:rgba(255,255,255,.98);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.5);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:20px 20px 0 0;padding:22px 18px 32px;animation:su .22s cubic-bezier(.34,1.56,.64,1);}
+@media(min-width:600px){.modal{border-radius:20px;padding:24px 22px;box-shadow:var(--shadow-xl);}.modal.wide{max-width:700px;}}
+@keyframes su{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}
+.mhdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.mtitle{font-size:16px;font-weight:800;color:var(--p800);letter-spacing:-.01em;}
+.mclose{background:var(--p50);border:1px solid var(--bdr);border-radius:9px;width:34px;height:34px;cursor:pointer;font-size:16px;color:var(--tmuted);display:flex;align-items:center;justify-content:center;transition:var(--trans);}
+.mclose:hover{background:var(--p100);color:var(--p700);}
+
+/* ── Form fields ── */
+.fgrid{display:grid;grid-template-columns:1fr;gap:12px;}
 @media(min-width:480px){.fgrid{grid-template-columns:1fr 1fr;}}
 .ff{grid-column:1/-1;}
-.fg{display:flex;flex-direction:column;gap:4px;}
-.fl{font-size:10px;font-weight:600;font-family:var(--mono);color:var(--tmuted);text-transform:uppercase;letter-spacing:.7px;}
-.fi{background:var(--b50);border:1.5px solid var(--bdr);border-radius:9px;padding:10px 12px;
-  color:var(--td);font-family:var(--sans);font-size:15px;outline:none;width:100%;}
-.fi:focus{border-color:var(--b500);background:#fff;}
-.fhint{font-size:9.5px;color:var(--b500);font-family:var(--mono);}
-.div{border:none;border-top:1px solid var(--bdr);margin:12px 0;}
-.crow{display:flex;justify-content:space-between;align-items:center;padding:4px 0;}
+.fg{display:flex;flex-direction:column;gap:5px;}
+.fl{font-size:10px;font-weight:700;font-family:var(--mono);color:var(--tmuted);text-transform:uppercase;letter-spacing:.8px;}
+.fi{background:var(--p50);border:1.5px solid var(--bdr);border-radius:10px;padding:11px 13px;color:var(--td);font-family:var(--sans);font-size:15px;outline:none;width:100%;transition:var(--trans);}
+.fi:focus{border-color:var(--p500);background:#fff;box-shadow:0 0 0 3px rgba(21,101,192,.1);}
+.fhint{font-size:9.5px;color:var(--p500);font-family:var(--mono);}
+.div{border:none;border-top:1px solid var(--bdr);margin:14px 0;}
+.crow{display:flex;justify-content:space-between;align-items:center;padding:5px 0;}
 .cl{font-size:11px;color:var(--tmuted);font-family:var(--mono);}
-.cv{font-size:13px;font-weight:700;font-family:var(--mono);color:var(--b700);}
-.cv.d{color:var(--danger);}.cv.ok{color:#2e7d32;}
-.fa{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;}
+.cv{font-size:13px;font-weight:700;font-family:var(--mono);color:var(--p700);}
+.cv.d{color:var(--danger);}.cv.ok{color:var(--mint-600);}
+.fa{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;}
 select.fi{cursor:pointer;}
-.empty{text-align:center;padding:30px;color:var(--tmuted);font-size:13px;}
-.eico{font-size:26px;margin-bottom:6px;opacity:.3;}
-.int-rule{background:linear-gradient(135deg,var(--b800),var(--b700));border-radius:11px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;color:#fff;}
-.int-rule-text{font-size:11px;line-height:1.5;}
-.int-rule-text strong{color:var(--b300);}
-.int-pill{display:inline-flex;align-items:center;background:var(--b100);border:1px solid var(--bdr2);border-radius:7px;padding:2px 7px;font-family:var(--mono);font-size:10px;color:var(--b700);}
+.empty{text-align:center;padding:36px;color:var(--tmuted);font-size:13px;}
+.eico{font-size:28px;margin-bottom:8px;opacity:.35;}
+
+/* ── Interest rule banner ── */
+.int-rule{background:linear-gradient(135deg,var(--p800),var(--p700));border-radius:var(--radius-md);padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;color:#fff;}
+.int-rule-text{font-size:11px;line-height:1.6;}
+.int-rule-text strong{color:var(--p300);}
+.int-pill{display:inline-flex;align-items:center;background:var(--p100);border:1px solid var(--bdr2);border-radius:7px;padding:2px 8px;font-family:var(--mono);font-size:10px;color:var(--p700);}
 .int-pill.over{background:#fce4ec;border-color:#f48fb1;color:#c62828;}
-.pdf-panel{background:#fff;border:1px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:12px;}
+
+/* ── PDF panel ── */
+.pdf-panel{background:#fff;border:1px solid var(--bdr);border-radius:var(--radius-md);padding:16px;margin-bottom:14px;box-shadow:var(--shadow-sm);}
 .pdf-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
-@media(min-width:480px){.pdf-cards{grid-template-columns:repeat(auto-fit,minmax(148px,1fr));}}
-.pdf-card{border:1.5px solid var(--bdr);border-radius:11px;padding:12px;cursor:pointer;transition:all .18s;background:var(--b50);}
-.pdf-card:hover{border-color:var(--b500);background:var(--b100);}
-.pdf-card-icon{font-size:20px;margin-bottom:4px;}
-.pdf-card-title{font-size:12px;font-weight:700;color:var(--b700);margin-bottom:2px;}
+@media(min-width:480px){.pdf-cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}}
+.pdf-card{border:1.5px solid var(--bdr);border-radius:var(--radius-md);padding:14px;cursor:pointer;transition:var(--trans);background:var(--p50);}
+.pdf-card:hover{border-color:var(--p500);background:var(--p100);box-shadow:var(--shadow-md);transform:translateY(-2px);}
+.pdf-card:active{transform:scale(.97);}
+.pdf-card-icon{font-size:22px;margin-bottom:6px;}
+.pdf-card-title{font-size:12px;font-weight:700;color:var(--p700);margin-bottom:2px;}
 .pdf-card-desc{font-size:10px;color:var(--tmuted);line-height:1.4;}
-.method-toggle{display:flex;align-items:center;gap:8px;background:var(--b50);border:1px solid var(--bdr);border-radius:9px;padding:8px 12px;margin-bottom:12px;flex-wrap:wrap;}
-.method-toggle-label{font-size:10px;font-weight:700;font-family:var(--mono);color:var(--tmuted);text-transform:uppercase;letter-spacing:.6px;}
+
+/* ── Method toggle ── */
+.method-toggle{display:flex;align-items:center;gap:8px;background:var(--p50);border:1px solid var(--bdr);border-radius:10px;padding:10px 13px;margin-bottom:13px;flex-wrap:wrap;}
+.method-toggle-label{font-size:10px;font-weight:700;font-family:var(--mono);color:var(--tmuted);text-transform:uppercase;letter-spacing:.7px;}
+
+/* ── Spinner / animations ── */
 .spin{display:inline-block;animation:sp .7s linear infinite;}
 @keyframes sp{to{transform:rotate(360deg)}}
 @keyframes pu{0%,100%{opacity:1}50%{opacity:.3}}
-.prof-hero{background:linear-gradient(135deg,var(--b800),var(--b600));border-radius:13px;padding:14px 16px;margin-bottom:14px;color:#fff;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+
+/* ── Profile hero ── */
+.prof-hero{background:linear-gradient(135deg,var(--p800),var(--p600));border-radius:var(--radius-lg);padding:16px 18px;margin-bottom:16px;color:#fff;display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;box-shadow:var(--shadow-md);}
 .prof-info{flex:1;min-width:0;}
-.prof-name{font-size:16px;font-weight:900;}
-.prof-meta{font-size:11px;color:var(--b300);margin-top:2px;}
-.prof-email-disp{font-size:11px;color:var(--b300);margin-top:2px;font-family:var(--mono);word-break:break-all;}
-.prof-rank-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;color:#fff;font-family:var(--mono);margin-top:6px;}
-.prof-section{margin-bottom:14px;}
-.prof-section-title{font-size:9.5px;font-weight:700;color:var(--tmuted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-family:var(--mono);}
-.prof-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;}
+.prof-name{font-size:17px;font-weight:900;letter-spacing:-.01em;}
+.prof-meta{font-size:11px;color:var(--p300);margin-top:3px;}
+.prof-email-disp{font-size:11px;color:var(--p300);margin-top:2px;font-family:var(--mono);word-break:break-all;}
+.prof-rank-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:3px 11px;font-size:11px;font-weight:700;color:#fff;font-family:var(--mono);margin-top:7px;}
+.prof-section{margin-bottom:16px;}
+.prof-section-title{font-size:9.5px;font-weight:700;color:var(--tmuted);text-transform:uppercase;letter-spacing:1.1px;margin-bottom:9px;font-family:var(--mono);}
+.prof-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;}
 @media(min-width:400px){.prof-grid{grid-template-columns:repeat(3,1fr);}}
-.prof-item{background:var(--b50);border:1px solid var(--bdr);border-radius:9px;padding:8px 10px;}
-.prof-item-label{font-size:9px;color:var(--tmuted);font-family:var(--mono);margin-bottom:2px;text-transform:uppercase;}
-.prof-item-val{font-size:12px;font-weight:800;color:var(--b700);word-break:break-all;}
-.prof-item-val.ok{color:#2e7d32;}
-.prof-bar-wrap{background:var(--b50);border:1px solid var(--bdr);border-radius:9px;padding:10px 12px;margin-bottom:7px;}
-.prof-bar-label{display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px;color:var(--tm);}
-.prof-bar-track{height:6px;background:var(--b100);border-radius:3px;overflow:hidden;}
-.prof-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--b500),var(--b400));}
-.prof-loan-card{background:#fff;border:1.5px solid var(--bdr);border-radius:11px;padding:12px;margin-bottom:9px;}
+.prof-item{background:var(--p50);border:1px solid var(--bdr);border-radius:10px;padding:9px 11px;transition:var(--trans);}
+.prof-item:hover{background:var(--p100);}
+.prof-item-label{font-size:9px;color:var(--tmuted);font-family:var(--mono);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;}
+.prof-item-val{font-size:12px;font-weight:800;color:var(--p700);word-break:break-all;font-family:var(--mono);}
+.prof-item-val.ok{color:var(--mint-600);}
+.prof-bar-wrap{background:var(--p50);border:1px solid var(--bdr);border-radius:10px;padding:11px 13px;margin-bottom:8px;}
+.prof-bar-label{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px;color:var(--tm);}
+.prof-bar-track{height:6px;background:var(--p100);border-radius:3px;overflow:hidden;}
+.prof-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--mint-600),var(--p400));}
+.prof-loan-card{background:#fff;border:1.5px solid var(--bdr);border-radius:var(--radius-md);padding:13px;margin-bottom:10px;transition:var(--trans);}
+.prof-loan-card:hover{box-shadow:var(--shadow-md);}
 .prof-loan-card.lactive{border-color:#ffcc80;background:#fffde7;}
 .prof-loan-card.loverdue{border-color:#ef9a9a;background:#ffebee;}
-.prof-loan-card.lpaid{border-color:#66bb6a;background:#f1f8e9;border-width:2px;}
-.email-section{background:#fff;border:1px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:12px;}
-.email-sec-title{font-size:13px;font-weight:700;color:var(--b800);margin-bottom:3px;}
-.email-sec-sub{font-size:11px;color:var(--tmuted);margin-bottom:10px;}
-.send-all-bar{background:var(--b50);border:1px solid var(--bdr2);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
-.email-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eef5ff;gap:8px;flex-wrap:wrap;}
+.prof-loan-card.lpaid{border-color:var(--mint-600);background:#f1f8e9;border-width:2px;}
+
+/* ── Email section ── */
+.email-section{background:#fff;border:1px solid var(--bdr);border-radius:var(--radius-md);padding:16px;margin-bottom:14px;box-shadow:var(--shadow-sm);}
+.email-sec-title{font-size:13px;font-weight:700;color:var(--p800);margin-bottom:3px;}
+.email-sec-sub{font-size:11px;color:var(--tmuted);margin-bottom:11px;}
+.send-all-bar{background:var(--p50);border:1px solid var(--bdr2);border-radius:10px;padding:10px 13px;margin-bottom:11px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.email-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #eef5ff;gap:8px;flex-wrap:wrap;}
 .email-row:last-child{border-bottom:none;}
-.email-member-info{display:flex;align-items:center;gap:8px;flex:1;min-width:0;}
+.email-member-info{display:flex;align-items:center;gap:9px;flex:1;min-width:0;}
 .email-member-name{font-weight:700;font-size:12px;color:var(--td);}
 .email-member-addr{font-size:10px;color:var(--tmuted);font-family:var(--mono);word-break:break-all;}
 .no-email-tag{font-size:9.5px;background:#fff3e0;color:#e65100;border:1px solid #ffcc80;border-radius:9px;padding:2px 7px;font-family:var(--mono);}
@@ -1537,27 +1637,32 @@ select.fi{cursor:pointer;}
 .estatus-sending{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--tmuted);font-family:var(--mono);white-space:nowrap;}
 .estatus-nosetup{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#e65100;font-family:var(--mono);white-space:nowrap;}
 .estatus-sms-ok{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#e65100;font-family:var(--mono);white-space:nowrap;}
-.setup-banner{background:#fff3e0;border:1.5px solid #ffb74d;border-radius:11px;padding:14px 16px;margin-bottom:14px;}
+.setup-banner{background:#fff3e0;border:1.5px solid #ffb74d;border-radius:var(--radius-md);padding:15px 17px;margin-bottom:15px;}
 .setup-banner h3{font-size:13px;font-weight:800;color:#bf360c;margin-bottom:8px;}
-.setup-banner ol{padding-left:18px;font-size:12px;color:#5d4037;line-height:1.9;}
+.setup-banner ol{padding-left:18px;font-size:12px;color:#5d4037;line-height:2;}
 .setup-banner code{background:#ffe0b2;border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:11px;color:#bf360c;}
-.due-alert{background:#fff3e0;border:1.5px solid #ffb74d;border-radius:11px;padding:12px 14px;margin-bottom:12px;}
-.due-alert-title{font-size:13px;font-weight:800;color:#bf360c;margin-bottom:6px;}
-.due-loan-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #ffe0b2;gap:8px;flex-wrap:wrap;}
+.due-alert{background:#fff3e0;border:1.5px solid #ffb74d;border-radius:var(--radius-md);padding:13px 15px;margin-bottom:13px;}
+.due-alert-title{font-size:13px;font-weight:800;color:#bf360c;margin-bottom:7px;}
+.due-loan-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #ffe0b2;gap:8px;flex-wrap:wrap;}
 .due-loan-row:last-child{border-bottom:none;}
-.exp-row{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid #eef5ff;flex-wrap:wrap;}
+.exp-row{display:flex;align-items:flex-start;gap:10px;padding:13px 0;border-bottom:1px solid #eef5ff;flex-wrap:wrap;}
 .exp-row:last-child{border-bottom:none;}
 .exp-date{font-size:10px;font-family:var(--mono);color:var(--tmuted);white-space:nowrap;min-width:70px;padding-top:2px;}
 .exp-main{flex:1;min-width:0;}
-.exp-activity{font-size:13px;font-weight:700;color:var(--b800);margin-bottom:3px;}
+.exp-activity{font-size:13px;font-weight:700;color:var(--p800);margin-bottom:3px;}
 .exp-meta{font-size:10px;color:var(--tmuted);line-height:1.6;}
 .exp-amount{font-size:14px;font-weight:900;font-family:var(--mono);color:#c62828;white-space:nowrap;}
 .exp-actions{display:flex;gap:5px;align-items:center;flex-shrink:0;}
 .exp-mode{font-size:9px;border-radius:7px;padding:2px 7px;font-family:var(--mono);display:inline-block;margin-right:4px;}
 .mode-cash{background:#e8f5e9;color:#1b5e20;border:1px solid #a5d6a7;}
-.mode-bank{background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;}
+.mode-bank{background:var(--p100);color:var(--p600);border:1px solid var(--p300);}
 .mode-mtn{background:#fff8e1;color:#f57f17;border:1px solid #ffe082;}
 .mode-airtel{background:#fce4ec;color:#c62828;border:1px solid #f48fb1;}
+
+/* ── Glass utilities ── */
+.glass-card{background:rgba(255,255,255,.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.15);border-radius:var(--radius-xl);}
+.glass-modal{background:rgba(255,255,255,.95);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.3);}
+.glass-nav{background:rgba(13,52,97,.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
 `;
 
 function DueLoanRow({loan, members, emailSending, sendDueEmail, sendDueSMS}){
@@ -1574,7 +1679,7 @@ function DueLoanRow({loan, members, emailSending, sendDueEmail, sendDueSMS}){
         <Avatar name={mem.name} size={28}/>
         <div>
           <div style={{fontWeight:700,fontSize:12,color:"var(--td)"}}>{mem.name}</div>
-          <div style={{fontSize:10,color:"#bf360c",fontFamily:"var(--mono)"}}>Due: {dueFmt} · Balance: {fmt(calcLoan(loan).balance)} · <strong>{dl===0?"TODAY":dl===1?"1 day":dl+" days"}</strong></div>
+          <div style={{fontSize:10,color:"var(--warning)",fontFamily:"var(--mono)"}}>Due: {dueFmt} · Balance: {fmt(calcLoan(loan).balance)} · <strong>{dl===0?"TODAY":dl===1?"1 day":dl+" days"}</strong></div>
         </div>
       </div>
       <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -1601,7 +1706,7 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
     <div className={"prof-loan-card"+(l.status==="paid"?" lpaid":ov?" loverdue":" lactive")}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <div>
-          <span style={{fontWeight:800,color:"var(--b800)",fontSize:13}}>{fmt(l.amountLoaned)}</span>
+          <span style={{fontWeight:800,color:"var(--p800)",fontSize:13}}>{fmt(l.amountLoaned)}</span>
           <span style={{fontSize:10,color:"var(--tmuted)",marginLeft:8,fontFamily:"var(--mono)"}}>Agreed: {l.term}mo term</span>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1613,13 +1718,13 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
           {(()=>{const d=classifyLoan(l);return d.class!=="performing"?<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:5,background:d.color+"22",color:d.color,marginLeft:2}}>{d.label}</span>:null;})()}
         </div>
       </div>
-      <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+      <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px 12px"}}>
           {stats.map(function(item){
             return (
               <div key={item[0]}>
                 <div style={{fontSize:8.5,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase"}}>{item[0]}</div>
-                <div style={{fontWeight:700,fontSize:11.5,color:item[2]?"#c62828":"var(--b700)",marginTop:1}}>{item[1]}</div>
+                <div style={{fontWeight:700,fontSize:11.5,color:item[2]?"#c62828":"var(--p700)",marginTop:1}}>{item[1]}</div>
               </div>
             );
           })}
@@ -1630,7 +1735,7 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
           return (
             <div key={item[0]}>
               <div style={{fontSize:8.5,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase"}}>{item[0]}</div>
-              <div style={{fontWeight:600,fontSize:11,color:"var(--b600)",marginTop:1}}>{item[1]}</div>
+              <div style={{fontWeight:600,fontSize:11,color:"var(--p600)",marginTop:1}}>{item[1]}</div>
             </div>
           );
         })}
@@ -1681,19 +1786,19 @@ function LoanScheduleFooter({l, markPd, closeProfile, openEditL}){
       {showSched&&schedule.length>0&&(
         <div style={{marginTop:8,overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
-            <thead><tr style={{background:"var(--b50)"}}>
+            <thead><tr style={{background:"var(--p50)"}}>
               {["Mo","Due Date","Payment","Principal","Interest","Balance","Status"].map(h=>(
-                <th key={h} style={{padding:"4px 6px",textAlign:h==="Mo"||h==="Status"?"center":"right",fontSize:8,fontFamily:"var(--mono)",fontWeight:700,color:"var(--b700)",borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>{h}</th>
+                <th key={h} style={{padding:"4px 6px",textAlign:h==="Mo"||h==="Status"?"center":"right",fontSize:8,fontFamily:"var(--mono)",fontWeight:700,color:"var(--p700)",borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {schedule.map(row=>(
                 <tr key={row.n} style={{background:row.isPaid?"#f1f8e9":new Date()>row.due&&!row.isPaid?"#ffebee":"#fff",borderBottom:"1px solid #eef5ff"}}>
-                  <td style={{padding:"4px 6px",textAlign:"center",fontFamily:"var(--mono)",fontWeight:700,color:"var(--b700)",fontSize:9}}>{row.n}</td>
+                  <td style={{padding:"4px 6px",textAlign:"center",fontFamily:"var(--mono)",fontWeight:700,color:"var(--p700)",fontSize:9}}>{row.n}</td>
                   <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,whiteSpace:"nowrap"}}>{row.due.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</td>
-                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#1565c0",fontSize:9}}>{fmt(row.payment)}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"var(--p600)",fontSize:9}}>{fmt(row.payment)}</td>
                   <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9}}>{fmt(row.principal)}</td>
-                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,color:"#c62828"}}>{fmt(row.interest)}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,color:"var(--error)"}}>{fmt(row.interest)}</td>
                   <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,color:row.balance>0?"#e65100":"#1b5e20",fontWeight:700}}>{fmt(row.balance)}</td>
                   <td style={{padding:"4px 6px",textAlign:"center"}}><span style={{fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:10,background:row.isPaid?"#e8f5e9":new Date()>row.due?"#ffebee":"#e3f2fd",color:row.isPaid?"#1b5e20":new Date()>row.due?"#c62828":"#1565c0"}}>{row.isPaid?"✓ Paid":new Date()>row.due?"Overdue":"Pending"}</span></td>
                 </tr>
@@ -1720,7 +1825,7 @@ function TermSelectorButtons({lF, setLF}){
         style={{flex:1,minWidth:72,padding:"8px 5px",borderRadius:9,border:isSelected?"2px solid "+color:"2px solid #e0e0e0",background:isSelected?color+"18":"#fff",cursor:"pointer",textAlign:"center"}}>
         <div style={{fontSize:13,fontWeight:800,color:isSelected?color:"#555"}}>{t} mo</div>
         <div style={{fontSize:10,fontWeight:700,color:isSelected?color:"#888",marginTop:2,fontFamily:"var(--mono)"}}>{fmt(preview.monthlyPayment)}<span style={{fontWeight:400}}>/mo</span></div>
-        {t<=3?<div style={{fontSize:9,color:"#1b5e20",marginTop:1}}>✓ Best value</div>:<div style={{fontSize:9,color:color,marginTop:1}}>+{fmt(extraInt)} extra</div>}
+        {t<=3?<div style={{fontSize:9,color:"var(--mint-600)",marginTop:1}}>✓ Best value</div>:<div style={{fontSize:9,color:color,marginTop:1}}>+{fmt(extraInt)} extra</div>}
       </button>
     );
   });
@@ -1729,39 +1834,39 @@ function TermSelectorButtons({lF, setLF}){
 function InvestmentCard({inv, openEditInv, delInv}){
   const statusColor = inv.status==="active" ? "#1b5e20" : "#546e7a";
   const stats = [
-    ["Amount Invested", fmt(+inv.amount||0), "var(--b700)"],
+    ["Amount Invested", fmt(+inv.amount||0), "var(--p700)"],
     ["Interest Earned", fmt(+inv.interestEarned||0), "#1b5e20"],
     ["Retained (60%)", fmt(Math.round((+inv.interestEarned||0)*0.6)), "var(--tmuted)"],
     ["To Members (40%)", fmt(Math.round((+inv.interestEarned||0)*0.4)), "#1b5e20"],
   ];
   return (
-    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
+    <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:10}}>
         <div>
-          <div style={{fontWeight:800,fontSize:15,color:"var(--b800)"}}>{inv.platform}</div>
+          <div style={{fontWeight:800,fontSize:15,color:"var(--p800)"}}>{inv.platform}</div>
           <div style={{fontSize:11,color:"var(--tmuted)",marginTop:2,fontFamily:"var(--mono)"}}>{INV_TYPE_LABELS[inv.type]||inv.type} · Invested {fmtD(inv.dateInvested)}</div>
         </div>
-        <span style={{fontSize:9,fontWeight:700,background:inv.status==="active"?"#e8f5e9":"#eceff1",color:statusColor,borderRadius:20,padding:"2px 10px",fontFamily:"var(--mono)"}}>{inv.status==="active"?"● Active":"◼ Closed"}</span>
+        <span style={{fontSize:9,fontWeight:700,background:inv.status==="active"?"#e8f5e9":"#eceff1",color:statusColor,borderRadius:"var(--radius-xl)",padding:"2px 10px",fontFamily:"var(--mono)"}}>{inv.status==="active"?"● Active":"◼ Closed"}</span>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:7,marginBottom:10}}>
         {stats.map(function(item){
           return (
-            <div key={item[0]} style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"7px 9px"}}>
-              <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase",marginBottom:2}}>{item[0]}</div>
+            <div key={item[0]} style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"7px 9px"}}>
+              <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",letterSpacing:.3,textTransform:"uppercase",marginBottom:2}}>{item[0]}</div>
               <div style={{fontWeight:800,fontSize:13,color:item[2],fontFamily:"var(--mono)"}}>{item[1]}</div>
             </div>
           );
         })}
       </div>
       {inv.notes&&<div style={{fontSize:11,color:"var(--tmuted)",fontStyle:"italic",marginBottom:8}}>📝 {inv.notes}</div>}
-      {inv.approvedBy&&<div style={{fontSize:10,color:"#1b5e20",marginBottom:4,fontFamily:"var(--mono)"}}>✅ Approved by: {inv.approvedBy}{inv.approvalDate?" on "+fmtD(inv.approvalDate):""}</div>}
+      {inv.approvedBy&&<div style={{fontSize:10,color:"var(--mint-600)",marginBottom:4,fontFamily:"var(--mono)"}}>✅ Approved by: {inv.approvedBy}{inv.approvalDate?" on "+fmtD(inv.approvalDate):""}</div>}
       {inv.approvalStatus&&inv.approvalStatus!=="approved"&&<div style={{fontSize:10,color:inv.approvalStatus==="rejected"?"#c62828":"#f57f17",marginBottom:4,fontFamily:"var(--mono)"}}>{inv.approvalStatus==="rejected"?"❌ Rejected":"⏳ Pending approval"}</div>}
       {(inv.docNames||[]).length>0&&(
         <div style={{marginBottom:8}}>
           <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.6,marginBottom:4,fontFamily:"var(--mono)"}}>📎 {inv.docNames.length} document{inv.docNames.length>1?"s":""} attached</div>
           <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
             {inv.docNames.map((name,i)=>(
-              <a key={i} href={inv.documents[i]} download={name} style={{fontSize:9,background:"#e3f2fd",color:"#1565c0",border:"1px solid #90caf9",borderRadius:6,padding:"2px 8px",textDecoration:"none",fontFamily:"var(--mono)"}}>📄 {name}</a>
+              <a key={i} href={inv.documents[i]} download={name} style={{fontSize:9,background:"rgba(21,101,192,.07)",color:"var(--p600)",border:"1px solid #90caf9",borderRadius:6,padding:"2px 8px",textDecoration:"none",fontFamily:"var(--mono)"}}>📄 {name}</a>
             ))}
           </div>
         </div>
@@ -1782,7 +1887,7 @@ function ExpCategoryButtons({expF, setExpF}){
     return React.createElement("button", {
       key: val,
       onClick: function(){ setExpF(function(f){ return {...f, category:val, categoryCustom: val==="other" ? f.categoryCustom : ""}; }); },
-      style: {padding:"6px 11px", borderRadius:8, border: active?"2px solid var(--b600)":"2px solid var(--bdr)", background: active?"var(--b100)":"#fff", cursor:"pointer", fontSize:11, fontWeight: active?700:400, color: active?"var(--b700)":"var(--tm)"}
+      style: {padding:"6px 11px", borderRadius:8, border: active?"2px solid var(--p600)":"2px solid var(--bdr)", background: active?"var(--p100)":"#fff", cursor:"pointer", fontSize:11, fontWeight: active?700:400, color: active?"var(--p700)":"var(--tm)"}
     }, cat);
   });
 }
@@ -1822,14 +1927,14 @@ function FlatLoanPreview({lFPreview, lF, setLF}){
           <div style={{fontSize:11,color:"#444",lineHeight:1.5}}>{advisory.msg}</div>
         </div>
       )}
-      <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
-        <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",letterSpacing:1,textTransform:"uppercase",marginBottom:8,fontFamily:"var(--mono)"}}>📊 Term Comparison — tap to select</div>
+      <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
+        <div style={{fontSize:9,fontWeight:700,color:"var(--p700)",letterSpacing:1,textTransform:"uppercase",marginBottom:8,fontFamily:"var(--mono)"}}>📊 Term Comparison — tap to select</div>
         <div style={{display:"flex",flexDirection:"column",gap:3}}>
           <TermSelectorButtons lF={lF} setLF={setLF}/>
         </div>
       </div>
-      <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px"}}>
-        <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontFamily:"var(--mono)"}}>✅ Agreed: {lFPreview.term} months — 4% Flat</div>
+      <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px"}}>
+        <div style={{fontSize:9,fontWeight:700,color:"var(--p700)",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontFamily:"var(--mono)"}}>✅ Agreed: {lFPreview.term} months — 4% Flat</div>
         <div className="crow"><span className="cl">Monthly payment</span><span className="cv ok" style={{fontSize:14,fontWeight:900}}>{fmt(lFPreview.monthlyPayment)}</span></div>
         <div className="crow"><span className="cl">Interest/month</span><span className="cv">{fmt(lFPreview.monthlyInt)}</span></div>
         <div className="crow"><span className="cl">Total interest ({lFPreview.term}mo)</span><span className="cv d">{fmt(lFPreview.totalInterest)}</span></div>
@@ -1853,9 +1958,9 @@ function PayModal({loan, mem, payF, setPayF, savePay, setPayModal}){
           <div className="mtitle">Record Loan Payment{mem?" — "+mem.name:""}</div>
           <button className="mclose" onClick={()=>setPayModal(false)}>✕</button>
         </div>
-        <div style={{background:"linear-gradient(135deg,var(--b800),var(--b600))",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div style={{background:"linear-gradient(135deg,var(--p800),var(--p600))",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
           {[["Principal",fmt(loan.amountLoaned),"#fff"],["Monthly Pay",fmt(loan.monthlyPayment),"#90caf9"],["Paid So Far",fmt(loan.amountPaid),"#a5d6a7"],["Balance",fmt(loan.balance),"#ef9a9a"]].map(([l,v,c])=>(
-            <div key={l}><div style={{fontSize:9,color:"var(--b300)",fontFamily:"var(--mono)",textTransform:"uppercase"}}>{l}</div><div style={{fontWeight:800,color:c,fontSize:14}}>{v}</div></div>
+            <div key={l}><div style={{fontSize:9,color:"var(--p300)",fontFamily:"var(--mono)",textTransform:"uppercase"}}>{l}</div><div style={{fontWeight:800,color:c,fontSize:14}}>{v}</div></div>
           ))}
         </div>
         <div className="fgrid">
@@ -1864,7 +1969,7 @@ function PayModal({loan, mem, payF, setPayF, savePay, setPayModal}){
           <div className="fg ff"><label className="fl">Mode of Payment</label>
             <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
               {[["cash","💵 Cash"],["bank","🏦 Bank"],["mtn","📱 MTN MoMo"],["airtel","📱 Airtel"]].map(([v,lbl])=>(
-                <button key={v} onClick={()=>setPayF(f=>({...f,payMode:v}))} style={{flex:1,minWidth:80,padding:"7px 4px",borderRadius:9,border:payF.payMode===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:payF.payMode===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:payF.payMode===v?700:400,color:payF.payMode===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                <button key={v} onClick={()=>setPayF(f=>({...f,payMode:v}))} style={{flex:1,minWidth:80,padding:"7px 4px",borderRadius:9,border:payF.payMode===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:payF.payMode===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:payF.payMode===v?700:400,color:payF.payMode===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
               ))}
             </div>
           </div>
@@ -1881,11 +1986,11 @@ function PayModal({loan, mem, payF, setPayF, savePay, setPayModal}){
           <div className="fg ff"><label className="fl">Attach Proof of Payment <span style={{fontWeight:400,color:"var(--tmuted)"}}>(photo or PDF)</span></label>
             <input className="fi" type="file" accept="image/*,application/pdf" style={{padding:"6px 8px"}}
               onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=r=>setPayF(f=>({...f,attachmentName:file.name,attachmentData:r.target.result}));reader.readAsDataURL(file);}}/>
-            {payF.attachmentName&&<div style={{fontSize:10,color:"#1b5e20",marginTop:3,fontFamily:"var(--mono)"}}>✓ {payF.attachmentName} attached</div>}
+            {payF.attachmentName&&<div style={{fontSize:10,color:"var(--mint-600)",marginTop:3,fontFamily:"var(--mono)"}}>✓ {payF.attachmentName} attached</div>}
           </div>
         </div>
-        {+payF.amount>0&&<div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginTop:10}}>
-          <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontFamily:"var(--mono)"}}>📊 After This Payment</div>
+        {+payF.amount>0&&<div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginTop:10}}>
+          <div style={{fontSize:9,fontWeight:700,color:"var(--p700)",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontFamily:"var(--mono)"}}>📊 After This Payment</div>
           <div className="crow"><span className="cl">Amount paying now</span><span className="cv ok">{fmt(+payF.amount)}</span></div>
           <div className="crow"><span className="cl">Total paid after this</span><span className="cv">{fmt(previewPaid)}</span></div>
           <div className="crow" style={{borderTop:"1px solid var(--bdr)",paddingTop:4,marginTop:3}}>
@@ -1926,15 +2031,15 @@ function SavingsExpensesChart({savingsData, expensesData}){
     return ()=>{if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}};
   },[loaded,mode,savingsData,expensesData]);
   return (
-    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
+    <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
         <div>
-          <div style={{fontWeight:700,fontSize:13,color:"var(--b800)"}}>{mode==="savings"?"📈 Cumulative Savings Pool Growth":"🧾 Expenses by Month & Category"}</div>
+          <div style={{fontWeight:700,fontSize:13,color:"var(--p800)"}}>{mode==="savings"?"📈 Cumulative Savings Pool Growth":"🧾 Expenses by Month & Category"}</div>
           <div style={{fontSize:10,color:"var(--tmuted)",marginTop:1}}>{mode==="savings"?"Quarterly pool growth since BIDA started (2022–2025)":"All expenses broken down by category per month"}</div>
         </div>
         <div style={{display:"flex",gap:6}}>
           {[["savings","📈 Savings"],["expenses","🧾 Expenses"]].map(([v,lbl])=>(
-            <button key={v} type="button" onClick={()=>setMode(v)} style={{padding:"5px 12px",borderRadius:8,border:mode===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:mode===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:mode===v?700:400,color:mode===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+            <button key={v} type="button" onClick={()=>setMode(v)} style={{padding:"5px 12px",borderRadius:8,border:mode===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:mode===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:mode===v?700:400,color:mode===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
           ))}
         </div>
       </div>
@@ -1948,6 +2053,7 @@ function SavingsExpensesChart({savingsData, expensesData}){
 
 function AppInner(){
   const [tab,setTab]        = useState("savings");
+  const [navOpen,setNavOpen] = useState(false);
   const [authUser,setAuthUser] = useState(null);
   const [showMemberPortal,setShowMemberPortal] = useState(false);
   const [memberSession,setMemberSession] = useState(()=>{try{const r=sessionStorage.getItem("bida_member_sess");if(!r)return null;const s=JSON.parse(r);if(Date.now()>s.exp){sessionStorage.removeItem("bida_member_sess");return null;}return s;}catch{return null;}});
@@ -2216,18 +2322,18 @@ function AppInner(){
           const r=data.rates;
           const inv=x=>x>0?(1/x):null;
           setFxRates([
-            {label:"UGX/USD",rate:inv(r.USD)?inv(r.USD).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,","):"—",color:"#1565c0"},
-            {label:"UGX/KES",rate:inv(r.KES)?inv(r.KES).toFixed(1):"—",color:"#2e7d32"},
-            {label:"UGX/TZS",rate:inv(r.TZS)?inv(r.TZS).toFixed(2):"—",color:"#e65100"},
+            {label:"UGX/USD",rate:inv(r.USD)?inv(r.USD).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,","):"—",color:"var(--p600)"},
+            {label:"UGX/KES",rate:inv(r.KES)?inv(r.KES).toFixed(1):"—",color:"var(--mint-600)"},
+            {label:"UGX/TZS",rate:inv(r.TZS)?inv(r.TZS).toFixed(2):"—",color:"var(--warning)"},
             {label:"UGX/EUR",rate:inv(r.EUR)?inv(r.EUR).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,","):"—",color:"#6a1b9a"},
             {label:"UGX/GBP",rate:inv(r.GBP)?inv(r.GBP).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,","):"—",color:"#00695c"},
           ]);
         }
       })
       .catch(()=>setFxRates([
-        {label:"UGX/USD",rate:"3,720",color:"#1565c0"},
-        {label:"UGX/KES",rate:"28.5",color:"#2e7d32"},
-        {label:"UGX/TZS",rate:"0.64",color:"#e65100"},
+        {label:"UGX/USD",rate:"3,720",color:"var(--p600)"},
+        {label:"UGX/KES",rate:"28.5",color:"var(--mint-600)"},
+        {label:"UGX/TZS",rate:"0.64",color:"var(--warning)"},
         {label:"UGX/EUR",rate:"4,050",color:"#6a1b9a"},
         {label:"UGX/GBP",rate:"4,720",color:"#00695c"},
       ]))
@@ -2849,7 +2955,7 @@ function AppInner(){
   const LoanRuleInfo=()=>(
     <div className="method-toggle">
       <span className="method-toggle-label">Interest Rules:</span>
-      <span style={{fontSize:11,color:"var(--b700)",fontFamily:"var(--mono)"}}>
+      <span style={{fontSize:11,color:"var(--p700)",fontFamily:"var(--mono)"}}>
         &lt; UGX 7m → <strong>4% flat</strong> &nbsp;|&nbsp; ≥ UGX 7m → <strong>6% reducing balance</strong>
       </span>
     </div>
@@ -2879,65 +2985,231 @@ function AppInner(){
   return (
     <React.Fragment>
       <style>{CSS}</style>
-      <style>{`body{margin:0;font-family:'Outfit',sans-serif;}`}</style>
+      <style>{`body{margin:0;font-family:var(--sans);}`}</style>
 
-      {showMemberPortal&&!memberSession&&<MemberLoginScreenInline onLogin={s=>{const full={...s,exp:Date.now()+8*3600*1000};sessionStorage.setItem("bida_member_sess",JSON.stringify(full));setMemberSession(full);setShowMemberPortal(false);}} onBack={()=>setShowMemberPortal(false)}/>}
       {memberSession&&<MemberDashboardInline session={memberSession} onLogout={()=>{sessionStorage.removeItem("bida_member_sess");setMemberSession(null);}}/>}
-      {!showMemberPortal&&!memberSession&&!authUser&&(
-        <div style={{minHeight:"100vh",background:"linear-gradient(135deg,var(--b900),var(--b700))",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div style={{background:"#fff",borderRadius:20,padding:"32px 28px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,.4)"}}>
-            <div style={{textAlign:"center",marginBottom:24}}>
-              <svg width="48" height="48" viewBox="0 0 80 80" fill="none" style={{marginBottom:10}}>
-                <defs><linearGradient id="lg2" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#1E88E5"/><stop offset="100%" stopColor="#0D47A1"/></linearGradient></defs>
-                <polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#lg2)" stroke="#42A5F5" strokeWidth="1.5"/>
-                <rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity="0.85"/>
-                <rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6"/>
-                <rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff"/>
-                <polygon points="50,17 56,23 44,23" fill="#fff"/>
-              </svg>
-              <div style={{fontSize:22,fontWeight:900,color:"var(--b800)",letterSpacing:2}}>BIDA</div>
-              <div style={{fontSize:11,color:"var(--tmuted)",letterSpacing:1,textTransform:"uppercase",marginTop:2}}>Multi-Purpose Co-operative Society</div>
-            </div>
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6}}>Sign in as</label>
-              <div style={{display:"flex",gap:8}}>
-                {[["treasurer","🏦 Treasurer"],["financemanager","💼 Finance Mgr"],["admin","🔑 Admin"],["auditor","🔍 Auditor"]].map(([r,lbl])=>(
-                  <button key={r} onClick={()=>setLoginRole(r)} style={{flex:1,padding:"10px",borderRadius:10,border:loginRole===r?"2px solid var(--b600)":"2px solid var(--bdr)",background:loginRole===r?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:loginRole===r?700:400,color:loginRole===r?"var(--b700)":"var(--tm)"}}>{lbl}</button>
-                ))}
+      {!memberSession&&!authUser&&(
+        <div style={{minHeight:"100vh",background:"linear-gradient(145deg,#050d1a 0%,#0a1f3d 35%,#0d3461 65%,#0f4080 100%)",overflowY:"auto",fontFamily:"var(--sans)",position:"relative",overflow:"hidden"}}>
+          <style>{`
+            @keyframes bida-float{0%,100%{transform:translateY(0)}50%{transform:translateY(10px)}}
+            @keyframes bida-in{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+            @keyframes orb1{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,-20px)}}
+            @keyframes orb2{0%,100%{transform:translate(0,0)}50%{transform:translate(-20px,30px)}}
+            .login-card{animation:bida-in .4s cubic-bezier(.34,1.2,.64,1) both;}
+            .login-card:nth-child(2){animation-delay:.1s}
+            .login-input{width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.15);background:rgba(255,255,255,.07);color:#fff;font-size:15px;font-family:var(--sans);outline:none;transition:border-color .18s,background .18s;caret-color:#00E5A0;}
+            .login-input::placeholder{color:rgba(255,255,255,.3);}
+            .login-input:focus{border-color:rgba(0,229,160,.6);background:rgba(255,255,255,.1);}
+            .login-label{font-size:10px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.9px;display:block;margin-bottom:7px;font-family:var(--mono);}
+            .login-btn-primary{width:100%;padding:13px;border-radius:11px;border:none;background:linear-gradient(135deg,#00C853,#00897B);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:all .18s;box-shadow:0 4px 20px rgba(0,200,83,.35);}
+            .login-btn-primary:hover{filter:brightness(1.08);box-shadow:0 6px 28px rgba(0,200,83,.45);}
+            .login-btn-primary:active{transform:scale(.97);}
+            .login-btn-primary:disabled{opacity:.45;cursor:not-allowed;filter:none;}
+            .login-btn-staff{width:100%;padding:12px;border-radius:11px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:all .18s;}
+            .login-btn-staff:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);}
+            .login-btn-staff:active{transform:scale(.97);}
+            .login-select{width:100%;padding:12px 13px;border-radius:10px;border:1.5px solid rgba(255,255,255,.15);background:rgba(10,25,49,.7);color:#fff;font-size:14px;font-family:var(--sans);outline:none;cursor:pointer;transition:border-color .18s;}
+            .login-select:focus{border-color:rgba(0,229,160,.5);}
+            .login-pin{width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.15);background:rgba(255,255,255,.07);color:#fff;font-size:24px;font-family:var(--mono);outline:none;letter-spacing:10px;text-align:center;transition:border-color .18s;caret-color:#00E5A0;}
+            .login-pin::placeholder{letter-spacing:4px;font-size:18px;color:rgba(255,255,255,.2);}
+            .login-pin:focus{border-color:rgba(0,229,160,.6);background:rgba(255,255,255,.1);}
+            .login-err{background:rgba(229,57,53,.18);border:1px solid rgba(229,57,53,.4);border-radius:9px;padding:9px 13px;font-size:12px;color:#ff8a80;margin-bottom:13px;text-align:center;}
+            .login-divider{display:flex;align-items:center;gap:12px;margin:20px 0;}
+            .login-divider::before,.login-divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.1);}
+            .login-divider span{font-size:10px;color:rgba(255,255,255,.3);white-space:nowrap;font-family:var(--mono);letter-spacing:.8px;text-transform:uppercase;}
+          `}</style>
+
+          {/* Ambient orbs — decorative background blobs */}
+          <div style={{position:"absolute",top:"-15%",right:"-10%",width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(21,101,192,.18) 0%,transparent 70%)",pointerEvents:"none",animation:"orb1 8s ease-in-out infinite"}}/>
+          <div style={{position:"absolute",bottom:"-10%",left:"-8%",width:350,height:350,borderRadius:"50%",background:"radial-gradient(circle,rgba(0,200,83,.1) 0%,transparent 70%)",pointerEvents:"none",animation:"orb2 10s ease-in-out infinite"}}/>
+
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",padding:"40px 20px 40px",position:"relative",zIndex:1}}>
+
+            {/* ── Logo block ── */}
+            <div style={{textAlign:"center",marginBottom:32,animation:"bida-in .35s ease both"}}>
+              <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:72,height:72,borderRadius:"var(--radius-xl)",background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",marginBottom:16,backdropFilter:"blur(8px)"}}>
+                <svg width="42" height="42" viewBox="0 0 80 80" fill="none">
+                  <defs><linearGradient id="lgw" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#42A5F5"/><stop offset="100%" stopColor="#0D47A1"/></linearGradient></defs>
+                  <polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#lgw)" stroke="rgba(66,165,245,.5)" strokeWidth="1.5"/>
+                  <rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity="0.9"/>
+                  <rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6"/>
+                  <rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff"/>
+                  <polygon points="50,17 56,23 44,23" fill="#fff"/>
+                </svg>
               </div>
+              <div style={{fontSize:32,fontWeight:900,color:"#fff",letterSpacing:4,lineHeight:1,textShadow:"0 2px 16px rgba(0,0,0,.4)"}}>BIDA</div>
+              <div style={{fontSize:11,color:"rgba(144,202,249,.85)",letterSpacing:1.8,textTransform:"uppercase",marginTop:6,fontWeight:500}}>Multi-Purpose Co-operative Society</div>
             </div>
-            <div style={{marginBottom:16}}>
-              <label style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6}}>PIN</label>
-              <input type="password" value={loginPin} onChange={e=>setLoginPin(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} placeholder="Enter your PIN" style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid var(--bdr)",fontSize:18,fontFamily:"var(--mono)",outline:"none",letterSpacing:4,textAlign:"center"}}/>
+
+            {/* ── Member login card ── */}
+            <div className="login-card" style={{width:"100%",maxWidth:420,background:"rgba(255,255,255,.07)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.13)",borderRadius:"var(--radius-xl)",padding:"26px 24px",boxShadow:"0 24px 64px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.1)"}}>
+              <div style={{marginBottom:22,textAlign:"center"}}>
+                <div style={{fontSize:15,fontWeight:800,color:"#fff",letterSpacing:-.01}}>Member Portal</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,.55)",marginTop:5,lineHeight:1.5}}>Enter your registered email to receive a one-time login code</div>
+              </div>
+              <MemberEmailOTPWidget onLogin={s=>{const full={...s,exp:Date.now()+8*3600*1000};sessionStorage.setItem("bida_member_sess",JSON.stringify(full));setMemberSession(full);}}/>
             </div>
-            {loginErr&&<div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#c62828",marginBottom:12,textAlign:"center"}}>{loginErr}</div>}
-            <button onClick={doLogin} style={{width:"100%",padding:"13px",borderRadius:10,background:"linear-gradient(135deg,var(--b600),var(--b800))",color:"#fff",border:"none",fontSize:15,fontWeight:700,cursor:"pointer"}}>Sign In →</button>
-            <div style={{textAlign:"center",marginTop:14,fontSize:10,color:"var(--tmuted)"}}>Authorised personnel only · Bida Multi-Purpose Co-operative Society</div>
-            <div style={{borderTop:"1px solid var(--bdr)",marginTop:16,paddingTop:14,textAlign:"center"}}>
-              <div style={{fontSize:10,color:"var(--tmuted)",marginBottom:8}}>Are you a member?</div>
-              <button onClick={()=>setShowMemberPortal(true)} style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",color:"#fff",border:"none",borderRadius:9,padding:"10px 24px",fontSize:12,fontWeight:700,cursor:"pointer",width:"100%"}}>👤 Member Portal Login →</button>
+
+            {/* ── Scroll indicator ── */}
+            <div style={{marginTop:24,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,.35)",letterSpacing:.5}}>Staff &amp; manager login below</div>
+              <div style={{fontSize:18,color:"rgba(255,255,255,.25)",animation:"bida-float 1.4s ease-in-out infinite"}}>↓</div>
             </div>
+
+            {/* ── Staff / Manager login card ── */}
+            <div className="login-card" style={{width:"100%",maxWidth:420,marginTop:28}}>
+              <div style={{textAlign:"center",marginBottom:16}}>
+                <span style={{display:"inline-block",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.12)",borderRadius:"var(--radius-xl)",padding:"4px 16px",fontSize:10,color:"rgba(255,255,255,.45)",letterSpacing:1.3,textTransform:"uppercase",fontFamily:"var(--mono)"}}>Authorised Personnel Only</span>
+              </div>
+              <div style={{background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.1)",borderRadius:"var(--radius-lg)",padding:"22px 20px",boxShadow:"inset 0 1px 0 rgba(255,255,255,.07)"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,.8)",marginBottom:18,display:"flex",alignItems:"center",gap:7}}>
+                  <span style={{fontSize:16}}>🔐</span> Staff Login
+                </div>
+                <div style={{marginBottom:14}}>
+                  <label className="login-label">Role</label>
+                  <select value={loginRole} onChange={e=>setLoginRole(e.target.value)} className="login-select">
+                    <option value="treasurer" style={{background:"var(--p800)"}}>🏦 Treasurer</option>
+                    <option value="financemanager" style={{background:"var(--p800)"}}>💼 Finance Manager</option>
+                    <option value="admin" style={{background:"var(--p800)"}}>🔑 Administrator</option>
+                    <option value="auditor" style={{background:"var(--p800)"}}>🔍 Auditor</option>
+                  </select>
+                </div>
+                <div style={{marginBottom:16}}>
+                  <label className="login-label">PIN</label>
+                  <input type="password" value={loginPin} onChange={e=>setLoginPin(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&doLogin()} placeholder="······"
+                    className="login-pin" maxLength={8}/>
+                </div>
+                {loginErr&&<div className="login-err">{loginErr}</div>}
+                <button onClick={doLogin} className="login-btn-staff">Sign In →</button>
+              </div>
+              <div style={{textAlign:"center",marginTop:16,fontSize:10,color:"rgba(255,255,255,.18)",letterSpacing:.5}}>Bida Multi-Purpose Co-operative Society · {new Date().getFullYear()}</div>
+            </div>
+
           </div>
         </div>
       )}
 
       {authUser&&<React.Fragment>
       <div className="app">
-        <header className="hdr">
-          <div className="hdr-top">
+        {/* ── Side Drawer Overlay (mobile) ── */}
+        <div className={"drawer-overlay"+(navOpen?" open":"")} onClick={()=>setNavOpen(false)}/>
+
+        {/* ── Side Drawer Panel (mobile) ── */}
+        <div className={"drawer"+(navOpen?" open":"")}>
+          {/* Drawer Header */}
+          <div className="drawer-hdr">
             <div className="brand">
-              <svg width="30" height="30" viewBox="0 0 80 80" fill="none">
-                <defs><linearGradient id="lg" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#1E88E5"/><stop offset="100%" stopColor="#0D47A1"/></linearGradient></defs>
-                <polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#lg)" stroke="#42A5F5" strokeWidth="1.5"/>
+              <svg width="26" height="26" viewBox="0 0 80 80" fill="none">
+                <defs><linearGradient id="lgd" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#1E88E5"/><stop offset="100%" stopColor="#0D47A1"/></linearGradient></defs>
+                <polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#lgd)" stroke="#42A5F5" strokeWidth="1.5"/>
                 <rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity="0.85"/>
                 <rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6"/>
                 <rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff"/>
                 <polygon points="50,17 56,23 44,23" fill="#fff"/>
               </svg>
-              <div><div className="brand-name">BIDA</div><div className="brand-sub">Multi-Purpose Co-operative Society</div></div>
+              <div><div className="brand-name">BIDA</div><div className="brand-sub">Co-operative</div></div>
+            </div>
+            <button className="drawer-close" onClick={()=>setNavOpen(false)}>✕</button>
+          </div>
+
+          {/* Drawer Nav Items */}
+          <div className="drawer-nav">
+            <div className="drawer-section">Main</div>
+            {[
+              {id:"savings",   icon:"💰", label:"Savings"},
+              {id:"loans",     icon:"📋", label:"Loans"},
+              {id:"expenses",  icon:"🧾", label:"Expenses",
+                badge: expenses.filter(e=>e.expApprovalStatus==="pending_approval").length||0},
+              {id:"investments",icon:"📈",label:"Investments"},
+            ].map(({id,icon,label,badge})=>(
+              <button key={id} className={"dnbtn"+(tab===id?" on":"")}
+                onClick={()=>{setTab(id);setSearch("");setNavOpen(false);}}>
+                <span className="dicon">{icon}</span>{label}
+                {badge>0&&<span className="dbadge">{badge}</span>}
+              </button>
+            ))}
+
+            <div className="drawer-section">Communications</div>
+            {[
+              {id:"reminders", icon:"✉️", label:"Reminders",
+                badge: dueSoonLoans.length||0},
+            ].map(({id,icon,label,badge})=>(
+              <button key={id} className={"dnbtn"+(tab===id?" on":"")}
+                onClick={()=>{setTab(id);setSearch("");setNavOpen(false);}}>
+                <span className="dicon">{icon}</span>{label}
+                {badge>0&&<span className="dbadge">{badge}</span>}
+              </button>
+            ))}
+
+            <div className="drawer-section">Governance</div>
+            {[
+              {id:"approvals",  icon:"✅", label:"Approvals",
+                badge: myPendingItems.length||0},
+              {id:"voting",     icon:"🗳", label:"Voting"},
+              {id:"benevolent", icon:"🕊", label:"Benevolent"},
+              {id:"audit",      icon:"🔒", label:"Audit Log"},
+              ...(authUser?.role==="auditor"?[{id:"auditor_hub",icon:"📁",label:"Auditor Hub"}]:[]),
+            ].map(({id,icon,label,badge})=>(
+              <button key={id} className={"dnbtn"+(tab===id?" on":"")}
+                onClick={()=>{setTab(id);setSearch("");setNavOpen(false);}}>
+                <span className="dicon">{icon}</span>{label}
+                {badge>0&&<span className="dbadge">{badge}</span>}
+              </button>
+            ))}
+
+            <div className="drawer-section">System</div>
+            {[
+              {id:"reports",  icon:"📄", label:"Reports"},
+              {id:"settings", icon:"⚙️", label:"Settings"},
+            ].map(({id,icon,label})=>(
+              <button key={id} className={"dnbtn"+(tab===id?" on":"")}
+                onClick={()=>{setTab(id);setSearch("");setNavOpen(false);}}>
+                <span className="dicon">{icon}</span>{label}
+              </button>
+            ))}
+          </div>
+
+          {/* Drawer Footer — user info + logout */}
+          <div className="drawer-footer">
+            <div className="drawer-user">
+              <div style={{width:34,height:34,borderRadius:"50%",background:"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+                {authUser?.role==="admin"?"🔑":authUser?.role==="auditor"?"🔍":authUser?.role==="finance_mgr"?"💼":"🏦"}
+              </div>
+              <div className="drawer-user-info">
+                <div className="drawer-user-name">{authUser?.name}</div>
+                <div className="drawer-user-role">{authUser?.role?.replace("_"," ")}</div>
+              </div>
+              <button className="drawer-logout" onClick={()=>{setNavOpen(false);setAuthUser(null);}}>Logout</button>
+            </div>
+          </div>
+        </div>
+
+        <header className="hdr">
+          <div className="hdr-top">
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {/* Hamburger — mobile only */}
+              <button className="hamburger-btn" onClick={()=>setNavOpen(true)} aria-label="Open menu">
+                <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
+                  <rect y="0"  width="18" height="2" rx="1" fill="rgba(255,255,255,.85)"/>
+                  <rect y="6"  width="14" height="2" rx="1" fill="rgba(255,255,255,.85)"/>
+                  <rect y="12" width="18" height="2" rx="1" fill="rgba(255,255,255,.85)"/>
+                </svg>
+              </button>
+              <div className="brand">
+                <svg width="30" height="30" viewBox="0 0 80 80" fill="none">
+                  <defs><linearGradient id="lg" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#1E88E5"/><stop offset="100%" stopColor="#0D47A1"/></linearGradient></defs>
+                  <polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#lg)" stroke="#42A5F5" strokeWidth="1.5"/>
+                  <rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity="0.85"/>
+                  <rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6"/>
+                  <rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff"/>
+                  <polygon points="50,17 56,23 44,23" fill="#fff"/>
+                </svg>
+                <div><div className="brand-name">BIDA</div><div className="brand-sub">Multi-Purpose Co-operative Society</div></div>
+              </div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(0,0,0,.2)",borderRadius:20,padding:"3px 10px",border:"1px solid rgba(255,255,255,.1)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:5,background:"rgba(0,0,0,.2)",borderRadius:"var(--radius-xl)",padding:"3px 10px",border:"1px solid rgba(255,255,255,.1)"}}>
                 <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,
                   background:syncStatus==="synced"?"#69f0ae":syncStatus==="syncing"||syncStatus==="loading"?"#ffcc02":syncStatus==="offline"?"#ef5350":syncStatus==="error"?"#ef5350":"#607d8b",
                   boxShadow:syncStatus==="synced"?"0 0 6px #69f0ae":syncStatus==="syncing"||syncStatus==="loading"?"0 0 6px #ffcc02":"none",
@@ -2947,11 +3219,13 @@ function AppInner(){
                   {syncStatus==="synced"?"LIVE":syncStatus==="syncing"?"SAVING…":syncStatus==="loading"?"LOADING…":syncStatus==="offline"?"OFFLINE":syncStatus==="error"?"ERROR":"NO SYNC"}
                 </span>
               </div>
-              <button onClick={()=>setAuthUser(null)} style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"4px 10px",color:"#fff",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"var(--mono)",whiteSpace:"nowrap"}}>
+              {/* Desktop logout */}
+              <button onClick={()=>setAuthUser(null)} style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",borderRadius:8,padding:"4px 10px",color:"#fff",fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:"var(--mono)",whiteSpace:"nowrap"}} className="desktop-logout">
                 {authUser?.role==="admin"?"🔑":authUser?.role==="auditor"?"🔍":authUser?.role==="finance_mgr"?"💼":"🏦"} {authUser?.name} · Logout
               </button>
             </div>
           </div>
+          {/* Desktop inline nav — hidden on mobile via CSS */}
           <div className="hdr-nav">
             <nav className="nav">
               <button className={"nbtn"+(tab==="savings"?" on":"")} onClick={()=>{setTab("savings");setSearch("");}}>💰 Savings</button>
@@ -2976,7 +3250,7 @@ function AppInner(){
               <button className={"nbtn"+(tab==="benevolent"?" on":"")} onClick={()=>{setTab("benevolent");setSearch("");}}>🕊 Benevolent</button>
               <button className={"nbtn"+(tab==="voting"?" on":"")} onClick={()=>{setTab("voting");setSearch("");}}>🗳 Voting</button>
               <button className={"nbtn"+(tab==="audit"?" on":"")} onClick={()=>{setTab("audit");setSearch("");}}>🔒 Audit</button>
-              <button className={"nbtn"+(tab==="auditor_hub"?" on":"")} onClick={()=>{setTab("auditor_hub");setSearch("");}}>📁 Auditor</button>
+              {authUser?.role==="auditor"&&<button className={"nbtn"+(tab==="auditor_hub"?" on":"")} onClick={()=>{setTab("auditor_hub");setSearch("");}}>📁 Auditor</button>}
               <button className={"nbtn"+(tab==="settings"?" on":"")} onClick={()=>{setTab("settings");setSearch("");}}>⚙️ Settings</button>
             </nav>
           </div>
@@ -2985,11 +3259,11 @@ function AppInner(){
         <main className="main">
           {tab==="savings" && (
             <React.Fragment>
-              <div style={{background:"linear-gradient(135deg,#0a1931,#0d3461)",borderRadius:13,padding:"13px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+              <div style={{background:"linear-gradient(145deg,#050d1a 0%,#0a1f3d 60%,#0d2a55 100%)",borderRadius:"var(--radius-lg)",padding:"16px 18px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,border:"1px solid rgba(255,255,255,.07)",boxShadow:"var(--shadow-lg)"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:10,height:10,borderRadius:"50%",background:"#69f0ae",boxShadow:"0 0 8px #69f0ae",animation:"pu 1.5s ease-in-out infinite",flexShrink:0}}/>
                   <div>
-                    <div style={{fontSize:9,fontWeight:600,color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Bida Multi-Purpose Co-operative Society · Live</div>
+                    <div style={{fontSize:9,fontWeight:700,color:"rgba(255,255,255,.45)",textTransform:"uppercase",letterSpacing:1.2,marginBottom:3,fontFamily:"var(--mono)"}}>Bida Multi-Purpose Co-operative Society · Live</div>
                     <div style={{fontSize:15,fontWeight:800,color:"#fff",lineHeight:1.2}}>
                       {liveTime.toLocaleDateString("en-GB",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}
                     </div>
@@ -2999,7 +3273,7 @@ function AppInner(){
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:32,fontWeight:900,color:"#90caf9",fontFamily:"var(--mono)",letterSpacing:3,lineHeight:1}}>
+                  <div style={{fontSize:30,fontWeight:900,color:"#90caf9",fontFamily:"var(--mono)",letterSpacing:2,lineHeight:1,textShadow:"0 0 20px rgba(144,202,249,.3)"}}>
                     {liveTime.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
                   </div>
                   <div style={{fontSize:9,color:"rgba(255,255,255,.35)",marginTop:4,fontFamily:"var(--mono)"}}>
@@ -3009,7 +3283,7 @@ function AppInner(){
               </div>
               <div className="ptitle"><div className="ptdot"/>Dashboard — Member Savings Ledger</div>
 
-              <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:13,padding:"14px 16px",marginBottom:12,color:"#fff"}}>
+              <div style={{background:"linear-gradient(145deg,#0d3461 0%,#1565c0 100%)",borderRadius:"var(--radius-lg)",padding:"16px 18px",marginBottom:14,color:"#fff",border:"1px solid rgba(255,255,255,.08)",boxShadow:"var(--shadow-md)"}}>
                 <div style={{fontWeight:800,fontSize:13,marginBottom:10,opacity:.9,letterSpacing:.5,textTransform:"uppercase",fontFamily:"var(--mono)"}}>💳 BIDA Fund Summary</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
                   {[
@@ -3020,14 +3294,14 @@ function AppInner(){
                     ["Cash in Bank",fmt(cashInBank),cashInBank<0?"#ef5350":"#69f0ae","Net position"],
                     ["Outstanding",fmt(lStat.outstanding),"#ce93d8","Active loan balances"],
                   ].map(([l,v,c,sub])=>(
-                    <div key={l} style={{background:"rgba(255,255,255,.1)",borderRadius:9,padding:"9px 11px"}}>
+                    <div key={l} style={{background:"rgba(255,255,255,.08)",borderRadius:10,padding:"11px 13px",border:"1px solid rgba(255,255,255,.11)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}>
                       <div style={{fontSize:9,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>{l}</div>
                       <div style={{fontSize:14,fontWeight:900,color:c,fontFamily:"var(--mono)"}}>{v}</div>
                       {sub&&<div style={{fontSize:9,color:"rgba(255,255,255,.45)",marginTop:2}}>{sub}</div>}
                     </div>
                   ))}
                 </div>
-                {cashInBank<0&&<div style={{marginTop:10,background:"rgba(239,83,80,.25)",border:"1px solid rgba(239,83,80,.5)",borderRadius:8,padding:"6px 10px",fontSize:10,color:"#ffcdd2",fontWeight:700}}>⚠️ Cash in bank is negative — expenses exceed total deposits + profit. Review immediately.</div>}
+                {cashInBank<0&&<div style={{marginTop:10,background:"rgba(229,57,53,.2)",border:"1px solid rgba(229,57,53,.4)",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#ffcdd2",fontWeight:700}}>⚠️ Cash in bank is negative — expenses exceed total deposits + profit. Review immediately.</div>}
               </div>
 
               <div className="stats">
@@ -3041,7 +3315,7 @@ function AppInner(){
                   <div className="cval danger">{fmt(totalExpenses)}</div>
                   <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
                 </div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
                 {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% members · 60% pool</div></div>}
               </div>
 
@@ -3072,7 +3346,7 @@ function AppInner(){
                         <td className="mc">{fmt(m.welfare)}</td>
                         <td className="mc">{fmt(m.shares)}</td>
                         <td className="mct">{fmt(totBanked(m))}</td>
-                        <td style={{fontFamily:"var(--mono)",fontSize:11,color:"#1565c0",fontWeight:700}}>{fmt(borrowLimit(m,loans))}</td>
+                        <td style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--p600)",fontWeight:700}}>{fmt(borrowLimit(m,loans))}</td>
                       </tr>
                     ))}
                     {!search&&<tr className="trow"><td/><td>TOTALS</td><td>{fmt(savT.membership)}</td><td>{fmt(savT.annualSub)}</td><td>{fmt(savT.monthly)}</td><td>{fmt(savT.welfare)}</td><td>{fmt(savT.shares)}</td><td>{fmt(savT.total)}</td><td/></tr>}
@@ -3141,7 +3415,7 @@ function AppInner(){
                                 <button className="btn bg xs" onClick={()=>openEditL(l)}>✏️</button>
                                 {l.status!=="paid"&&<button className="btn bk xs" onClick={()=>markPd(l.id)}>✓</button>}
                               </React.Fragment>
-                              :<span style={{fontSize:9,color:"#e65100",fontFamily:"var(--mono)"}}>⏳ Pending</span>
+                              :<span style={{fontSize:9,color:"var(--warning)",fontFamily:"var(--mono)"}}>⏳ Pending</span>
                             }
                             <button className="btn bd xs" onClick={()=>delL(l.id)}>🗑</button>
                           </div></td>
@@ -3167,7 +3441,7 @@ function AppInner(){
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>✅ Approval Queue</div>
 
-              <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:12,padding:"12px 16px",marginBottom:12,color:"#fff"}}>
+              <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>
                   You are logged in as: <span style={{color:"#90caf9"}}>{authUser?.name}</span>
                 </div>
@@ -3184,13 +3458,13 @@ function AppInner(){
                 </div>
               </div>
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 16px",marginBottom:12}}>
-                <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:10}}>Approval Process</div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"12px 16px",marginBottom:12}}>
+                <div style={{fontWeight:700,fontSize:12,color:"var(--p800)",marginBottom:10}}>Approval Process</div>
                 <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
                   {APPROVAL_STEPS.map((s,i)=>(
                     <React.Fragment key={s.step}>
                       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                        <div style={{width:36,height:36,borderRadius:"50%",background:authUser?.role===s.role?"#1565c0":"var(--b50)",border:"2px solid "+(authUser?.role===s.role?"#1565c0":"var(--bdr)"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:authUser?.role===s.role?"#fff":"var(--b700)"}}>
+                        <div style={{width:36,height:36,borderRadius:"50%",background:authUser?.role===s.role?"#1565c0":"var(--p50)",border:"2px solid "+(authUser?.role===s.role?"#1565c0":"var(--bdr)"),display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:13,color:authUser?.role===s.role?"#fff":"var(--p700)"}}>
                           {s.step}
                         </div>
                         <div style={{fontSize:9,fontWeight:600,color:authUser?.role===s.role?"#1565c0":"var(--tmuted)",textAlign:"center",maxWidth:60}}>{s.label}</div>
@@ -3202,9 +3476,9 @@ function AppInner(){
               </div>
 
               {myPendingItems.length===0?(
-                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"30px 16px",textAlign:"center"}}>
+                <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"30px 16px",textAlign:"center"}}>
                   <div style={{fontSize:32,marginBottom:8}}>✅</div>
-                  <div style={{fontWeight:700,fontSize:14,color:"var(--b800)",marginBottom:4}}>Nothing pending for you</div>
+                  <div style={{fontWeight:700,fontSize:14,color:"var(--p800)",marginBottom:4}}>Nothing pending for you</div>
                   <div style={{fontSize:11,color:"var(--tmuted)"}}>Items requiring your action will appear here.</div>
                 </div>
               ):(
@@ -3214,12 +3488,12 @@ function AppInner(){
                     const next=getNextStep(item.status);
                     const trail=item.item.approvalTrail||[];
                     return (
-                      <div key={idx} style={{background:"#fff",border:"1.5px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
+                      <div key={idx} style={{background:"#fff",border:"1.5px solid var(--bdr)",borderRadius:"var(--radius-md)",padding:"14px 16px"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,flexWrap:"wrap",gap:8}}>
                           <div>
-                            <div style={{fontWeight:800,fontSize:14,color:"var(--b800)"}}>{item.label}</div>
+                            <div style={{fontWeight:800,fontSize:14,color:"var(--p800)"}}>{item.label}</div>
                             {item.amount&&<div style={{fontSize:12,color:"var(--tmuted)",marginTop:2}}>Amount: <strong>{fmt(item.amount)}</strong></div>}
-                            <div style={{marginTop:4}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:20,background:st.bg,color:st.color,fontWeight:700}}>{st.label}</span></div>
+                            <div style={{marginTop:4}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:"var(--radius-xl)",background:st.bg,color:st.color,fontWeight:700}}>{st.label}</span></div>
                           </div>
                           <div style={{fontSize:10,color:"var(--tmuted)",textAlign:"right"}}>
                             {item.type==="loan"?"📋 Loan Application":"👤 Member Registration"}
@@ -3227,13 +3501,13 @@ function AppInner(){
                         </div>
 
                         {trail.length>0&&(
-                          <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"8px 12px",marginBottom:10}}>
-                            <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Approval trail</div>
+                          <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"8px 12px",marginBottom:10}}>
+                            <div style={{fontSize:9,fontWeight:700,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Approval trail</div>
                             {trail.map((t,ti)=>(
                               <div key={ti} style={{display:"flex",gap:8,alignItems:"center",padding:"4px 0",borderBottom:ti<trail.length-1?"1px solid var(--bdr)":"none",flexWrap:"wrap"}}>
                                 <div style={{width:20,height:20,borderRadius:"50%",background:t.decision==="approved"?"#e8f5e9":"#ffebee",border:"1.5px solid "+(t.decision==="approved"?"#a5d6a7":"#ffcdd2"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,flexShrink:0}}>{t.decision==="approved"?"✓":"✗"}</div>
                                 <div style={{flex:1}}>
-                                  <span style={{fontWeight:700,fontSize:11,color:"var(--b800)"}}>Step {t.step} — {t.name}</span>
+                                  <span style={{fontWeight:700,fontSize:11,color:"var(--p800)"}}>Step {t.step} — {t.name}</span>
                                   <span style={{fontSize:10,color:"var(--tmuted)",marginLeft:6}}>{t.date} {t.time}</span>
                                   {t.note&&<div style={{fontSize:10,color:"var(--tmuted)",fontStyle:"italic"}}>"{t.note}"</div>}
                                 </div>
@@ -3247,9 +3521,9 @@ function AppInner(){
                           const c=calcLoan(l);
                           return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:10}}>
                             {[["Principal",fmt(l.amountLoaned)],["Term",l.term+"mo"],["Monthly Pay",fmt(c.monthlyPayment)],["Total Due",fmt(c.totalDue)],["Purpose",l.loanPurpose||"—"],["Type",(l.loanType||"personal")]].map(([lb,v])=>(
-                              <div key={lb} style={{background:"var(--b50)",borderRadius:7,padding:"5px 9px"}}>
+                              <div key={lb} style={{background:"var(--p50)",borderRadius:7,padding:"5px 9px"}}>
                                 <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase"}}>{lb}</div>
-                                <div style={{fontWeight:700,fontSize:11,color:"var(--b700)"}}>{v}</div>
+                                <div style={{fontWeight:700,fontSize:11,color:"var(--p700)"}}>{v}</div>
                               </div>
                             ))}
                           </div>;
@@ -3257,7 +3531,7 @@ function AppInner(){
 
                         {next&&(
                           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                            <div style={{fontWeight:700,fontSize:11,color:"var(--b700)"}}>Your action as {next.label} (Step {next.step}):</div>
+                            <div style={{fontWeight:700,fontSize:11,color:"var(--p700)"}}>Your action as {next.label} (Step {next.step}):</div>
                             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                               <button className="btn bp sm" onClick={()=>handleApprove(item.type,item.id,item.status,"")}>
                                 ✅ {next.verb} &amp; Pass to Next Step
@@ -3267,8 +3541,8 @@ function AppInner(){
                               </button>
                             </div>
                             {rejectTarget&&rejectTarget.id===item.id&&(
-                              <div style={{background:"#ffebee",border:"1.5px solid #ef9a9a",borderRadius:9,padding:"10px 12px"}}>
-                                <div style={{fontSize:11,fontWeight:700,color:"#c62828",marginBottom:6}}>Reason for rejection (required):</div>
+                              <div style={{background:"rgba(229,57,53,.07)",border:"1.5px solid rgba(229,57,53,.3)",borderRadius:9,padding:"10px 12px"}}>
+                                <div style={{fontSize:11,fontWeight:700,color:"var(--error)",marginBottom:6}}>Reason for rejection (required):</div>
                                 <textarea value={rejectNote} onChange={e=>setRejectNote(e.target.value)} placeholder="e.g. Insufficient savings base, missing guarantor details..." style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid #ef9a9a",fontSize:11,resize:"vertical",minHeight:60,outline:"none"}}/>
                                 <div style={{display:"flex",gap:7,marginTop:8}}>
                                   <button className="btn bd sm" disabled={!rejectNote.trim()} onClick={()=>handleReject(item.type,item.id,item.status,rejectNote)}>Confirm Rejection</button>
@@ -3285,8 +3559,8 @@ function AppInner(){
               )}
 
               {(canDo(authUser,"view"))&&(
-                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginTop:12}}>
-                  <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>All Loan Applications — Status</div>
+                <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginTop:12}}>
+                  <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10}}>All Loan Applications — Status</div>
                   {loans.length===0?<div style={{color:"var(--tmuted)",fontSize:11}}>No loans yet.</div>:
                   loans.map((l,i)=>{
                     const st=APPROVAL_STATUS[l.approvalStatus||"draft"]||APPROVAL_STATUS.draft;
@@ -3294,10 +3568,10 @@ function AppInner(){
                     return (
                       <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<loans.length-1?"1px solid var(--bdr)":"none",gap:8,flexWrap:"wrap"}}>
                         <div>
-                          <div style={{fontWeight:600,fontSize:12,color:"var(--b800)"}}>{mem?.name||l.memberName} — {fmt(l.amountLoaned)}</div>
+                          <div style={{fontWeight:600,fontSize:12,color:"var(--p800)"}}>{mem?.name||l.memberName} — {fmt(l.amountLoaned)}</div>
                           <div style={{fontSize:10,color:"var(--tmuted)"}}>{fmtD(l.dateBanked)} · {l.loanPurpose||"—"}</div>
                         </div>
-                        <span style={{fontSize:10,padding:"2px 8px",borderRadius:20,background:st.bg,color:st.color,fontWeight:700,flexShrink:0}}>{st.label}</span>
+                        <span style={{fontSize:10,padding:"2px 8px",borderRadius:"var(--radius-xl)",background:st.bg,color:st.color,fontWeight:700,flexShrink:0}}>{st.label}</span>
                       </div>
                     );
                   })}
@@ -3310,7 +3584,7 @@ function AppInner(){
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>🕊 BIDA Benevolent Fund</div>
 
-              <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:13,padding:"14px 16px",marginBottom:12,color:"#fff"}}>
+              <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:"var(--radius-md)",padding:"14px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{fontWeight:800,fontSize:14,marginBottom:6}}>BIDA Member Protection Policy</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:8,marginBottom:10}}>
                   {[
@@ -3347,12 +3621,12 @@ function AppInner(){
                 const noNOK = members.filter(m=>!m.nextOfKin||(!(m.nextOfKin.name||"").trim()));
                 if(noNOK.length===0) return null;
                 return (
-                  <div style={{background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                    <div style={{fontWeight:800,fontSize:13,color:"#e65100",marginBottom:8}}>⚠ {noNOK.length} Members Have No Next of Kin on File</div>
+                  <div style={{background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:"var(--radius-md)",padding:"14px 16px",marginBottom:12}}>
+                    <div style={{fontWeight:800,fontSize:13,color:"var(--warning)",marginBottom:8}}>⚠ {noNOK.length} Members Have No Next of Kin on File</div>
                     <div style={{fontSize:11,color:"#795548",marginBottom:10,lineHeight:1.6}}>These members cannot benefit from the Benevolent Fund until NOK details are added. Ask them to update their profiles.</div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                       {noNOK.map(m=>(
-                        <button key={m.id} onClick={()=>{openProfile(m);setTimeout(()=>setProfEdit(true),100);}} style={{padding:"5px 11px",borderRadius:20,background:"#fff3e0",border:"1px solid #ffcc80",fontSize:11,fontWeight:700,color:"#e65100",cursor:"pointer"}}>
+                        <button key={m.id} onClick={()=>{openProfile(m);setTimeout(()=>setProfEdit(true),100);}} style={{padding:"5px 11px",borderRadius:"var(--radius-xl)",background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",fontSize:11,fontWeight:700,color:"var(--warning)",cursor:"pointer"}}>
                           {m.name}
                         </button>
                       ))}
@@ -3361,8 +3635,8 @@ function AppInner(){
                 );
               })()}
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>💰 Benevolent Payout Calculator</div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10}}>💰 Benevolent Payout Calculator</div>
                 <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:12,lineHeight:1.6}}>
                   Select a member and claim type to calculate the payout. This is a calculator only — it does not disburse funds. Board must approve before any payout.
                 </div>
@@ -3392,7 +3666,7 @@ function AppInner(){
                           <label className="fl">Claim Type</label>
                           <div style={{display:"flex",gap:8,marginTop:4}}>
                             {[["death","🕊 Passing"],["illness","🏥 Serious Illness"]].map(([v,lbl])=>(
-                              <button key={v} type="button" onClick={()=>setClaimType(v)} style={{flex:1,padding:"8px",borderRadius:9,border:claimType===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:claimType===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:claimType===v?700:400,color:claimType===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                              <button key={v} type="button" onClick={()=>setClaimType(v)} style={{flex:1,padding:"8px",borderRadius:9,border:claimType===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:claimType===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:claimType===v?700:400,color:claimType===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
                             ))}
                           </div>
                         </div>
@@ -3400,8 +3674,8 @@ function AppInner(){
                       {m&&(
                         <React.Fragment>
                           {nok&&nok.name?(
-                            <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-                              <div style={{fontWeight:700,fontSize:12,color:"#1b5e20",marginBottom:4}}>✅ Next of Kin on File</div>
+                            <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+                              <div style={{fontWeight:700,fontSize:12,color:"var(--mint-600)",marginBottom:4}}>✅ Next of Kin on File</div>
                               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,fontSize:11}}>
                                 {[["Name",nok.name],["Phone",nok.phone||"—"],["Relationship",nok.relationship||"—"],["NIN",nok.nin||"—"],["Address",nok.address||"—"],["BIDA Member",nok.isMember?"Yes":"No"]].map(([lb,v])=>(
                                   <div key={lb}><span style={{color:"var(--tmuted)"}}>{lb}: </span><strong>{v}</strong></div>
@@ -3409,23 +3683,23 @@ function AppInner(){
                               </div>
                             </div>
                           ):(
-                            <div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:11,color:"#c62828"}}>
+                            <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:9,padding:"8px 12px",marginBottom:10,fontSize:11,color:"var(--error)"}}>
                               ⚠ No next of kin on file for {m.name}. Edit their profile to add NOK before activating benevolent fund.
                             </div>
                           )}
-                          <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"12px 14px",marginBottom:10}}>
-                            <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>📊 Payout Breakdown — {m.name}</div>
+                          <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"12px 14px",marginBottom:10}}>
+                            <div style={{fontWeight:700,fontSize:12,color:"var(--p800)",marginBottom:8}}>📊 Payout Breakdown — {m.name}</div>
                             {(claimType==="death"?[
                               ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
                               ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
-                              ["Benevolent Base (Savings + Welfare)",fmt(deathBase),"var(--b800)"],
+                              ["Benevolent Base (Savings + Welfare)",fmt(deathBase),"var(--p800)"],
                               ["Guaranteed minimum to NOK (70%)",fmt(minPayout),"#1b5e20"],
                               ["Remaining 30% — board decision",fmt(remaining30),retention==="compensate"?"#1b5e20":"#e65100"],
                               ["Full payout if board agrees (100%)",fmt(fullPayout),"#1565c0"],
                             ]:[
                               ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
                               ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
-                              ["Benevolent Base (Savings + Welfare)",fmt(illnessBase*2),"var(--b800)"],
+                              ["Benevolent Base (Savings + Welfare)",fmt(illnessBase*2),"var(--p800)"],
                               ["Illness support payout (50% of base)",fmt(illnessBase),"#1b5e20"],
                               ["Member retains account","Active — continues after recovery","#1565c0"],
                             ]).map(([lb,v,c],i)=>(
@@ -3437,14 +3711,14 @@ function AppInner(){
                           </div>
                           {claimType==="death"&&(
                             <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-                              <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>Remaining 30% — Board Decision</div>
+                              <div style={{fontWeight:700,fontSize:12,color:"var(--p800)",marginBottom:8}}>Remaining 30% — Board Decision</div>
                               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                                 {[
                                   ["compensate","✅ Full compensation — NOK receives 100%","Pay out the remaining 30% to next of kin as goodwill"],
                                   ["retain_account","🔄 NOK retains account — Takes on membership","NOK becomes a BIDA member and inherits the account"],
                                 ].map(([v,lbl,sub])=>(
-                                  <button key={v} type="button" onClick={()=>setRetention(v)} style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:9,border:retention===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:retention===v?"var(--b100)":"#fff",cursor:"pointer",textAlign:"left"}}>
-                                    <div style={{fontWeight:700,fontSize:12,color:retention===v?"var(--b700)":"var(--td)"}}>{lbl}</div>
+                                  <button key={v} type="button" onClick={()=>setRetention(v)} style={{flex:1,minWidth:180,padding:"10px 12px",borderRadius:9,border:retention===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:retention===v?"var(--p100)":"#fff",cursor:"pointer",textAlign:"left"}}>
+                                    <div style={{fontWeight:700,fontSize:12,color:retention===v?"var(--p700)":"var(--td)"}}>{lbl}</div>
                                     <div style={{fontSize:10,color:"var(--tmuted)",marginTop:2,lineHeight:1.5}}>{sub}</div>
                                   </button>
                                 ))}
@@ -3452,7 +3726,7 @@ function AppInner(){
                             </div>
                           )}
                           {claimType==="illness"&&(
-                            <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 12px",marginBottom:10,fontSize:11,color:"#e65100",lineHeight:1.6}}>
+                            <div style={{background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 12px",marginBottom:10,fontSize:11,color:"var(--warning)",lineHeight:1.6}}>
                               <strong>🏥 Illness Support Logic:</strong> Member receives 50% of their monthly savings + welfare contributions banked. Member keeps account active and resumes after recovery. Board approval and medical documentation required.
                             </div>
                           )}
@@ -3478,13 +3752,13 @@ function AppInner(){
                 })()}
               </div>
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>👥 All Members — Benevolent Status</div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10}}>👥 All Members — Benevolent Status</div>
                 <div style={{overflowX:"auto"}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                    <thead><tr style={{background:"var(--b50)"}}>
+                    <thead><tr style={{background:"var(--p50)"}}>
                       {["#","Member","Total Invested","Min Payout (70%)","NOK Name","Relationship","NOK Phone","Status"].map(h=>(
-                        <th key={h} style={{padding:"8px 10px",textAlign:h==="Total Invested"||h==="Min Payout (70%)"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
+                        <th key={h} style={{padding:"8px 10px",textAlign:h==="Total Invested"||h==="Min Payout (70%)"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
                       ))}
                     </tr></thead>
                     <tbody>
@@ -3498,14 +3772,14 @@ function AppInner(){
                             <td style={{padding:"7px 10px",fontSize:10,color:"var(--tmuted)"}}>{i+1}</td>
                             <td style={{padding:"7px 10px"}}><span className="nc" onClick={()=>openProfile(m)}>{m.name}</span></td>
                             <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11}}>{fmt(tb)}</td>
-                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11,color:"#1b5e20"}}>{fmt(minPayout)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11,color:"var(--mint-600)"}}>{fmt(minPayout)}</td>
                             <td style={{padding:"7px 10px",fontSize:11,fontWeight:hasNOK?600:400,color:hasNOK?"var(--td)":"var(--tmuted)"}}>{hasNOK?nok.name:"—"}</td>
                             <td style={{padding:"7px 10px",fontSize:11,color:"var(--tmuted)"}}>{hasNOK?nok.relationship||"—":"—"}</td>
                             <td style={{padding:"7px 10px",fontSize:11,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{hasNOK?nok.phone||"—":"—"}</td>
                             <td style={{padding:"7px 10px"}}>
                               {hasNOK
-                                ?<span style={{fontSize:9,background:"#e8f5e9",color:"#1b5e20",border:"1px solid #a5d6a7",borderRadius:20,padding:"2px 8px",fontWeight:700}}>✅ Protected</span>
-                                :<button onClick={()=>{openProfile(m);setTimeout(()=>setProfEdit(true),100);}} style={{fontSize:9,background:"#fff3e0",color:"#e65100",border:"1px solid #ffcc80",borderRadius:20,padding:"2px 8px",fontWeight:700,cursor:"pointer"}}>⚠ Add NOK</button>
+                                ?<span style={{fontSize:9,background:"rgba(0,200,83,.08)",color:"var(--mint-600)",border:"1px solid #a5d6a7",borderRadius:"var(--radius-xl)",padding:"2px 8px",fontWeight:700}}>✅ Protected</span>
+                                :<button onClick={()=>{openProfile(m);setTimeout(()=>setProfEdit(true),100);}} style={{fontSize:9,background:"rgba(255,109,0,.07)",color:"var(--warning)",border:"1px solid #ffcc80",borderRadius:"var(--radius-xl)",padding:"2px 8px",fontWeight:700,cursor:"pointer"}}>⚠ Add NOK</button>
                               }
                             </td>
                           </tr>
@@ -3534,8 +3808,8 @@ function AppInner(){
                 const equity=totalAssets-pool;
                 return (
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(270px,1fr))",gap:12,marginBottom:12}}>
-                    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-                      <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>📊 Income Statement</div>
+                    <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>📊 Income Statement</div>
                       {[["Loan Interest Income",loanProfit,"#2e7d32"],["Investment Returns",invReturns,"#2e7d32"],["Gross Income",grossIncome,"#1565c0"],["Less: Total Expenses",-totalExpenses,"#c62828"],["Net Surplus",netIncome,netIncome>=0?"#2e7d32":"#c62828"]].map(([l,v,c],i)=>(
                         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i===3?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i>=2?700:400}}>
                           <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
@@ -3543,16 +3817,16 @@ function AppInner(){
                         </div>
                       ))}
                     </div>
-                    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-                      <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>🏦 Balance Sheet</div>
-                      <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",marginBottom:4}}>ASSETS</div>
+                    <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>🏦 Balance Sheet</div>
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--p700)",marginBottom:4}}>ASSETS</div>
                       {[["Cash in Bank",cashInBank],["Loan Book (Outstanding)",outstanding],["Investments",invTotal],["Total Assets",totalAssets]].map(([l,v],i)=>(
                         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===2?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===3?700:400}}>
                           <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
                           <span style={{fontFamily:"var(--mono)",fontSize:11,color:i===3?"#1565c0":"var(--td)"}}>{fmt(v)}</span>
                         </div>
                       ))}
-                      <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",margin:"8px 0 4px"}}>LIABILITIES &amp; EQUITY</div>
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--p700)",margin:"8px 0 4px"}}>LIABILITIES &amp; EQUITY</div>
                       {[["Member Savings (Liability)",pool],["Retained Surplus",equity],["Total L+E",totalAssets]].map(([l,v],i)=>(
                         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===1?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===2?700:400}}>
                           <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
@@ -3564,8 +3838,8 @@ function AppInner(){
                 );
               })()}
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:8}}>💰 Dividend &amp; Surplus Distribution</div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:8}}>💰 Dividend &amp; Surplus Distribution</div>
                 <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:10,lineHeight:1.6}}>Calculates distributable surplus after 20% statutory reserve and 10% operational reserve. Distributed 60% by share capital and 40% by savings contribution.</div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
                 <button className="btn bp sm" onClick={()=>setDividendRun(calcDividends(members,loans,expenses,investments,null))}>
@@ -3577,7 +3851,7 @@ function AppInner(){
                   <React.Fragment>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,margin:"12px 0"}}>
                       {[["Gross Surplus",fmt(dividendRun.grossSurplus),"#2e7d32"],["Statutory (20%)",fmt(dividendRun.statutory),"#e65100"],["Operational (10%)",fmt(dividendRun.operational),"#f57f17"],["Distributable",fmt(dividendRun.distributable),"#1565c0"]].map(([l,v,c])=>(
-                        <div key={l} style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"9px 11px"}}>
+                        <div key={l} style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"9px 11px"}}>
                           <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase",marginBottom:3}}>{l}</div>
                           <div style={{fontWeight:800,fontSize:13,color:c,fontFamily:"var(--mono)"}}>{v}</div>
                         </div>
@@ -3585,17 +3859,17 @@ function AppInner(){
                     </div>
                     <div style={{overflowX:"auto"}}>
                       <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                        <thead><tr style={{background:"var(--b50)"}}>
-                          {["Member","Shares","Share Div","Savings Div","Total"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Member"?"left":"right",fontSize:9,fontFamily:"var(--mono)",color:"var(--b700)",fontWeight:600,textTransform:"uppercase"}}>{h}</th>)}
+                        <thead><tr style={{background:"var(--p50)"}}>
+                          {["Member","Shares","Share Div","Savings Div","Total"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Member"?"left":"right",fontSize:9,fontFamily:"var(--mono)",color:"var(--p700)",fontWeight:600,textTransform:"uppercase"}}>{h}</th>)}
                         </tr></thead>
                         <tbody>
                           {dividendRun.perMember.filter(m=>m.totalDividend>0).sort((a,b)=>b.totalDividend-a.totalDividend).map(m=>(
                             <tr key={m.id} style={{borderBottom:"1px solid var(--bdr)"}}>
                               <td style={{padding:"7px 10px",fontWeight:600}}>{m.name}</td>
                               <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)"}}>{fmtN(m.shares)}</td>
-                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",color:"#2e7d32"}}>{fmt(m.shareDividend)}</td>
-                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",color:"#1565c0"}}>{fmt(m.savingsDividend)}</td>
-                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:800,color:"#0d3461"}}>{fmt(m.totalDividend)}</td>
+                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",color:"var(--mint-600)"}}>{fmt(m.shareDividend)}</td>
+                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",color:"var(--p600)"}}>{fmt(m.savingsDividend)}</td>
+                              <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:800,color:"var(--p800)"}}>{fmt(m.totalDividend)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -3605,16 +3879,16 @@ function AppInner(){
                 )}
               </div>
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>💰 Dividend Payout History <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({dividendPayouts.length} runs recorded)</span></div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10}}>💰 Dividend Payout History <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({dividendPayouts.length} runs recorded)</span></div>
                 {dividendPayouts.length===0?(
                   <div style={{fontSize:11,color:"var(--tmuted)",padding:"8px 0"}}>No dividend runs recorded yet. Calculate dividends in the section above and click "Save Payout Record" to log a run permanently.</div>
                 ):(
                   <div style={{overflowX:"auto"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                      <thead><tr style={{background:"var(--b50)"}}>
+                      <thead><tr style={{background:"var(--p50)"}}>
                         {["Run Date","Members Paid","Gross Surplus","Statutory (20%)","Operational (10%)","Distributable","Recorded By","Status"].map(h=>(
-                          <th key={h} style={{padding:"7px 10px",textAlign:h==="Members Paid"||h==="Status"?"center":"right",textAlignLast:h==="Run Date"||h==="Recorded By"?"left":"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>{h}</th>
+                          <th key={h} style={{padding:"7px 10px",textAlign:h==="Members Paid"||h==="Status"?"center":"right",textAlignLast:h==="Run Date"||h==="Recorded By"?"left":"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>{h}</th>
                         ))}
                       </tr></thead>
                       <tbody>
@@ -3623,12 +3897,12 @@ function AppInner(){
                             <td style={{padding:"7px 10px",fontFamily:"var(--mono)",fontSize:10,whiteSpace:"nowrap"}}>{fmtD(run.runDate)}</td>
                             <td style={{padding:"7px 10px",textAlign:"center",fontWeight:700}}>{run.totalMembers}</td>
                             <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:10}}>{fmt(run.grossSurplus)}</td>
-                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:10,color:"#e65100"}}>{fmt(run.statutory)}</td>
-                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:10,color:"#f57f17"}}>{fmt(run.operational)}</td>
-                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#1b5e20",fontSize:11}}>{fmt(run.distributable)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:10,color:"var(--warning)"}}>{fmt(run.statutory)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:10,color:"var(--warning)"}}>{fmt(run.operational)}</td>
+                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"var(--mint-600)",fontSize:11}}>{fmt(run.distributable)}</td>
                             <td style={{padding:"7px 10px",fontSize:10,color:"var(--tmuted)",whiteSpace:"nowrap"}}>{run.recordedBy}</td>
                             <td style={{padding:"7px 10px",textAlign:"center"}}>
-                              <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20,background:run.status==="paid"?"#e8f5e9":"#e3f2fd",color:run.status==="paid"?"#1b5e20":"#1565c0",border:"1px solid "+(run.status==="paid"?"#a5d6a7":"#90caf9")}}>
+                              <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:"var(--radius-xl)",background:run.status==="paid"?"#e8f5e9":"#e3f2fd",color:run.status==="paid"?"#1b5e20":"#1565c0",border:"1px solid "+(run.status==="paid"?"#a5d6a7":"#90caf9")}}>
                                 {run.status==="paid"?"✅ Paid":"📋 Declared"}
                               </span>
                             </td>
@@ -3640,8 +3914,8 @@ function AppInner(){
                 )}
               </div>
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>📒 Double-Entry Ledger <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({ledger.length} entries — immutable)</span></div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10}}>📒 Double-Entry Ledger <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({ledger.length} entries — immutable)</span></div>
                 {ledger.length===0
                   ?<div style={{color:"var(--tmuted)",fontSize:11,padding:"10px 0"}}>No ledger entries yet. Entries are created automatically when loans are issued, expenses recorded, or savings updated.</div>
                   :<div style={{maxHeight:250,overflowY:"auto"}}>
@@ -3649,9 +3923,9 @@ function AppInner(){
                       <div key={i} style={{display:"flex",gap:8,padding:"7px 0",borderBottom:"1px solid var(--bdr)",fontSize:11,flexWrap:"wrap",alignItems:"center"}}>
                         <div style={{width:110,color:"var(--tmuted)",fontFamily:"var(--mono)",fontSize:9,flexShrink:0}}>{new Date(e.ts).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
                         <div style={{flex:1,fontWeight:600,minWidth:120}}>{e.description}</div>
-                        {e.debit>0&&<span style={{fontFamily:"var(--mono)",fontSize:10,color:"#c62828",fontWeight:700}}>DR {fmt(e.debit)}</span>}
-                        {e.credit>0&&<span style={{fontFamily:"var(--mono)",fontSize:10,color:"#2e7d32",fontWeight:700}}>CR {fmt(e.credit)}</span>}
-                        <span style={{fontSize:9,color:"var(--tmuted)",background:"var(--b50)",padding:"1px 5px",borderRadius:4}}>{e.account}</span>
+                        {e.debit>0&&<span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--error)",fontWeight:700}}>DR {fmt(e.debit)}</span>}
+                        {e.credit>0&&<span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--mint-600)",fontWeight:700}}>CR {fmt(e.credit)}</span>}
+                        <span style={{fontSize:9,color:"var(--tmuted)",background:"var(--p50)",padding:"1px 5px",borderRadius:4}}>{e.account}</span>
                         <span style={{fontSize:9,color:"var(--tmuted)"}}>{e.actorName}</span>
                       </div>
                     ))}
@@ -3659,8 +3933,8 @@ function AppInner(){
                 }
               </div>
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10}}>🔍 Audit Trail <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({auditLog.length} events — read only)</span></div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10}}>🔍 Audit Trail <span style={{fontWeight:400,fontSize:11,color:"var(--tmuted)"}}>({auditLog.length} events — read only)</span></div>
                 {auditLog.length===0
                   ?<div style={{color:"var(--tmuted)",fontSize:11,padding:"10px 0"}}>No audit events yet. All logins, record changes, and approvals will appear here.</div>
                   :<div style={{maxHeight:250,overflowY:"auto"}}>
@@ -3719,17 +3993,17 @@ function AppInner(){
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>⚙️ Settings &amp; Database</div>
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"16px",marginBottom:12}}>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"16px",marginBottom:12}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:8}}>
                   <div>
-                    <div style={{fontWeight:800,fontSize:14,color:"var(--b800)"}}>🔑 User PIN Management</div>
+                    <div style={{fontWeight:800,fontSize:14,color:"var(--p800)"}}>🔑 User PIN Management</div>
                     <div style={{fontSize:11,color:"var(--tmuted)",marginTop:2}}>Change PINs for each role. Only the Administrator should do this.</div>
                   </div>
-                  {!canDo(authUser,"all")&&<div style={{fontSize:11,color:"#c62828",background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:7,padding:"4px 10px"}}>⛔ Admin access required to change PINs</div>}
+                  {!canDo(authUser,"all")&&<div style={{fontSize:11,color:"var(--error)",background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:7,padding:"4px 10px"}}>⛔ Admin access required to change PINs</div>}
                 </div>
 
                 {Object.keys(USER_DEFS).some(r=>isPinDefault(r))&&(
-                  <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"9px 12px",marginBottom:12,fontSize:11,color:"#e65100",lineHeight:1.6}}>
+                  <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"9px 12px",marginBottom:12,fontSize:11,color:"var(--warning)",lineHeight:1.6}}>
                     ⚠ <strong>Security warning:</strong> {Object.keys(USER_DEFS).filter(r=>isPinDefault(r)).map(r=>USER_DEFS[r].name).join(", ")} {Object.keys(USER_DEFS).filter(r=>isPinDefault(r)).length===1?"is":"are"} still using the default PIN. Change all PINs before going live.
                   </div>
                 )}
@@ -3742,13 +4016,13 @@ function AppInner(){
                     const confirmPin=pinConfirm[roleKey]||"";
                     const show=showPins[roleKey];
                     return (
-                      <div key={roleKey} style={{background:"var(--b50)",border:"1.5px solid "+(isDefault?"#ffe082":"#a5d6a7"),borderRadius:10,padding:"12px 14px"}}>
+                      <div key={roleKey} style={{background:"var(--p50)",border:"1.5px solid "+(isDefault?"#ffe082":"#a5d6a7"),borderRadius:10,padding:"12px 14px"}}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                           <div>
-                            <div style={{fontWeight:700,fontSize:13,color:"var(--b800)"}}>{u.name}</div>
+                            <div style={{fontWeight:700,fontSize:13,color:"var(--p800)"}}>{u.name}</div>
                             <div style={{fontSize:9,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.5}}>{u.role}</div>
                           </div>
-                          <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20,background:isDefault?"#fff3e0":"#e8f5e9",color:isDefault?"#e65100":"#1b5e20",border:"1px solid "+(isDefault?"#ffcc80":"#a5d6a7")}}>
+                          <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:"var(--radius-xl)",background:isDefault?"#fff3e0":"#e8f5e9",color:isDefault?"#e65100":"#1b5e20",border:"1px solid "+(isDefault?"#ffcc80":"#a5d6a7")}}>
                             {isDefault?"⚠ Default PIN":"✅ Custom PIN"}
                           </span>
                         </div>
@@ -3786,7 +4060,7 @@ function AppInner(){
                                 placeholder="Repeat PIN"
                                 style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid "+(confirmPin&&newPin&&confirmPin!==newPin?"#ef9a9a":"var(--bdr)"),fontFamily:"var(--mono)",fontSize:14,letterSpacing:3,outline:"none"}}
                               />
-                              {confirmPin&&newPin&&confirmPin!==newPin&&<div style={{fontSize:10,color:"#c62828",marginTop:3}}>PINs do not match</div>}
+                              {confirmPin&&newPin&&confirmPin!==newPin&&<div style={{fontSize:10,color:"var(--error)",marginTop:3}}>PINs do not match</div>}
                             </div>
                             <button
                               type="button"
@@ -3815,13 +4089,13 @@ function AppInner(){
                 </div>
               </div>
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"16px",marginBottom:12}}>
-                <div style={{fontWeight:800,fontSize:14,color:"var(--b800)",marginBottom:4}}>🗄 Supabase Database Connection</div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:14,color:"var(--p800)",marginBottom:4}}>🗄 Supabase Database Connection</div>
                 <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:12,lineHeight:1.6}}>
                   To enable sync on THIS device: paste the Supabase API key below. Every device (phone, tablet, laptop) needs this key entered once. Get it from: Supabase Dashboard → your project → Settings → API → copy the <strong>anon public</strong> key (starts with eyJ...).
                 </div>
-                <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 13px",marginBottom:12,fontSize:11,color:"#1b5e20",lineHeight:1.7}}>
-                  <strong>Project URL:</strong> https://oscuauaifgaeauzvkihu.supabase.co<br/>
+                <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 13px",marginBottom:12,fontSize:11,color:"var(--mint-600)",lineHeight:1.7}}>
+                  <strong>Project URL:</strong> {SUPA_URL||"(set NEXT_PUBLIC_SUPA_URL in Vercel)"}<br/>
                   <strong>Status:</strong> {syncStatus==="synced"?"✅ Connected and saving":"syncing"===syncStatus?"🔄 Syncing...":"loading"===syncStatus?"⏳ Loading data...":"offline"===syncStatus?"📵 Offline — will sync when connected":"⚠ Not connected — enter API key below"}
                 </div>
                 <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -3853,19 +4127,19 @@ function AppInner(){
                   {getSupaKey()&&<button className="btn bg sm" onClick={()=>{setSupaKey("");setSupaKeyInput("");setSyncStatus("idle");alert("API key cleared.");}}>Disconnect</button>}
                 </div>
                 {syncStatus==="offline"&&(
-                  <div style={{marginTop:10,background:"#fff8e1",border:"1px solid #ffe082",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#e65100"}}>
+                  <div style={{marginTop:10,background:"#fff8e1",border:"1px solid #ffe082",borderRadius:8,padding:"8px 12px",fontSize:11,color:"var(--warning)"}}>
                     📵 You are offline. All changes are being saved locally and will sync automatically when your internet connection returns.
                   </div>
                 )}
               </div>
 
-              <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"9px 14px",marginBottom:12,fontSize:11,color:"#1b5e20",fontFamily:"var(--mono)"}}>
-                ✅ Connected to: <strong>oscuauaifgaeauzvkihu.supabase.co</strong> · Key active · Real-time sync every 15s
+              <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:9,padding:"9px 14px",marginBottom:12,fontSize:11,color:"var(--mint-600)",fontFamily:"var(--mono)"}}>
+                ✅ Connected to: <strong>{SUPA_URL||"Supabase"}</strong> · Key active · Real-time sync every 15s
               </div>
 
               {getSupaKey()&&(
-                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:8}}>🔄 Manual Sync</div>
+                <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:8}}>🔄 Manual Sync</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     <button className="btn bp sm" onClick={async()=>{
                       setSyncStatus("loading");
@@ -3927,7 +4201,7 @@ function AppInner(){
               {dueSoonLoans.length>0&&(
                 <div className="due-alert">
                   <div className="due-alert-title">🔔 Automated Due Date Alerts — {dueSoonLoans.length} loan{dueSoonLoans.length>1?"s":""} due within 5 days</div>
-                  <div style={{fontSize:11,color:"#bf360c",marginBottom:10}}>These alerts are triggered automatically. Send reminders now via any channel.</div>
+                  <div style={{fontSize:11,color:"var(--warning)",marginBottom:10}}>These alerts are triggered automatically. Send reminders now via any channel.</div>
                   {dueSoonLoans.map(loan=>(
                     <DueLoanRow key={loan.id} loan={loan} members={members} emailSending={emailSending} sendDueEmail={sendDueEmail} sendDueSMS={sendDueSMS}/>
                   ))}
@@ -3939,7 +4213,7 @@ function AppInner(){
                 <div className="email-sec-sub">Send reminders via Email (PDF attached), WhatsApp, or SMS.</div>
                 <div className="send-all-bar">
                   <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                    <span style={{fontWeight:700,fontSize:12,color:"var(--b800)"}}>📨 {members.filter(m=>m.email).length} with email</span>
+                    <span style={{fontWeight:700,fontSize:12,color:"var(--p800)"}}>📨 {members.filter(m=>m.email).length} with email</span>
                     <span style={{fontWeight:700,fontSize:12,color:"#25D366"}}>💬 {members.filter(m=>m.whatsapp).length} with WhatsApp/SMS</span>
                     <span style={{fontSize:10,color:"var(--tmuted)"}}>{members.filter(m=>!m.email&&!m.whatsapp).length} unreachable — add contacts via profile ✏️</span>
                   </div>
@@ -3991,7 +4265,7 @@ function AppInner(){
                           </div>
                         </div>
                         <div style={{textAlign:"right",marginRight:6}}>
-                          <div style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:"#c62828"}}>{fmt(l.balance)}</div>
+                          <div style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:"var(--error)"}}>{fmt(l.balance)}</div>
                           <span className={"badge "+(ov?"bover":"bactive")}>{ov?"⚠ Overdue":"● Active"}</span>
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
@@ -4016,20 +4290,20 @@ function AppInner(){
                 const pending=expenses.filter(e=>e.expApprovalStatus==="pending_approval");
                 if(pending.length===0) return null;
                 return (
-                  <div style={{background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:11,padding:"11px 14px",marginBottom:12}}>
-                    <div style={{fontWeight:800,fontSize:13,color:"#e65100",marginBottom:4}}>⏳ {pending.length} Expense{pending.length>1?"s":""} Awaiting Approval</div>
+                  <div style={{background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:"var(--radius-md)",padding:"11px 14px",marginBottom:12}}>
+                    <div style={{fontWeight:800,fontSize:13,color:"var(--warning)",marginBottom:4}}>⏳ {pending.length} Expense{pending.length>1?"s":""} Awaiting Approval</div>
                     <div style={{fontSize:11,color:"#795548",marginBottom:10,lineHeight:1.6}}>
                       Expenses of UGX 100,000 and above require Administrator approval. {authUser?.role==="admin"?"Use the ✓ Approve / ✗ Reject buttons in the table below.":"Ask the Administrator to review these in the Expenses tab."}
                     </div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                       {pending.map(e=>(
                         <div key={e.id} style={{background:"#fff",border:"1px solid #ffcc80",borderRadius:8,padding:"6px 10px",fontSize:11}}>
-                          <span style={{fontWeight:700,color:"#e65100"}}>{fmt(e.amount)}</span>
+                          <span style={{fontWeight:700,color:"var(--warning)"}}>{fmt(e.amount)}</span>
                           <span style={{color:"var(--tmuted)",marginLeft:6}}>{e.activity?.substring(0,30)}{(e.activity?.length||0)>30?"…":""}</span>
                           {authUser?.role==="admin"&&(
                             <React.Fragment>
-                              <button onClick={()=>approveExpense(e.id)} style={{marginLeft:8,background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700,color:"#1b5e20",cursor:"pointer"}}>✓ Approve</button>
-                              <button onClick={()=>{const r=window.prompt("Reason for rejection:");if(r)rejectExpense(e.id,r);}} style={{marginLeft:4,background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700,color:"#c62828",cursor:"pointer"}}>✗ Reject</button>
+                              <button onClick={()=>approveExpense(e.id)} style={{marginLeft:8,background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700,color:"var(--mint-600)",cursor:"pointer"}}>✓ Approve</button>
+                              <button onClick={()=>{const r=window.prompt("Reason for rejection:");if(r)rejectExpense(e.id,r);}} style={{marginLeft:4,background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:6,padding:"2px 7px",fontSize:10,fontWeight:700,color:"var(--error)",cursor:"pointer"}}>✗ Reject</button>
                             </React.Fragment>
                           )}
                         </div>
@@ -4039,7 +4313,7 @@ function AppInner(){
                 );
               })()}
 
-              <div style={{background:"linear-gradient(135deg,"+(cashInBank<0?"#b71c1c,#c62828":"#1b5e20,#2e7d32")+")",borderRadius:12,padding:"12px 16px",marginBottom:12,color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+              <div style={{background:"linear-gradient(135deg,"+(cashInBank<0?"#b71c1c,#c62828":"#1b5e20,#2e7d32")+")",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:12,color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
                 <div>
                   <div style={{fontSize:10,opacity:.75,textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>💳 Cash in Bank (live)</div>
                   <div style={{fontSize:26,fontWeight:900,fontFamily:"var(--mono)",marginTop:2}}>{fmt(cashInBank)}</div>
@@ -4059,11 +4333,11 @@ function AppInner(){
                   <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
                 </div>
                 <div className="card ck"><div className="clabel">Profit Realised</div><div className="cval ok">{fmt(lStat.profit)}</div></div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
                 <div className="card cw"><div className="clabel">Transactions</div><div className="cval warn">{expenses.length}</div></div>
               </div>
 
-              <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:12,padding:"13px 16px",marginBottom:12,color:"#fff"}}>
+              <div style={{background:"linear-gradient(135deg,#1a237e,#283593)",borderRadius:"var(--radius-md)",padding:"13px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:8}}>
                   <div>
                     <div style={{fontWeight:800,fontSize:13}}>🏪 BIDA Service Provider Directory</div>
@@ -4122,21 +4396,21 @@ function AppInner(){
                 </div>
               </div>
 
-              <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,overflow:"hidden"}}>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.4)",borderRadius:"var(--radius-lg)",boxShadow:"var(--shadow-sm)",overflow:"hidden"}}>
                 {expenses.length===0&&<div className="empty" style={{padding:"30px"}}><div className="eico">🧾</div>No expenses recorded yet. Click + Add Expense to begin.</div>}
                 {expenses.length>0&&(
                   <div style={{overflowX:"auto"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                       <thead>
-                        <tr style={{background:"var(--b50)"}}>
-                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>#</th>
-                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Date</th>
-                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Activity</th>
-                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Issued By</th>
-                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Category</th>
-                          <th style={{padding:"8px 10px",textAlign:"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Amount</th>
-                          <th style={{padding:"8px 10px",textAlign:"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Balance After</th>
-                          <th style={{padding:"8px 10px",textAlign:"center",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Actions</th>
+                        <tr style={{background:"var(--p50)"}}>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>#</th>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Date</th>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Activity</th>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Issued By</th>
+                          <th style={{padding:"8px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Category</th>
+                          <th style={{padding:"8px 10px",textAlign:"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Amount</th>
+                          <th style={{padding:"8px 10px",textAlign:"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)",whiteSpace:"nowrap"}}>Balance After</th>
+                          <th style={{padding:"8px 10px",textAlign:"center",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,borderBottom:"1.5px solid var(--bdr)"}}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4153,7 +4427,7 @@ function AppInner(){
                               <td style={{padding:"8px 10px",fontSize:10,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{sorted.length-i}</td>
                               <td style={{padding:"8px 10px",fontSize:11,fontFamily:"var(--mono)",color:"var(--tm)",whiteSpace:"nowrap"}}>{fmtD(e.date)}</td>
                               <td style={{padding:"8px 10px"}}>
-                                <div style={{fontWeight:700,fontSize:12,color:"var(--b800)"}}>{e.activity}</div>
+                                <div style={{fontWeight:700,fontSize:12,color:"var(--p800)"}}>{e.activity}</div>
                                 {e.purpose&&<div style={{fontSize:10,color:"var(--tmuted)",marginTop:1}}>📌 {e.purpose}</div>}
                                 <div style={{marginTop:2}}>
                                   {e.payMode==="cash"&&<span className="exp-mode mode-cash">💵 Cash</span>}
@@ -4168,22 +4442,22 @@ function AppInner(){
                                 <div style={{fontSize:10,color:"var(--tmuted)"}}>{e.approvedBy?"✓ "+e.approvedBy:""}</div>
                               </td>
                               <td style={{padding:"8px 10px"}}>
-                                {e.category&&<span style={{fontSize:9,background:"var(--b100)",color:"var(--b700)",borderRadius:7,padding:"2px 7px",fontFamily:"var(--mono)"}}>{e.category}</span>}
+                                {e.category&&<span style={{fontSize:9,background:"var(--p100)",color:"var(--p700)",borderRadius:7,padding:"2px 7px",fontFamily:"var(--mono)"}}>{e.category}</span>}
                               </td>
-                              <td style={{padding:"8px 10px",textAlign:"right",fontWeight:900,fontSize:13,fontFamily:"var(--mono)",color:"#c62828",whiteSpace:"nowrap"}}>− {fmt(+e.amount||0)}</td>
+                              <td style={{padding:"8px 10px",textAlign:"right",fontWeight:900,fontSize:13,fontFamily:"var(--mono)",color:"var(--error)",whiteSpace:"nowrap"}}>− {fmt(+e.amount||0)}</td>
                               <td style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap"}}>
                                 <div style={{fontWeight:700,fontSize:12,fontFamily:"var(--mono)",color:e.balAfter<0?"#c62828":"#2e7d32"}}>{fmt(e.balAfter)}</div>
-                                {e.balAfter<0&&<div style={{fontSize:9,color:"#c62828"}}>⚠ Overdraft</div>}
+                                {e.balAfter<0&&<div style={{fontSize:9,color:"var(--error)"}}>⚠ Overdraft</div>}
                               </td>
                               <td style={{padding:"8px 10px",textAlign:"center"}}>
                                 {(+e.amount||0)>=EXPENSE_APPROVAL_THRESHOLD&&(
                                   <div style={{marginBottom:4}}>
                                     {e.expApprovalStatus==="pending_approval"?(
-                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"#fff8e1",color:"#e65100",border:"1px solid #ffe082",display:"block",marginBottom:3}}>⏳ Awaiting Admin</span>
+                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"#fff8e1",color:"var(--warning)",border:"1px solid #ffe082",display:"block",marginBottom:3}}>⏳ Awaiting Admin</span>
                                     ):e.expApprovalStatus==="rejected"?(
-                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"#ffebee",color:"#c62828",border:"1px solid #ffcdd2",display:"block",marginBottom:3}}>❌ Rejected</span>
+                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"rgba(229,57,53,.07)",color:"var(--error)",border:"1px solid #ffcdd2",display:"block",marginBottom:3}}>❌ Rejected</span>
                                     ):(
-                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"#e8f5e9",color:"#1b5e20",border:"1px solid #a5d6a7",display:"block",marginBottom:3}}>✅ Approved</span>
+                                      <span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:10,background:"rgba(0,200,83,.08)",color:"var(--mint-600)",border:"1px solid #a5d6a7",display:"block",marginBottom:3}}>✅ Approved</span>
                                     )}
                                   </div>
                                 )}
@@ -4201,9 +4475,9 @@ function AppInner(){
                             </tr>
                           ));
                         })()}
-                        <tr style={{background:"linear-gradient(to right,var(--b100),var(--b50))"}}>
-                          <td colSpan={5} style={{padding:"10px",fontWeight:700,fontFamily:"var(--mono)",fontSize:10,color:"var(--b800)"}}>TOTAL EXPENSES</td>
-                          <td style={{padding:"10px",textAlign:"right",fontWeight:900,fontSize:14,fontFamily:"var(--mono)",color:"#c62828"}}>− {fmt(totalExpenses)}</td>
+                        <tr style={{background:"linear-gradient(to right,var(--p100),var(--p50))"}}>
+                          <td colSpan={5} style={{padding:"10px",fontWeight:700,fontFamily:"var(--mono)",fontSize:10,color:"var(--p800)"}}>TOTAL EXPENSES</td>
+                          <td style={{padding:"10px",textAlign:"right",fontWeight:900,fontSize:14,fontFamily:"var(--mono)",color:"var(--error)"}}>− {fmt(totalExpenses)}</td>
                           <td style={{padding:"10px",textAlign:"right",fontWeight:900,fontSize:14,fontFamily:"var(--mono)",color:cashInBank<0?"#c62828":"#2e7d32"}}>{fmt(cashInBank)}</td>
                           <td/>
                         </tr>
@@ -4219,7 +4493,7 @@ function AppInner(){
             <React.Fragment>
               <div className="ptitle"><div className="ptdot"/>Investment Portfolio — BIDA Projects Fund</div>
 
-              <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:13,padding:"13px 16px",marginBottom:12,color:"#fff"}}>
+              <div style={{background:"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:"var(--radius-md)",padding:"13px 16px",marginBottom:12,color:"#fff"}}>
                 <div style={{fontWeight:800,fontSize:13,marginBottom:5}}>🏗️ Purpose &amp; Liquidity Policy</div>
                 <div style={{fontSize:11,lineHeight:1.7,opacity:.92}}>
                   Investment returns fund <strong>BIDA co-operative projects</strong> — infrastructure, member welfare initiatives, and community development.
@@ -4258,8 +4532,8 @@ function AppInner(){
               </div>
 
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 14px"}}>
-                  <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>🌍 FX Rates (UGX indicative)</div>
+                <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"12px 14px"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:"var(--p800)",marginBottom:8}}>🌍 FX Rates (UGX indicative)</div>
                   <div style={{display:"flex",flexDirection:"column",gap:5}}>
                     {fxLoading?<div style={{fontSize:10,color:"var(--tmuted)",padding:"8px 0"}}>⏳ Loading live rates…</div>:FX_RATES.map(({label,rate,color})=>(
                       <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid var(--bdr)"}}>
@@ -4269,13 +4543,13 @@ function AppInner(){
                     ))}
                   </div>
                 </div>
-                <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 14px"}}>
-                  <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:8}}>💹 Money Market Rates (p.a.)</div>
+                <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"12px 14px"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:"var(--p800)",marginBottom:8}}>💹 Money Market Rates (p.a.)</div>
                   <div style={{display:"flex",flexDirection:"column",gap:5}}>
                     {[["T-Bills 91d","14.2%"],["T-Bills 182d","15.8%"],["T-Bills 364d","16.9%"],["Stanbic MMF","13.5%"],["UAP Old Mutual","14.0%"],["Britam","13.8%"],["DFCU Fixed","12.5%"]].map(([l,r])=>(
                       <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:"1px solid var(--bdr)"}}>
                         <span style={{fontSize:10,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{l}</span>
-                        <span style={{fontSize:12,fontWeight:800,color:"#1b5e20",fontFamily:"var(--mono)"}}>{r}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:"var(--mint-600)",fontFamily:"var(--mono)"}}>{r}</span>
                       </div>
                     ))}
                   </div>
@@ -4283,7 +4557,7 @@ function AppInner(){
               </div>
 
               {distributableInterest>0&&(
-                <div style={{background:"linear-gradient(135deg,#1b5e20,#2e7d32)",borderRadius:12,padding:"12px 16px",marginBottom:14,color:"#fff"}}>
+                <div style={{background:"linear-gradient(135deg,#1b5e20,#2e7d32)",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14,color:"#fff"}}>
                   <div style={{fontWeight:800,fontSize:13,marginBottom:6}}>📊 Member Dividend Distribution (40% of Interest)</div>
                   <div style={{fontSize:11,opacity:.85,marginBottom:8}}>Each member's share based on their % of total pool. 60% ({fmt(retainedInterest)}) retained for BIDA projects.</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6,maxHeight:180,overflowY:"auto"}}>
@@ -4318,7 +4592,7 @@ function AppInner(){
               <div className="ptitle"><div className="ptdot"/>PDF Reports & Analysis</div>
               <LoanRuleInfo/>
               <div className="pdf-panel">
-                <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:10}}>📄 Choose a report to generate and download</div>
+                <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:10}}>📄 Choose a report to generate and download</div>
                 <div className="pdf-cards">
                   {[
                     {key:"savings",icon:"💰",title:"Savings Report",desc:"Full member savings ledger with borrowing limits and totals."},
@@ -4342,7 +4616,7 @@ function AppInner(){
                 <div className="card"><div className="clabel">Monthly Inflow</div><div className="cval">{fmt(savT.monthly)}</div></div>
                 <div className="card cd"><div className="clabel">Outstanding</div><div className="cval danger">{fmt(lStat.outstanding)}</div></div>
                 <div className="card cd"><div className="clabel">Expenses</div><div className="cval danger">{fmt(totalExpenses)}</div></div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"#c62828":"#43a047")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div></div>
               </div>
 
               {(()=>{
@@ -4358,8 +4632,8 @@ function AppInner(){
                 const equity=totalAssets-totalLiabilities;
                 return (
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12,marginBottom:12}}>
-                    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-                      <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr2)",paddingBottom:6}}>📊 Income Statement</div>
+                    <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10,borderBottom:"2px solid var(--bdr2)",paddingBottom:6}}>📊 Income Statement</div>
                       {[["Loan Interest Income",profit,"#2e7d32"],["Investment Returns",invReturns,"#2e7d32"],["Gross Income",grossIncome,"#1565c0"],["Less: Total Expenses",-totalExpenses,"#c62828"],["Net Surplus / Deficit",netIncome,netIncome>=0?"#2e7d32":"#c62828"]].map(([l,v,c],i)=>(
                         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i===3?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i>=2?700:400}}>
                           <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
@@ -4367,16 +4641,16 @@ function AppInner(){
                         </div>
                       ))}
                     </div>
-                    <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-                      <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr2)",paddingBottom:6}}>🏦 Balance Sheet</div>
-                      <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Assets</div>
+                    <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10,borderBottom:"2px solid var(--bdr2)",paddingBottom:6}}>🏦 Balance Sheet</div>
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--p700)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Assets</div>
                       {[["Cash in Bank",cashInBank],["Loan Book (Outstanding)",outstanding],["Investments",invTotal],["Total Assets",totalAssets]].map(([l,v],i)=>(
                         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===2?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===3?700:400}}>
                           <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
                           <span style={{fontFamily:"var(--mono)",fontSize:11,color:i===3?"#1565c0":"var(--td)"}}>{fmt(v)}</span>
                         </div>
                       ))}
-                      <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",margin:"8px 0 4px",textTransform:"uppercase",letterSpacing:.5}}>Liabilities &amp; Equity</div>
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--p700)",margin:"8px 0 4px",textTransform:"uppercase",letterSpacing:.5}}>Liabilities &amp; Equity</div>
                       {[["Member Savings (Liabilities)",totalLiabilities],["Retained Surplus / Equity",equity],["Total L+E",totalAssets]].map(([l,v],i)=>(
                         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===1?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===2?700:400}}>
                           <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
@@ -4388,11 +4662,11 @@ function AppInner(){
                 );
               })()}
               {sharedPDF&&sharedPDF.type!=="member"&&sharedPDF.blob&&(
-                <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:11,padding:"14px 16px",marginTop:10}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"#1b5e20",marginBottom:8}}>✅ {sharedPDF.label} is ready</div>
+                <div style={{background:"rgba(0,200,83,.08)",border:"1.5px solid #a5d6a7",borderRadius:"var(--radius-md)",padding:"14px 16px",marginTop:10}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"var(--mint-600)",marginBottom:8}}>✅ {sharedPDF.label} is ready</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                     <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,border:"none",cursor:"pointer"}}>📥 Download PDF</button>
-                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:12,cursor:"pointer"}}>🔍 Open in New Tab</button>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--p700)",fontWeight:700,fontSize:12,cursor:"pointer"}}>🔍 Open in New Tab</button>
                     <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:8,background:"#25D366",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={async()=>{
                       if(!sharedPDF.blob)return;
                       const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
@@ -4408,7 +4682,7 @@ function AppInner(){
                       }
                     }}>{WA_SVG} Share via WhatsApp</button>
                   </div>
-                  <div style={{fontSize:10,color:"#2e7d32",marginTop:8,opacity:.8}}>Tip: If "Download" doesn't work in your browser, use "Open in New Tab" then save from there (Ctrl+S or right-click → Save).</div>
+                  <div style={{fontSize:10,color:"var(--mint-600)",marginTop:8,opacity:.8}}>Tip: If "Download" doesn't work in your browser, use "Open in New Tab" then save from there (Ctrl+S or right-click → Save).</div>
                 </div>
               )}
             </React.Fragment>
@@ -4416,9 +4690,9 @@ function AppInner(){
 
           {sharedPDF&&sharedPDF.show&&(
             <div style={{position:"fixed",inset:0,zIndex:99999,background:"rgba(13,52,97,.95)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setSharedPDF(null);}}>
-              <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
+              <div style={{background:"#fff",borderRadius:"var(--radius-lg)",padding:28,width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
                 <div style={{fontSize:48,marginBottom:8}}>📄</div>
-                <div style={{fontWeight:900,fontSize:18,color:"#0d3461",marginBottom:4}}>{sharedPDF.label}</div>
+                <div style={{fontWeight:900,fontSize:18,color:"var(--p800)",marginBottom:4}}>{sharedPDF.label}</div>
                 <div style={{fontSize:12,color:"#888",marginBottom:24}}>Bida Multi-Purpose Co-operative Society · {new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
                 <button
                   onClick={()=>{
@@ -4429,7 +4703,7 @@ function AppInner(){
                     document.body.appendChild(a); a.click();
                     setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
                   }}
-                  style={{width:"100%",padding:"16px",borderRadius:12,background:"linear-gradient(135deg,#1565c0,#0d3461)",color:"#fff",fontWeight:900,fontSize:16,border:"none",cursor:"pointer",marginBottom:10,letterSpacing:.5}}>
+                  style={{width:"100%",padding:"16px",borderRadius:"var(--radius-md)",background:"linear-gradient(135deg,#1565c0,#0d3461)",color:"#fff",fontWeight:900,fontSize:16,border:"none",cursor:"pointer",marginBottom:10,letterSpacing:.5}}>
                   📥 Download PDF
                 </button>
                 <button
@@ -4445,18 +4719,18 @@ function AppInner(){
                       setTimeout(()=>URL.revokeObjectURL(url),15000);
                     }
                   }}
-                  style={{width:"100%",padding:"14px",borderRadius:12,background:"#128C7E",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
+                  style={{width:"100%",padding:"14px",borderRadius:"var(--radius-md)",background:"#128C7E",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
                   📤 Share / Save to Files (iPhone & Android)
                 </button>
                 {sharedPDF.waNumber&&(
                   <a
                     href={"https://wa.me/"+sharedPDF.waNumber+"?text="+encodeURIComponent("Dear Member, please find your Bida Multi-Purpose Co-operative Society statement attached. Download it from the link or check your Downloads folder.\n\n— Bida Multi-Purpose Co-operative Society\nbidacooperative@gmail.com")}
                     target="_blank" rel="noreferrer"
-                    style={{display:"block",width:"100%",padding:"14px",borderRadius:12,background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10,boxSizing:"border-box",textAlign:"center"}}>
+                    style={{display:"block",width:"100%",padding:"14px",borderRadius:"var(--radius-md)",background:"#25D366",color:"#fff",fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:10,boxSizing:"border-box",textAlign:"center"}}>
                     {WA_SVG} Send on WhatsApp
                   </a>
                 )}
-                <button onClick={()=>setSharedPDF(null)} style={{width:"100%",padding:"12px",borderRadius:12,background:"#f5f5f5",color:"#666",fontWeight:600,fontSize:13,border:"none",cursor:"pointer"}}>
+                <button onClick={()=>setSharedPDF(null)} style={{width:"100%",padding:"12px",borderRadius:"var(--radius-md)",background:"#f5f5f5",color:"#666",fontWeight:600,fontSize:13,border:"none",cursor:"pointer"}}>
                   Close
                 </button>
               </div>
@@ -4475,7 +4749,7 @@ function AppInner(){
                 {!profEdit&&sharedPDF&&sharedPDF.type==="member"&&sharedPDF.memberId===profMember.id&&sharedPDF.blob&&(
                   <React.Fragment>
                     <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,border:"none",cursor:"pointer"}}>📥 PDF</button>
-                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--b700)",fontWeight:700,fontSize:10,cursor:"pointer"}}>🔍</button>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--p700)",fontWeight:700,fontSize:10,cursor:"pointer"}}>🔍</button>
                     <button className="btn sm" style={{background:"#25D366",color:"#fff",fontWeight:700}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,profMember.name)}>{WA_SVG} WA</button>
                   </React.Fragment>
                 )}
@@ -4496,12 +4770,12 @@ function AppInner(){
                   <div className="prof-info">
                     <div className="prof-name">{profMember.name}</div>
                     <div className="prof-meta">Since {profMember.joinDate?new Date(profMember.joinDate).toLocaleDateString("en-GB",{month:"long",year:"numeric"}):"—"} · ID #{profMember.id}</div>
-                    {profMember.phone&&<div style={{fontSize:11,color:"var(--b300)",marginTop:2,fontFamily:"var(--mono)"}}>📞 {profMember.phone}</div>}
+                    {profMember.phone&&<div style={{fontSize:11,color:"var(--p300)",marginTop:2,fontFamily:"var(--mono)"}}>📞 {profMember.phone}</div>}
                     <div className="prof-email-disp">{profMember.email||<span style={{opacity:.5}}>No email on file</span>}</div>
                     {profMember.nin&&<div style={{fontSize:10,color:"rgba(255,255,255,.55)",marginTop:2,fontFamily:"var(--mono)"}}>NIN: {profMember.nin}</div>}
                     {profMember.address&&<div style={{fontSize:10,color:"rgba(255,255,255,.55)",marginTop:2}}>📍 {profMember.address}</div>}
                     {profMember.whatsapp
-                      ?<div style={{marginTop:4}}><a href={waLink(profMember.whatsapp)} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:"rgba(37,211,102,.18)",border:"1px solid rgba(37,211,102,.35)",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700,color:"#25D366",textDecoration:"none",fontFamily:"var(--mono)"}}>{WA_SVG}{profMember.whatsapp}</a></div>
+                      ?<div style={{marginTop:4}}><a href={waLink(profMember.whatsapp)} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:5,background:"rgba(37,211,102,.18)",border:"1px solid rgba(37,211,102,.35)",borderRadius:"var(--radius-xl)",padding:"2px 10px",fontSize:11,fontWeight:700,color:"#25D366",textDecoration:"none",fontFamily:"var(--mono)"}}>{WA_SVG}{profMember.whatsapp}</a></div>
                       :<div style={{fontSize:11,color:"rgba(255,255,255,.4)",marginTop:3,fontFamily:"var(--mono)"}}>No WhatsApp on file</div>
                     }
                     <div className="prof-rank-badge">🏅 Rank #{profRank} of {members.length}</div>
@@ -4510,7 +4784,7 @@ function AppInner(){
                       if(spRoles.length===0)return null;
                       return <div style={{marginTop:4,display:"flex",gap:4,flexWrap:"wrap"}}>
                         {spRoles.map((sp,i)=>(
-                          <div key={i} style={{background:"rgba(255,193,7,.2)",border:"1px solid rgba(255,193,7,.5)",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,color:"#ffd54f"}}>
+                          <div key={i} style={{background:"rgba(255,193,7,.2)",border:"1px solid rgba(255,193,7,.5)",borderRadius:"var(--radius-xl)",padding:"2px 9px",fontSize:10,fontWeight:700,color:"#ffd54f"}}>
                             🏪 Provider: {sp.serviceType}
                           </div>
                         ))}
@@ -4518,7 +4792,7 @@ function AppInner(){
                     })()}
                     {profMember.approvalStatus&&profMember.approvalStatus!=="approved"&&(()=>{
                       const st=APPROVAL_STATUS[profMember.approvalStatus];
-                      return st?<div style={{marginTop:3,display:"inline-block",fontSize:9,padding:"2px 8px",borderRadius:20,background:st.bg,color:st.color,fontWeight:700}}>{st.label}</div>:null;
+                      return st?<div style={{marginTop:3,display:"inline-block",fontSize:9,padding:"2px 8px",borderRadius:"var(--radius-xl)",background:st.bg,color:st.color,fontWeight:700}}>{st.label}</div>:null;
                     })()}
                     {profMember.referredByMemberId&&(()=>{
                       const referrer=members.find(m=>m.id===profMember.referredByMemberId);
@@ -4526,7 +4800,7 @@ function AppInner(){
                     })()}
                     {(()=>{
                       const referred=members.filter(m=>m.referredByMemberId===profMember.id);
-                      if(referred.length>0) return <div style={{marginTop:4,background:"rgba(255,215,0,.2)",border:"1px solid rgba(255,215,0,.4)",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,color:"#ffd54f",display:"inline-block"}}>🎁 {referred.length} referral{referred.length>1?"s":""} · Commission: {fmt(profMember.referralCommission||0)}</div>;
+                      if(referred.length>0) return <div style={{marginTop:4,background:"rgba(255,215,0,.2)",border:"1px solid rgba(255,215,0,.4)",borderRadius:"var(--radius-xl)",padding:"3px 10px",fontSize:11,fontWeight:700,color:"#ffd54f",display:"inline-block"}}>🎁 {referred.length} referral{referred.length>1?"s":""} · Commission: {fmt(profMember.referralCommission||0)}</div>;
                       return null;
                     })()}
                   </div>
@@ -4544,7 +4818,7 @@ function AppInner(){
 
                 {profMember.approvalStatus&&profMember.approvalStatus!=="approved"&&(
                   <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:10,padding:"10px 14px",marginBottom:8}}>
-                    <div style={{fontWeight:700,fontSize:12,color:"#e65100",marginBottom:4}}>⏳ Member Registration Pending Approval</div>
+                    <div style={{fontWeight:700,fontSize:12,color:"var(--warning)",marginBottom:4}}>⏳ Member Registration Pending Approval</div>
                     <div style={{fontSize:11,color:"#795548",lineHeight:1.6}}>
                       This member is awaiting approval through the 4-step process before being fully activated.
                       {profMember.initialPaymentReceived&&" ✅ Initial payments confirmed received."}
@@ -4566,7 +4840,7 @@ function AppInner(){
                   <div className="prof-section-title">Savings Breakdown</div>
                   <div className="prof-grid">
                     {[["Membership",profMember.membership],["Annual Sub",profMember.annualSub],["Monthly Savings",profMember.monthlySavings],["Welfare",profMember.welfare],["Shares",profMember.shares],["Total Banked",totBanked(profMember)]].map(([lb,v],i)=>(
-                      <div key={lb} className="prof-item" style={i===5?{gridColumn:"1/-1",background:"var(--b100)",borderColor:"var(--bdr2)"}:{}}>
+                      <div key={lb} className="prof-item" style={i===5?{gridColumn:"1/-1",background:"var(--p100)",borderColor:"var(--bdr2)"}:{}}>
                         <div className="prof-item-label">{lb}</div>
                         <div className={"prof-item-val"+(i===5?" ok":"")}>{fmt(v)}</div>
                       </div>
@@ -4581,8 +4855,8 @@ function AppInner(){
                       <div className="prof-section-title">👨‍👩‍👧 Next of Kin & Benevolent Fund</div>
                       {nok&&(nok.name||"").trim()?(
                         <React.Fragment>
-                          <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
-                            <div style={{fontWeight:700,fontSize:11,color:"#1b5e20",marginBottom:6}}>✅ Benevolent Fund Active</div>
+                          <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
+                            <div style={{fontWeight:700,fontSize:11,color:"var(--mint-600)",marginBottom:6}}>✅ Benevolent Fund Active</div>
                             <div className="prof-grid">
                               {[["Name",nok.name],["Phone",nok.phone||"—"],["Relationship",nok.relationship||"—"],["NIN",nok.nin||"—"],["Address",nok.address||"—"],["BIDA Member",nok.isMember?"Yes":"No"]].map(([lb,v])=>(
                                 <div key={lb} className="prof-item">
@@ -4591,14 +4865,14 @@ function AppInner(){
                                 </div>
                               ))}
                             </div>
-                            <div style={{marginTop:8,fontSize:10,color:"#2e7d32",lineHeight:1.6}}>
+                            <div style={{marginTop:8,fontSize:10,color:"var(--mint-600)",lineHeight:1.6}}>
                               Min guaranteed payout: <strong>{fmt(Math.round(totBanked(profMember)*0.70))}</strong> (70% of {fmt(totBanked(profMember))})
                             </div>
                           </div>
                         </React.Fragment>
                       ):(
                         <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"10px 12px"}}>
-                          <div style={{fontWeight:700,fontSize:11,color:"#e65100",marginBottom:4}}>⚠ No Next of Kin on File</div>
+                          <div style={{fontWeight:700,fontSize:11,color:"var(--warning)",marginBottom:4}}>⚠ No Next of Kin on File</div>
                           <div style={{fontSize:11,color:"#795548",lineHeight:1.6,marginBottom:8}}>This member cannot benefit from the BIDA Benevolent Fund until next of kin details are added.</div>
                           <button className="btn bp xs" onClick={()=>setProfEdit(true)}>✏️ Add NOK Details</button>
                         </div>
@@ -4622,13 +4896,13 @@ function AppInner(){
                     <div className="prof-section">
                       <div className="prof-section-title">🎁 Referral Programme</div>
                       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:10}}>
-                        <div className="prof-item" style={{background:"#e8f5e9",borderColor:"#a5d6a7"}}>
+                        <div className="prof-item" style={{background:"rgba(0,200,83,.08)",borderColor:"#a5d6a7"}}>
                           <div className="prof-item-label">Members Referred</div>
                           <div className="prof-item-val ok" style={{fontSize:18}}>{referred.length}</div>
                         </div>
                         <div className="prof-item" style={{background:"#fff8e1",borderColor:"#ffe082"}}>
                           <div className="prof-item-label">Total Commission Earned</div>
-                          <div className="prof-item-val" style={{color:"#f57f17"}}>{fmt(totalEarned)}</div>
+                          <div className="prof-item-val" style={{color:"var(--warning)"}}>{fmt(totalEarned)}</div>
                         </div>
                         <div className="prof-item" style={{background:totalOwed>0?"#fff3e0":"#f1f8e9",borderColor:totalOwed>0?"#ffcc80":"#c5e1a5"}}>
                           <div className="prof-item-label">Pending Payout</div>
@@ -4637,8 +4911,8 @@ function AppInner(){
                       </div>
 
                       {referred.length>0&&(
-                        <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
-                          <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Members Introduced to BIDA</div>
+                        <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
+                          <div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Members Introduced to BIDA</div>
                           {referred.map(m=>{
                             const comm=(profMember.pendingCommissions||[]).find(c=>c.newMemberId===m.id);
                             const isPayable=comm&&new Date(comm.payableDate)<=today;
@@ -4647,7 +4921,7 @@ function AppInner(){
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                                   <Avatar name={m.name} size={28} photoUrl={m.photoUrl}/>
                                   <div>
-                                    <div style={{fontWeight:700,fontSize:12,color:"var(--b800)"}}>{m.name}</div>
+                                    <div style={{fontWeight:700,fontSize:12,color:"var(--p800)"}}>{m.name}</div>
                                     <div style={{fontSize:10,color:"var(--tmuted)"}}>Joined {m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}</div>
                                   </div>
                                 </div>
@@ -4680,7 +4954,7 @@ function AppInner(){
                       {(profMember.pendingCommissions||[]).length>0&&(
                         <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#5d4037",lineHeight:1.7}}>
                           <strong>💡 How commission is calculated:</strong> 1% of your (Monthly Savings + Welfare) at the time each new member joins. Commission is payable 1 month after the new member's join date.
-                          {nowPayable.length>0&&<div style={{marginTop:4,fontWeight:700,color:"#e65100"}}>⚠ {nowPayable.length} commission{nowPayable.length>1?"s":""} ({fmt(nowPayable.reduce((s,c)=>s+c.amount,0))}) are now due for payment.</div>}
+                          {nowPayable.length>0&&<div style={{marginTop:4,fontWeight:700,color:"var(--warning)"}}>⚠ {nowPayable.length} commission{nowPayable.length>1?"s":""} ({fmt(nowPayable.reduce((s,c)=>s+c.amount,0))}) are now due for payment.</div>}
                         </div>
                       )}
                     </div>
@@ -4726,14 +5000,14 @@ function AppInner(){
                           ["Borrow Limit",fmt(borrowLimit(profMember,loans)),"ok"],
                           ["Savings × Borrow Rate",borrowRate+"%",""],
                         ].map(([lb,v,cls])=>(
-                          <div key={lb} style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"7px 10px"}}>
-                            <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase",marginBottom:2}}>{lb}</div>
-                            <div style={{fontWeight:700,fontSize:12,color:cls==="ok"?"#2e7d32":cls==="danger"?"#c62828":cls==="warn"?"#e65100":"var(--b700)"}}>{v}</div>
+                          <div key={lb} style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"7px 10px"}}>
+                            <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",letterSpacing:.3,textTransform:"uppercase",marginBottom:2}}>{lb}</div>
+                            <div style={{fontWeight:700,fontSize:12,color:cls==="ok"?"#2e7d32":cls==="danger"?"#c62828":cls==="warn"?"#e65100":"var(--p700)"}}>{v}</div>
                           </div>
                         ))}
                       </div>
-                      {annSub<50000&&<div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:8,padding:"7px 10px",fontSize:10,color:"#e65100",marginBottom:6}}>⚠ Annual subscription is below UGX 50,000 — member will not qualify for referral commissions until this is met.</div>}
-                      {welfareDiff>0&&<div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"7px 10px",fontSize:10,color:"#1565c0"}}>💡 Welfare should be 30% of monthly savings. Suggested welfare top-up: {fmt(welfareDiff)} (30% of UGX {fmt(ms)} = {fmt(expectedWelfare)})</div>}
+                      {annSub<50000&&<div style={{background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:8,padding:"7px 10px",fontSize:10,color:"var(--warning)",marginBottom:6}}>⚠ Annual subscription is below UGX 50,000 — member will not qualify for referral commissions until this is met.</div>}
+                      {welfareDiff>0&&<div style={{background:"rgba(21,101,192,.07)",border:"1px solid rgba(21,101,192,.25)",borderRadius:8,padding:"7px 10px",fontSize:10,color:"var(--p600)"}}>💡 Welfare should be 30% of monthly savings. Suggested welfare top-up: {fmt(welfareDiff)} (30% of UGX {fmt(ms)} = {fmt(expectedWelfare)})</div>}
                     </div>
                   );
                 })()}
@@ -4752,7 +5026,7 @@ function AppInner(){
                 <div className="prof-section">
                   <div className="prof-section-title">Pool Contribution vs Peers</div>
                   <div className="prof-bar-wrap">
-                    <div className="prof-bar-label"><span>Share of fund pool</span><span style={{fontWeight:700,color:"var(--b700)"}}>{profPct}%</span></div>
+                    <div className="prof-bar-label"><span>Share of fund pool</span><span style={{fontWeight:700,color:"var(--p700)"}}>{profPct}%</span></div>
                     <div className="prof-bar-track"><div className="prof-bar-fill" style={{width:Math.min(parseFloat(profPct)*4,100)+"%"}}/></div>
                   </div>
                   <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
@@ -4763,10 +5037,10 @@ function AppInner(){
                       </div>
                     ))}
                     {memberInvShare(profMember)>0&&(
-                      <div className="prof-item" style={{flex:1,minWidth:80,background:"#e8f5e9",borderColor:"#a5d6a7"}}>
+                      <div className="prof-item" style={{flex:1,minWidth:80,background:"rgba(0,200,83,.08)",borderColor:"#a5d6a7"}}>
                         <div className="prof-item-label">Inv. Interest Share</div>
                         <div className="prof-item-val ok" style={{fontSize:12}}>{fmt(memberInvShare(profMember))}</div>
-                        <div style={{fontSize:9,color:"#2e7d32",marginTop:2}}>40% of returns</div>
+                        <div style={{fontSize:9,color:"var(--mint-600)",marginTop:2}}>40% of returns</div>
                       </div>
                     )}
                   </div>
@@ -4786,17 +5060,17 @@ function AppInner(){
                       ):(
                         <div style={{maxHeight:220,overflowY:"auto"}}>
                           <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                            <thead><tr style={{background:"var(--b50)"}}>
+                            <thead><tr style={{background:"var(--p50)"}}>
                               {["Date","Category","Amount","Note",""].map(h=>(
-                                <th key={h} style={{padding:"5px 7px",textAlign:h==="Amount"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--b700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
+                                <th key={h} style={{padding:"5px 7px",textAlign:h==="Amount"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
                               ))}
                             </tr></thead>
                             <tbody>
                               {memberContribs.map(c=>(
                                 <tr key={c.id} style={{borderBottom:"1px solid #eef5ff"}}>
                                   <td style={{padding:"5px 7px",fontFamily:"var(--mono)",fontSize:10,whiteSpace:"nowrap"}}>{fmtD(c.date)}</td>
-                                  <td style={{padding:"5px 7px"}}><span style={{fontSize:9,background:"var(--b100)",color:"var(--b700)",borderRadius:6,padding:"1px 6px",fontWeight:600}}>{CONTRIB_LABELS[c.category]||c.category}</span></td>
-                                  <td style={{padding:"5px 7px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#1b5e20"}}>{fmt(c.amount)}</td>
+                                  <td style={{padding:"5px 7px"}}><span style={{fontSize:9,background:"var(--p100)",color:"var(--p700)",borderRadius:6,padding:"1px 6px",fontWeight:600}}>{CONTRIB_LABELS[c.category]||c.category}</span></td>
+                                  <td style={{padding:"5px 7px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"var(--mint-600)"}}>{fmt(c.amount)}</td>
                                   <td style={{padding:"5px 7px",fontSize:10,color:"var(--tmuted)"}}>{c.note||"—"}</td>
                                   <td style={{padding:"5px 7px"}}><button className="btn bd xs" style={{padding:"2px 6px",fontSize:9}} onClick={()=>delContrib(c.id)}>🗑</button></td>
                                 </tr>
@@ -4853,7 +5127,7 @@ function AppInner(){
                 {(profMember.email||profMember.whatsapp)&&(
                   <div className="prof-section">
                     <div className="prof-section-title">Quick Actions</div>
-                    <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
+                    <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
                       <div style={{fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Savings Reminder</div>
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {profMember.email&&<button className="btn bemail sm" disabled={emailSending["sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsEmail(profMember)}>{emailSending["sav_"+profMember.id]==="sending"?"⏳...":"📨 Email"}</button>}
@@ -4898,7 +5172,7 @@ function AppInner(){
                     </div>
                     {profLoans.filter(l=>l.status!=="paid").map(l=>(
                       <div key={l.id} style={{background:"#fff8e1",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
-                        <div style={{fontSize:10,color:"#bf360c",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Loan Reminder · Balance {fmt(l.balance)}</div>
+                        <div style={{fontSize:10,color:"var(--warning)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Loan Reminder · Balance {fmt(l.balance)}</div>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                           {profMember.email&&<button className="btn bemail sm" disabled={emailSending["loan_"+l.id]==="sending"} onClick={()=>sendLoanEmail(profMember,l)}>{emailSending["loan_"+l.id]==="sending"?"⏳...":"📨 Email"}</button>}
                           {profMember.whatsapp&&<React.Fragment><a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWALoanMsg(profMember,l))} target="_blank" rel="noreferrer">{WA_SVG}WA Loan</a>
@@ -4912,11 +5186,11 @@ function AppInner(){
                 <div className="div"/>
                 {!confirmOpt
                   ?<button className="btn bd sm" onClick={()=>setConfirmOpt(true)}>🚪 Remove Member</button>
-                  :<div style={{background:"#ffebee",border:"1.5px solid #ef9a9a",borderRadius:9,padding:"12px 13px"}}>
-                    <div style={{fontWeight:700,color:"#c62828",marginBottom:6}}>⚠️ Confirm Member Removal</div>
+                  :<div style={{background:"rgba(229,57,53,.07)",border:"1.5px solid rgba(229,57,53,.3)",borderRadius:9,padding:"12px 13px"}}>
+                    <div style={{fontWeight:700,color:"var(--error)",marginBottom:6}}>⚠️ Confirm Member Removal</div>
                     <div style={{fontSize:11,color:"var(--tm)",marginBottom:8}}>Removes <strong>{profMember.name}</strong> and all their loan records permanently.</div>
                     <div style={{background:"#fff",border:"1px solid #ffcdd2",borderRadius:7,padding:"8px 10px",marginBottom:9,fontSize:11}}>
-                      <div style={{fontWeight:700,color:"var(--b800)",marginBottom:4}}>💰 Refund Calculation</div>
+                      <div style={{fontWeight:700,color:"var(--p800)",marginBottom:4}}>💰 Refund Calculation</div>
                       <div className="crow"><span className="cl">Total savings banked</span><span className="cv ok">{fmt(totBanked(profMember))}</span></div>
                       {lStat.profit>0&&<div className="crow"><span className="cl">Share of profit earned ({profPct}%)</span><span className="cv ok">{fmt(Math.round((totBanked(profMember)/savT.total)*lStat.profit))}</span></div>}
                       {memberInvShare(profMember)>0&&<div className="crow"><span className="cl">Investment interest share (40% distributed)</span><span className="cv ok">{fmt(memberInvShare(profMember))}</span></div>}
@@ -4933,12 +5207,12 @@ function AppInner(){
             ):(
               <React.Fragment>
                 <div className="fgrid">
-                  <div className="fg ff" style={{display:"flex",alignItems:"center",gap:14,padding:"10px 12px",background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:10}}>
+                  <div className="fg ff" style={{display:"flex",alignItems:"center",gap:14,padding:"10px 12px",background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:10}}>
                     <Avatar name={profF.name||profMember.name} size={52} photoUrl={profF.photoUrl}/>
                     <div style={{flex:1}}>
                       <div style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>Member Photo</div>
-                      <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload Photo<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f2=e.target.files?.[0];if(!f2)return;compressImage(f2,c=>setProfF(f=>({...f,photoUrl:c})));}}/>  </label>
-                      {profF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"#c62828",cursor:"pointer"}} onClick={()=>setProfF(f=>({...f,photoUrl:""}))}>✕ Remove</button>}
+                      <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--p600),var(--p700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload Photo<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f2=e.target.files?.[0];if(!f2)return;compressImage(f2,c=>setProfF(f=>({...f,photoUrl:c})));}}/>  </label>
+                      {profF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"var(--error)",cursor:"pointer"}} onClick={()=>setProfF(f=>({...f,photoUrl:""}))}>✕ Remove</button>}
                     </div>
                   </div>
                   <div className="fg ff"><label className="fl">Full Name</label><input className="fi" value={profF.name} onChange={e=>setProfF(f=>({...f,name:e.target.value}))}/></div>
@@ -4948,13 +5222,13 @@ function AppInner(){
                   <div className="fg"><label className="fl">National ID Number (NIN)</label><input className="fi" value={profF.nin||""} onChange={e=>setProfF(f=>({...f,nin:e.target.value}))} placeholder="e.g. CM90001234ABCD"/></div>
                   <div className="fg"><label className="fl">Join Date</label><input className="fi" type="date" value={profF.joinDate||""} onChange={e=>setProfF(f=>({...f,joinDate:e.target.value}))}/></div>
                   <div className="fg ff"><label className="fl">Physical Address</label><input className="fi" value={profF.address||""} onChange={e=>setProfF(f=>({...f,address:e.target.value}))} placeholder="Village, Parish, District"/></div>
-                  <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>💰 Contributions</div></div>
+                  <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>💰 Contributions</div></div>
                   {[["Membership Fee","membership"],["Annual Sub","annualSub"],["Monthly Savings","monthlySavings"],["Welfare","welfare"],["Shares","shares"]].map(([lb,k])=>(
                     <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={profF[k]||0} onChange={e=>setProfF(f=>({...f,[k]:e.target.value}))}/></div>
                   ))}
                   <div className="fg"><label className="fl">Voluntary Deposit (UGX)</label><input className="fi" type="number" value={profF.voluntaryDeposit||0} onChange={e=>setProfF(f=>({...f,voluntaryDeposit:+e.target.value||0}))}/><span className="fhint">Extra savings deposited by member — added to total</span></div>
-                  <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>👨‍👩‍👧 Next of Kin</div></div>
-                  <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"7px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}>Required for Benevolent Fund. BIDA must know who to contact and support in case of member's death or serious illness.</div></div>
+                  <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>👨‍👩‍👧 Next of Kin</div></div>
+                  <div className="fg ff"><div style={{background:"rgba(21,101,192,.07)",border:"1px solid rgba(21,101,192,.25)",borderRadius:8,padding:"7px 11px",fontSize:10,color:"var(--p600)",lineHeight:1.6}}>Required for Benevolent Fund. BIDA must know who to contact and support in case of member's death or serious illness.</div></div>
                   <div className="fg"><label className="fl">NOK Full Name</label><input className="fi" value={(profF.nextOfKin||{}).name||""} onChange={e=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),name:e.target.value}}))}/></div>
                   <div className="fg"><label className="fl">NOK Phone</label><input className="fi" type="tel" value={(profF.nextOfKin||{}).phone||""} onChange={e=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),phone:e.target.value}}))}/></div>
                   <div className="fg"><label className="fl">Relationship</label><input className="fi" value={(profF.nextOfKin||{}).relationship||""} onChange={e=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),relationship:e.target.value}}))} placeholder="e.g. Spouse, Child, Sibling"/></div>
@@ -4963,7 +5237,7 @@ function AppInner(){
                   <div className="fg ff"><label className="fl">Is NOK a BIDA Member?</label>
                     <div style={{display:"flex",gap:8,marginTop:4}}>
                       {[["yes","Yes — BIDA Member"],["no","No — Non-Member"]].map(([v,lbl])=>(
-                        <button key={v} type="button" onClick={()=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),isMember:v==="yes"}}))} style={{flex:1,padding:"7px",borderRadius:8,border:((profF.nextOfKin||{}).isMember===true&&v==="yes")||((profF.nextOfKin||{}).isMember===false&&v==="no")?"2px solid var(--b600)":"2px solid var(--bdr)",background:((profF.nextOfKin||{}).isMember===true&&v==="yes")||((profF.nextOfKin||{}).isMember===false&&v==="no")?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:700}}>{lbl}</button>
+                        <button key={v} type="button" onClick={()=>setProfF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),isMember:v==="yes"}}))} style={{flex:1,padding:"7px",borderRadius:8,border:((profF.nextOfKin||{}).isMember===true&&v==="yes")||((profF.nextOfKin||{}).isMember===false&&v==="no")?"2px solid var(--p600)":"2px solid var(--bdr)",background:((profF.nextOfKin||{}).isMember===true&&v==="yes")||((profF.nextOfKin||{}).isMember===false&&v==="no")?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:700}}>{lbl}</button>
                       ))}
                     </div>
                   </div>
@@ -4982,22 +5256,22 @@ function AppInner(){
           <div className="modal wide">
             <div className="mhdr"><div className="mtitle">Add New Member</div><button className="mclose" onClick={()=>setAddMModal(false)}>✕</button></div>
             <div className="fgrid">
-              <div className="fg ff" style={{display:"flex",alignItems:"center",gap:14,padding:"10px 12px",background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:10}}>
+              <div className="fg ff" style={{display:"flex",alignItems:"center",gap:14,padding:"10px 12px",background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:10}}>
                 <Avatar name={addMF.name||"New"} size={52} photoUrl={addMF.photoUrl||""}/>
                 <div style={{flex:1}}>
                   <div style={{fontSize:10,fontWeight:700,fontFamily:"var(--mono)",color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>Member Photo <span style={{fontWeight:400}}>(optional)</span></div>
-                  <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f2=e.target.files?.[0];if(!f2)return;compressImage(f2,c=>setAddMF(f=>({...f,photoUrl:c})));}}/>  </label>
-                  {addMF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"#c62828",cursor:"pointer"}} onClick={()=>setAddMF(f=>({...f,photoUrl:""}))}>✕</button>}
+                  <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--p600),var(--p700))",color:"#fff",borderRadius:8,padding:"7px 13px",fontSize:11,fontWeight:700,cursor:"pointer"}}>📷 Upload<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f2=e.target.files?.[0];if(!f2)return;compressImage(f2,c=>setAddMF(f=>({...f,photoUrl:c})));}}/>  </label>
+                  {addMF.photoUrl&&<button style={{marginLeft:8,background:"none",border:"1px solid #ffcdd2",borderRadius:7,padding:"5px 10px",fontSize:10,color:"var(--error)",cursor:"pointer"}} onClick={()=>setAddMF(f=>({...f,photoUrl:""}))}>✕</button>}
                 </div>
               </div>
               <div className="fg ff"><label className="fl">Full Name</label><input className="fi" value={addMF.name} onChange={e=>setAddMF(f=>({...f,name:e.target.value}))} placeholder="e.g. KATUNTU HANNAH"/></div>
-              <div className="fg"><label className="fl">Voluntary Extra Deposit <span style={{fontSize:9,fontWeight:400,color:"var(--b500)"}}>— optional top-up savings</span></label>
+              <div className="fg"><label className="fl">Voluntary Extra Deposit <span style={{fontSize:9,fontWeight:400,color:"var(--p500)"}}>— optional top-up savings</span></label>
                   <input className="fi" type="number" value={addMF.voluntaryDeposit||""} onChange={e=>setAddMF(f=>({...f,voluntaryDeposit:+e.target.value||0}))} placeholder="0 — member may deposit extra savings beyond regular contributions"/>
                 </div>
                 <div className="fg ff">
-                <div style={{background:"#e8f5e9",border:"1.5px solid #a5d6a7",borderRadius:10,padding:"10px 14px",marginBottom:4}}>
-                  <div style={{fontWeight:700,fontSize:12,color:"#1b5e20",marginBottom:6}}>💳 Initial Payments — Member pays INTO BIDA</div>
-                  <div style={{fontSize:11,color:"#2e7d32",marginBottom:8,lineHeight:1.6}}>
+                <div style={{background:"rgba(0,200,83,.08)",border:"1.5px solid #a5d6a7",borderRadius:10,padding:"10px 14px",marginBottom:4}}>
+                  <div style={{fontWeight:700,fontSize:12,color:"var(--mint-600)",marginBottom:6}}>💳 Initial Payments — Member pays INTO BIDA</div>
+                  <div style={{fontSize:11,color:"var(--mint-600)",marginBottom:8,lineHeight:1.6}}>
                     The new member brings money <strong>to BIDA</strong>. Confirm the amounts below and tick when collected.
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
@@ -5010,14 +5284,14 @@ function AppInner(){
                     ))}
                     <div style={{background:"#fff",border:"1.5px solid #1565c0",borderRadius:8,padding:"7px 10px"}}>
                       <div style={{fontSize:9,color:"var(--tmuted)",textTransform:"uppercase",marginBottom:2}}>Total to Collect</div>
-                      <div style={{fontWeight:900,fontSize:15,color:"#1565c0",fontFamily:"var(--mono)"}}>{fmt((+addMF.membership||0)+(+addMF.annualSub||0)+(+addMF.monthlySavings||0))}</div>
+                      <div style={{fontWeight:900,fontSize:15,color:"var(--p600)",fontFamily:"var(--mono)"}}>{fmt((+addMF.membership||0)+(+addMF.annualSub||0)+(+addMF.monthlySavings||0))}</div>
                     </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(27,94,32,.1)",borderRadius:8,padding:"8px 12px"}}>
                     <input type="checkbox" id="initPaid" checked={!!addMF.initialPaymentReceived} onChange={e=>setAddMF(f=>({...f,initialPaymentReceived:e.target.checked}))} style={{width:16,height:16,cursor:"pointer"}}/>
-                    <label htmlFor="initPaid" style={{fontSize:12,fontWeight:700,color:"#1b5e20",cursor:"pointer"}}>✅ Initial payments received and banked</label>
+                    <label htmlFor="initPaid" style={{fontSize:12,fontWeight:700,color:"var(--mint-600)",cursor:"pointer"}}>✅ Initial payments received and banked</label>
                   </div>
-                  {!addMF.initialPaymentReceived&&<div style={{marginTop:6,fontSize:10,color:"#e65100"}}>⚠ Confirm receipt before submitting.</div>}
+                  {!addMF.initialPaymentReceived&&<div style={{marginTop:6,fontSize:10,color:"var(--warning)"}}>⚠ Confirm receipt before submitting.</div>}
                 </div>
               </div>
 
@@ -5025,7 +5299,7 @@ function AppInner(){
                 <label className="fl">How did they hear about BIDA? <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required)</span></label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
                   {[["member","👤 BIDA Member"],["community","🏘 Community"],["word_of_mouth","🗣 Word of Mouth"],["online","🌐 Online"],["other","📋 Other"]].map(([v,lbl])=>(
-                    <button key={v} type="button" onClick={()=>setAddMF(f=>({...f,referralSource:v,referredById:v==="member"?f.referredById:""}))} style={{padding:"7px 12px",borderRadius:9,border:addMF.referralSource===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:addMF.referralSource===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:addMF.referralSource===v?700:400,color:addMF.referralSource===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                    <button key={v} type="button" onClick={()=>setAddMF(f=>({...f,referralSource:v,referredById:v==="member"?f.referredById:""}))} style={{padding:"7px 12px",borderRadius:9,border:addMF.referralSource===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:addMF.referralSource===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:addMF.referralSource===v?700:400,color:addMF.referralSource===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
                   ))}
                 </div>
                 {addMF.referralSource==="member"&&(
@@ -5043,12 +5317,12 @@ function AppInner(){
                       const commission=eligible?Math.round(commBase*0.01):0;
                       const payDate=new Date(addMF.joinDate||new Date());payDate.setMonth(payDate.getMonth()+1);
                       return eligible
-                        ? <div style={{marginTop:6,background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:7,padding:"6px 10px",fontSize:10,color:"#1b5e20",lineHeight:1.6}}>
+                        ? <div style={{marginTop:6,background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:7,padding:"6px 10px",fontSize:10,color:"var(--mint-600)",lineHeight:1.6}}>
                           🎉 <strong>{ref?.name}</strong> earns a referral commission of <strong>{fmt(commission)}</strong><br/>
                         Base: 1% of (monthly savings {fmt(ref?.monthlySavings||0)} + welfare {fmt(ref?.welfare||0)}) = {fmt(commBase)}<br/>
                         Payable after 1 month: <strong>{payDate.toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</strong>
                         </div>
-                        : <div style={{marginTop:6,background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:7,padding:"6px 10px",fontSize:10,color:"#e65100",lineHeight:1.6}}>
+                        : <div style={{marginTop:6,background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:7,padding:"6px 10px",fontSize:10,color:"var(--warning)",lineHeight:1.6}}>
                           ⚠ <strong>{ref?.name}</strong> will <strong>not</strong> receive a commission — new member must pay an annual subscription of at least UGX 50,000 (currently UGX {(+addMF.annualSub||0).toLocaleString()}).
                         </div>;
                     })()}
@@ -5062,16 +5336,16 @@ function AppInner(){
               <div className="fg"><label className="fl">Join Date</label><input className="fi" type="date" value={addMF.joinDate} onChange={e=>setAddMF(f=>({...f,joinDate:e.target.value}))}/></div>
               <div className="fg ff"><label className="fl">Physical Address</label><input className="fi" value={addMF.address} onChange={e=>setAddMF(f=>({...f,address:e.target.value}))} placeholder="Village, Parish, District"/></div>
 
-              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>👨‍👩‍👧 Next of Kin <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required for Benevolent Fund)</span></div></div>
-              <div className="fg ff"><div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:8,padding:"7px 11px",fontSize:10,color:"#e65100",lineHeight:1.6}}>BIDA requires next-of-kin details to activate the Benevolent Fund for this member in case of death or serious illness.</div></div>
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>👨‍👩‍👧 Next of Kin <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required for Benevolent Fund)</span></div></div>
+              <div className="fg ff"><div style={{background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:8,padding:"7px 11px",fontSize:10,color:"var(--warning)",lineHeight:1.6}}>BIDA requires next-of-kin details to activate the Benevolent Fund for this member in case of death or serious illness.</div></div>
               <div className="fg"><label className="fl">NOK Full Name</label><input className="fi" value={(addMF.nextOfKin||{}).name||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),name:e.target.value}}))}/></div>
               <div className="fg"><label className="fl">NOK Phone</label><input className="fi" type="tel" value={(addMF.nextOfKin||{}).phone||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),phone:e.target.value}}))}/></div>
               <div className="fg"><label className="fl">Relationship to Member</label><input className="fi" value={(addMF.nextOfKin||{}).relationship||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),relationship:e.target.value}}))} placeholder="e.g. Spouse, Child, Parent, Sibling"/></div>
               <div className="fg"><label className="fl">NOK NIN</label><input className="fi" value={(addMF.nextOfKin||{}).nin||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),nin:e.target.value}}))}/></div>
               <div className="fg ff"><label className="fl">NOK Physical Address</label><input className="fi" value={(addMF.nextOfKin||{}).address||""} onChange={e=>setAddMF(f=>({...f,nextOfKin:{...(f.nextOfKin||{}),address:e.target.value}}))} placeholder="Village, Parish, District"/></div>
 
-              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💰 Initial Contributions</div></div>
-              <div className="fg ff"><div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"8px 11px",fontSize:10,color:"#1565c0",lineHeight:1.6}}><strong>📌 Contribution Rules:</strong> Monthly savings minimum: UGX <strong>10,000</strong>. Members may contribute <strong>70,000 or more</strong> per month — no upper cap. <strong>40% of monthly savings is auto-allocated to welfare pool.</strong></div></div>
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 2px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💰 Initial Contributions</div></div>
+              <div className="fg ff"><div style={{background:"rgba(21,101,192,.07)",border:"1px solid rgba(21,101,192,.25)",borderRadius:8,padding:"8px 11px",fontSize:10,color:"var(--p600)",lineHeight:1.6}}><strong>📌 Contribution Rules:</strong> Monthly savings minimum: UGX <strong>10,000</strong>. Members may contribute <strong>70,000 or more</strong> per month — no upper cap. <strong>40% of monthly savings is auto-allocated to welfare pool.</strong></div></div>
               {[["Membership Fee","membership"],["Annual Sub","annualSub"]].map(([lb,k])=>(
                 <div className="fg" key={k}><label className="fl">{lb} (UGX)</label><input className="fi" type="number" value={addMF[k]} onChange={e=>setAddMF(f=>({...f,[k]:e.target.value}))} placeholder="0"/></div>
               ))}
@@ -5079,18 +5353,18 @@ function AppInner(){
               <div className="fg"><label className="fl">Welfare (UGX) <span style={{fontWeight:400,color:"var(--tmuted)"}}>(auto 40% of monthly)</span></label><input className="fi" type="number" value={addMF.welfare} onChange={e=>setAddMF(f=>({...f,welfare:+e.target.value||0}))} placeholder="Auto-calculated"/><span className="fhint">40% of monthly savings auto-allocated to welfare pool. Adjust if needed.</span></div>
 
               <div className="fg ff">
-                <label className="fl">Share Units <span style={{fontWeight:400,color:"var(--b500)",fontSize:9}}>— UGX 50,000 per unit (equity in the cooperative)</span></label>
+                <label className="fl">Share Units <span style={{fontWeight:400,color:"var(--p500)",fontSize:9}}>— UGX 50,000 per unit (equity in the cooperative)</span></label>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
                   {[0,1,2,3,4,5,6].map(u=>(
                     <button key={u} type="button"
                       onClick={()=>setAddMF(f=>({...f,shares:u*SHARE_UNIT_VALUE,shareUnitsInput:u}))}
-                      style={{padding:"7px 11px",borderRadius:8,border:(addMF.shareUnitsInput||0)===u?"2px solid var(--b600)":"1.5px solid var(--bdr)",background:(addMF.shareUnitsInput||0)===u?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:(addMF.shareUnitsInput||0)===u?700:400,color:(addMF.shareUnitsInput||0)===u?"var(--b700)":"var(--tm)",textAlign:"center"}}>
+                      style={{padding:"7px 11px",borderRadius:8,border:(addMF.shareUnitsInput||0)===u?"2px solid var(--p600)":"1.5px solid var(--bdr)",background:(addMF.shareUnitsInput||0)===u?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:(addMF.shareUnitsInput||0)===u?700:400,color:(addMF.shareUnitsInput||0)===u?"var(--p700)":"var(--tm)",textAlign:"center"}}>
                       <div>{u===0?"None":u+" unit"+(u>1?"s":"")}</div>
-                      <div style={{fontSize:9,color:(addMF.shareUnitsInput||0)===u?"var(--b600)":"var(--tmuted)",fontFamily:"var(--mono)"}}>{u===0?"—":fmt(u*SHARE_UNIT_VALUE)}</div>
+                      <div style={{fontSize:9,color:(addMF.shareUnitsInput||0)===u?"var(--p600)":"var(--tmuted)",fontFamily:"var(--mono)"}}>{u===0?"—":fmt(u*SHARE_UNIT_VALUE)}</div>
                     </button>
                   ))}
                 </div>
-                {(addMF.shares||0)>0&&<div style={{fontSize:10,color:"var(--b600)",marginTop:4,fontFamily:"var(--mono)",fontWeight:600}}>Share capital: {fmt(addMF.shares||0)}</div>}
+                {(addMF.shares||0)>0&&<div style={{fontSize:10,color:"var(--p600)",marginTop:4,fontFamily:"var(--mono)",fontWeight:600}}>Share capital: {fmt(addMF.shares||0)}</div>}
               </div>
 
               <div className="fg ff">
@@ -5099,11 +5373,11 @@ function AppInner(){
                 <span className="fhint">Member can deposit any extra amount at any time. This is counted in their total savings.</span>
               </div>
 
-              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 6px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💳 Mode of Initial Payment</div></div>
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"4px 0 6px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>💳 Mode of Initial Payment</div></div>
               <div className="fg ff">
                 <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
                   {[["cash","💵 Cash"],["bank","🏦 Bank"],["mtn","📱 MTN MoMo"],["airtel","📱 Airtel"]].map(([v,lbl])=>(
-                    <button key={v} onClick={()=>setAddMF(f=>({...f,payMode:v}))} style={{flex:1,minWidth:80,padding:"7px 4px",borderRadius:9,border:addMF.payMode===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:addMF.payMode===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:addMF.payMode===v?700:400,color:addMF.payMode===v?"var(--b700)":"var(--tm)"}}>
+                    <button key={v} onClick={()=>setAddMF(f=>({...f,payMode:v}))} style={{flex:1,minWidth:80,padding:"7px 4px",borderRadius:9,border:addMF.payMode===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:addMF.payMode===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:addMF.payMode===v?700:400,color:addMF.payMode===v?"var(--p700)":"var(--tm)"}}>
                       {lbl}
                     </button>
                   ))}
@@ -5138,7 +5412,7 @@ function AppInner(){
               </div>
               <div style={{display:"flex",gap:6}}>
                 {[["pending","⏳ Pending"],["approved","✅ Approve"],["rejected","❌ Reject"]].map(([v,lbl])=>(
-                  <button key={v} type="button" onClick={()=>setInvF(f=>({...f,approvalStatus:v}))} style={{padding:"4px 10px",borderRadius:7,border:invF.approvalStatus===v?"2px solid var(--b600)":"1px solid var(--bdr)",background:invF.approvalStatus===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:invF.approvalStatus===v?700:400}}>{lbl}</button>
+                  <button key={v} type="button" onClick={()=>setInvF(f=>({...f,approvalStatus:v}))} style={{padding:"4px 10px",borderRadius:7,border:invF.approvalStatus===v?"2px solid var(--p600)":"1px solid var(--bdr)",background:invF.approvalStatus===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:invF.approvalStatus===v?700:400}}>{lbl}</button>
                 ))}
               </div>
             </div>
@@ -5148,7 +5422,7 @@ function AppInner(){
               <div className="fg ff"><label className="fl">Investment Type</label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
                   {[["unit_trust","📦 Unit Trust"],["treasury_bond","🏛 Treasury Bond"],["fixed_deposit","🏦 Fixed Deposit"],["money_market","💹 Money Market"],["other","📋 Other"]].map(([v,lbl])=>(
-                    <button key={v} type="button" onClick={()=>setInvF(f=>({...f,type:v}))} style={{flex:1,minWidth:110,padding:"7px 6px",borderRadius:9,border:invF.type===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:invF.type===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:invF.type===v?700:400,color:invF.type===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                    <button key={v} type="button" onClick={()=>setInvF(f=>({...f,type:v}))} style={{flex:1,minWidth:110,padding:"7px 6px",borderRadius:9,border:invF.type===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:invF.type===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:invF.type===v?700:400,color:invF.type===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
                   ))}
                 </div>
               </div>
@@ -5169,22 +5443,22 @@ function AppInner(){
                   const cashInBk=(savT.total||0)+_rep+_iret-_dis-(totalExpenses||0)-_inv;
                   const maxInv=Math.round(cashInBk*0.20);
                   const over=(+invF.amount||0)>maxInv;
-                  return <span className="fhint" style={{color:over?"#c62828":"var(--b500)"}}>Max investable: {fmt(maxInv)} (20% of cash in bank {fmt(cashInBk)}){over?" — ⚠ EXCEEDS LIMIT":""}</span>;
+                  return <span className="fhint" style={{color:over?"#c62828":"var(--p500)"}}>Max investable: {fmt(maxInv)} (20% of cash in bank {fmt(cashInBk)}){over?" — ⚠ EXCEEDS LIMIT":""}</span>;
                 })()}
               </div>
               <div className="fg"><label className="fl">Date Invested</label><input className="fi" type="date" value={invF.dateInvested} onChange={e=>setInvF(f=>({...f,dateInvested:e.target.value}))}/></div>
-              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Interest Earned (UGX)</label><input className="fi" value={invF.interestEarned} onChange={e=>setInvF(f=>({...f,interestEarned:e.target.value}))} placeholder="0" style={{borderColor:"#a5d6a7"}}/><span className="fhint">Update as returns come in</span></div>
+              <div className="fg"><label className="fl" style={{color:"var(--mint-600)"}}>Interest Earned (UGX)</label><input className="fi" value={invF.interestEarned} onChange={e=>setInvF(f=>({...f,interestEarned:e.target.value}))} placeholder="0" style={{borderColor:"#a5d6a7"}}/><span className="fhint">Update as returns come in</span></div>
               <div className="fg"><label className="fl">Last Updated</label><input className="fi" type="date" value={invF.lastUpdated} onChange={e=>setInvF(f=>({...f,lastUpdated:e.target.value}))}/></div>
               <div className="fg ff"><label className="fl">Status</label>
                 <div style={{display:"flex",gap:8,marginTop:4}}>
                   {[["active","● Active"],["closed","◼ Closed"]].map(([v,lbl])=>(
-                    <button key={v} type="button" onClick={()=>setInvF(f=>({...f,status:v}))} style={{flex:1,padding:"8px",borderRadius:9,border:invF.status===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:invF.status===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:invF.status===v?700:400}}>{lbl}</button>
+                    <button key={v} type="button" onClick={()=>setInvF(f=>({...f,status:v}))} style={{flex:1,padding:"8px",borderRadius:9,border:invF.status===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:invF.status===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:invF.status===v?700:400}}>{lbl}</button>
                   ))}
                 </div>
               </div>
               <div className="fg ff"><label className="fl">Notes</label><input className="fi" value={invF.notes} onChange={e=>setInvF(f=>({...f,notes:e.target.value}))} placeholder="e.g. 12-month bond at 17% p.a., maturity date..."/></div>
 
-              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>✅ Approval Details</div></div>
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>✅ Approval Details</div></div>
               <div className="fg ff">
                 <label className="fl">Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(active BIDA member)</span></label>
                 <select className="fi" value={invF.approvedByMemberId||""} onChange={e=>{
@@ -5194,13 +5468,13 @@ function AppInner(){
                   <option value="">— Select approving member —</option>
                   {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
-                {invF.approvedBy&&<div style={{fontSize:10,color:"#1b5e20",marginTop:3}}>✓ Approved by: {invF.approvedBy}</div>}
+                {invF.approvedBy&&<div style={{fontSize:10,color:"var(--mint-600)",marginTop:3}}>✓ Approved by: {invF.approvedBy}</div>}
               </div>
               <div className="fg"><label className="fl">Approval Date</label><input className="fi" type="date" value={invF.approvalDate||""} onChange={e=>setInvF(f=>({...f,approvalDate:e.target.value}))}/></div>
 
-              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>📎 Supporting Documents (stored in BIDA)</div></div>
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:8,borderTop:"1px solid var(--bdr)"}}>📎 Supporting Documents (stored in BIDA)</div></div>
               <div className="fg ff">
-                <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--b600),var(--b700))",color:"#fff",borderRadius:8,padding:"8px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                <label style={{display:"inline-flex",alignItems:"center",gap:6,background:"linear-gradient(135deg,var(--p600),var(--p700))",color:"#fff",borderRadius:8,padding:"8px 14px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                   📄 Attach Document
                   <input type="file" accept="image/*,application/pdf,.doc,.docx" multiple style={{display:"none"}} onChange={e=>{
                     const files=Array.from(e.target.files||[]);
@@ -5220,24 +5494,24 @@ function AppInner(){
                 {(invF.docNames||[]).length>0&&(
                   <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>
                     {(invF.docNames||[]).map((name,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:7,padding:"4px 9px",fontSize:10}}>
-                        <span style={{color:"#1b5e20",flex:1}}>📄 {name}</span>
-                        {invF.documents[i]&&invF.documents[i].startsWith("data:image")&&<a href={invF.documents[i]} target="_blank" rel="noreferrer" style={{color:"#1565c0",fontSize:9}}>View</a>}
-                        {invF.documents[i]&&invF.documents[i].startsWith("data:application/pdf")&&<a href={invF.documents[i]} download={name} style={{color:"#1565c0",fontSize:9}}>Download</a>}
-                        <button type="button" onClick={()=>setInvF(f=>({...f,documents:f.documents.filter((_,j)=>j!==i),docNames:f.docNames.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"#c62828",cursor:"pointer",fontSize:11,padding:0}}>✕</button>
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:7,padding:"4px 9px",fontSize:10}}>
+                        <span style={{color:"var(--mint-600)",flex:1}}>📄 {name}</span>
+                        {invF.documents[i]&&invF.documents[i].startsWith("data:image")&&<a href={invF.documents[i]} target="_blank" rel="noreferrer" style={{color:"var(--p600)",fontSize:9}}>View</a>}
+                        {invF.documents[i]&&invF.documents[i].startsWith("data:application/pdf")&&<a href={invF.documents[i]} download={name} style={{color:"var(--p600)",fontSize:9}}>Download</a>}
+                        <button type="button" onClick={()=>setInvF(f=>({...f,documents:f.documents.filter((_,j)=>j!==i),docNames:f.docNames.filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"var(--error)",cursor:"pointer",fontSize:11,padding:0}}>✕</button>
                       </div>
                     ))}
                   </div>
                 )}
-                {(invF.docNames||[]).length===0&&<div style={{marginTop:6,fontSize:10,color:"#c62828",fontStyle:"italic"}}>⚠ No documents attached. Investment approval requires at least one supporting document.</div>}
+                {(invF.docNames||[]).length===0&&<div style={{marginTop:6,fontSize:10,color:"var(--error)",fontStyle:"italic"}}>⚠ No documents attached. Investment approval requires at least one supporting document.</div>}
               </div>
             </div>
 
             {(+invF.amount>0||+invF.interestEarned>0)&&(
               <React.Fragment>
                 <div className="div"/>
-                <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px"}}>
-                  <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontFamily:"var(--mono)"}}>📊 Distribution Preview</div>
+                <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px"}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"var(--p700)",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontFamily:"var(--mono)"}}>📊 Distribution Preview</div>
                   <div className="crow"><span className="cl">Amount invested</span><span className="cv">{fmt(+invF.amount||0)}</span></div>
                   <div className="crow"><span className="cl">Interest earned</span><span className="cv ok">{fmt(+invF.interestEarned||0)}</span></div>
                   <div className="crow"><span className="cl">Retained in pool (60%)</span><span className="cv">{fmt(Math.round((+invF.interestEarned||0)*0.6))}</span></div>
@@ -5250,7 +5524,7 @@ function AppInner(){
               <button className="btn bp" onClick={saveInv} disabled={!editInv&&(invF.docNames||[]).length===0&&invF.approvalStatus!=="approved"}>
                 {editInv?"Save Changes":"Record Investment"}
               </button>
-              {!editInv&&(invF.docNames||[]).length===0&&<span style={{fontSize:10,color:"#c62828",alignSelf:"center"}}>Attach a document to proceed</span>}
+              {!editInv&&(invF.docNames||[]).length===0&&<span style={{fontSize:10,color:"var(--error)",alignSelf:"center"}}>Attach a document to proceed</span>}
             </div>
           </div>
         </div>
@@ -5263,7 +5537,7 @@ function AppInner(){
               <div className="mtitle">📒 Record Contribution</div>
               <button className="mclose" onClick={()=>setContribModal(false)}>✕</button>
             </div>
-            <div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:9,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#1565c0",lineHeight:1.6}}>
+            <div style={{background:"rgba(21,101,192,.07)",border:"1px solid rgba(21,101,192,.25)",borderRadius:9,padding:"8px 12px",marginBottom:12,fontSize:11,color:"var(--p600)",lineHeight:1.6}}>
               This logs a single contribution payment from a member and adds it to their running total. Use this to record monthly payments as they come in.
             </div>
             <div className="fgrid">
@@ -5286,7 +5560,7 @@ function AppInner(){
                 <label className="fl">Category</label>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
                   {[["monthlySavings","💰 Monthly Savings"],["welfare","🛡 Welfare"],["annualSub","📅 Annual Sub"],["shares","📈 Shares"],["voluntaryDeposit","➕ Voluntary"]].map(([v,lbl])=>(
-                    <button key={v} type="button" onClick={()=>setContribF(f=>({...f,category:v}))} style={{padding:"6px 11px",borderRadius:8,border:contribF.category===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:contribF.category===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:contribF.category===v?700:400,color:contribF.category===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                    <button key={v} type="button" onClick={()=>setContribF(f=>({...f,category:v}))} style={{padding:"6px 11px",borderRadius:8,border:contribF.category===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:contribF.category===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:contribF.category===v?700:400,color:contribF.category===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
                   ))}
                 </div>
               </div>
@@ -5296,11 +5570,11 @@ function AppInner(){
               </div>
               <div className="fg ff">
                 <label className="fl">Attach Receipt <span style={{fontWeight:400,color:"var(--tmuted)"}}>(photo or PDF, optional)</span></label>
-                <label style={{display:"flex",alignItems:"center",gap:8,padding:"9px 13px",borderRadius:9,border:"1.5px dashed var(--bdr2)",background:"var(--b50)",cursor:"pointer",fontSize:12,color:"var(--b700)"}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,padding:"9px 13px",borderRadius:9,border:"1.5px dashed var(--bdr2)",background:"var(--p50)",cursor:"pointer",fontSize:12,color:"var(--p700)"}}>
                   📎 {contribF.attachmentName||"Choose file…"}
                   <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const r=new FileReader();r.onload=x=>setContribF(f=>({...f,attachmentName:file.name,attachmentData:x.target.result}));r.readAsDataURL(file);}}/>
                 </label>
-                {contribF.attachmentName&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}><div style={{fontSize:10,color:"#1b5e20",fontFamily:"var(--mono)"}}>✓ {contribF.attachmentName}</div><button type="button" onClick={()=>setContribF(f=>({...f,attachmentName:"",attachmentData:""}))} style={{fontSize:10,background:"none",border:"none",color:"#c62828",cursor:"pointer",padding:0}}>✕ Remove</button></div>}
+                {contribF.attachmentName&&<div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}><div style={{fontSize:10,color:"var(--mint-600)",fontFamily:"var(--mono)"}}>✓ {contribF.attachmentName}</div><button type="button" onClick={()=>setContribF(f=>({...f,attachmentName:"",attachmentData:""}))} style={{fontSize:10,background:"none",border:"none",color:"var(--error)",cursor:"pointer",padding:0}}>✕ Remove</button></div>}
               </div>
             </div>
             {contribF.memberId&&contribF.amount&&(()=>{
@@ -5309,8 +5583,8 @@ function AppInner(){
               const currentVal=+m[contribF.category]||0;
               const newVal=currentVal+(+contribF.amount||0);
               return (
-                <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"9px 12px",marginTop:8}}>
-                  <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6,fontFamily:"var(--mono)"}}>Preview</div>
+                <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"9px 12px",marginTop:8}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.6,marginBottom:6,fontFamily:"var(--mono)"}}>Preview</div>
                   <div className="crow"><span className="cl">{m.name} — current {contribF.category}</span><span className="cv">{fmt(currentVal)}</span></div>
                   <div className="crow"><span className="cl">Adding</span><span className="cv ok">+ {fmt(+contribF.amount||0)}</span></div>
                   <div className="crow" style={{borderTop:"1px solid var(--bdr)",paddingTop:4,marginTop:3}}><span className="cl">New total</span><span className="cv ok" style={{fontWeight:900}}>{fmt(newVal)}</span></div>
@@ -5336,8 +5610,8 @@ function AppInner(){
             <div style={{display:"flex",gap:8,marginBottom:14}}>
               {[[true,"👤 BIDA Member","1 year mandate, must maintain savings"],[false,"🏢 Non-Member","6 months · UGX 25,000 registration fee"]].map(([v,lbl,sub])=>(
                 <button key={String(v)} type="button" onClick={()=>setSpF(f=>({...f,isMember:v,memberId:v?f.memberId:"",regFee:v?0:25000}))}
-                  style={{flex:1,padding:"10px 8px",borderRadius:10,border:spF.isMember===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:spF.isMember===v?"var(--b100)":"#fff",cursor:"pointer",textAlign:"left"}}>
-                  <div style={{fontWeight:700,fontSize:12,color:spF.isMember===v?"var(--b700)":"var(--tm)"}}>{lbl}</div>
+                  style={{flex:1,padding:"10px 8px",borderRadius:10,border:spF.isMember===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:spF.isMember===v?"var(--p100)":"#fff",cursor:"pointer",textAlign:"left"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:spF.isMember===v?"var(--p700)":"var(--tm)"}}>{lbl}</div>
                   <div style={{fontSize:9,color:"var(--tmuted)",marginTop:2}}>{sub}</div>
                 </button>
               ))}
@@ -5392,14 +5666,14 @@ function AppInner(){
                 setSpF(f=>({...f,registeredDate:rd,expiryDate:exp.toISOString().split("T")[0]}));
               }}/></div>
               <div className="fg"><label className="fl">Expiry Date <span style={{fontWeight:400,color:"var(--tmuted)"}}>({spF.isMember?"12 months":"6 months"})</span></label>
-                <input className="fi" type="date" value={spF.expiryDate||""} readOnly style={{background:"var(--b50)",color:"var(--tmuted)"}}/>
+                <input className="fi" type="date" value={spF.expiryDate||""} readOnly style={{background:"var(--p50)",color:"var(--tmuted)"}}/>
               </div>
 
               {!spF.isMember&&(
                 <div className="fg ff">
                   <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
                     <div>
-                      <div style={{fontWeight:700,fontSize:12,color:"#e65100"}}>💳 Registration Fee: UGX 25,000</div>
+                      <div style={{fontWeight:700,fontSize:12,color:"var(--warning)"}}>💳 Registration Fee: UGX 25,000</div>
                       <div style={{fontSize:10,color:"#795548",marginTop:2}}>Non-refundable. Covers 6-month service mandate.</div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -5410,7 +5684,7 @@ function AppInner(){
                 </div>
               )}
 
-              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:6,borderTop:"1px solid var(--bdr)"}}>✅ Approval</div></div>
+              <div className="fg ff"><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,paddingTop:6,borderTop:"1px solid var(--bdr)"}}>✅ Approval</div></div>
               <div className="fg ff">
                 <label className="fl">Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(BIDA member)</span></label>
                 <select className="fi" value={spF.approvedByMemberId||""} onChange={e=>{
@@ -5425,7 +5699,7 @@ function AppInner(){
                 <label className="fl">Approval Status</label>
                 <div style={{display:"flex",gap:7,marginTop:4}}>
                   {[["pending","⏳ Pending"],["approved","✅ Approved"],["rejected","❌ Rejected"]].map(([v,lbl])=>(
-                    <button key={v} type="button" onClick={()=>setSpF(f=>({...f,approvalStatus:v}))} style={{flex:1,padding:"7px",borderRadius:8,border:spF.approvalStatus===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:spF.approvalStatus===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:spF.approvalStatus===v?700:400}}>{lbl}</button>
+                    <button key={v} type="button" onClick={()=>setSpF(f=>({...f,approvalStatus:v}))} style={{flex:1,padding:"7px",borderRadius:8,border:spF.approvalStatus===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:spF.approvalStatus===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:spF.approvalStatus===v?700:400}}>{lbl}</button>
                   ))}
                 </div>
               </div>
@@ -5449,7 +5723,7 @@ function AppInner(){
                 }}>
                 {editSp!==null?"Save Changes":"Register Provider"}
               </button>
-              {!spF.isMember&&!spF.regFeePaid&&editSp===null&&<span style={{fontSize:10,color:"#c62828",alignSelf:"center"}}>Registration fee must be paid first</span>}
+              {!spF.isMember&&!spF.regFeePaid&&editSp===null&&<span style={{fontSize:10,color:"var(--error)",alignSelf:"center"}}>Registration fee must be paid first</span>}
             </div>
           </div>
         </div>
@@ -5475,9 +5749,9 @@ function AppInner(){
               </div>
 
               <div className="fg ff">
-                <div style={{display:"flex",alignItems:"center",gap:10,background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:9,padding:"8px 12px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(21,101,192,.07)",border:"1px solid rgba(21,101,192,.25)",borderRadius:9,padding:"8px 12px"}}>
                   <input type="checkbox" id="isBankCharge" checked={expF.category==="banking"} onChange={e=>setExpF(f=>({...f,category:e.target.checked?"banking":f.category==="banking"?"operations":f.category}))} style={{width:16,height:16,cursor:"pointer"}}/>
-                  <label htmlFor="isBankCharge" style={{fontSize:11,fontWeight:700,color:"#1565c0",cursor:"pointer"}}>🏦 This is a Bank Charge — will be logged under Banking category and shown separately in ledger</label>
+                  <label htmlFor="isBankCharge" style={{fontSize:11,fontWeight:700,color:"var(--p600)",cursor:"pointer"}}>🏦 This is a Bank Charge — will be logged under Banking category and shown separately in ledger</label>
                 </div>
               </div>
 
@@ -5494,7 +5768,7 @@ function AppInner(){
               <div className="fg"><label className="fl">Payer Telephone</label><input className="fi" type="tel" value={expF.issuedByPhone||""} onChange={e=>setExpF(f=>({...f,issuedByPhone:e.target.value}))} placeholder="Auto-filled from profile"/></div>
               <div className="fg"><label className="fl">Payer NIN</label><input className="fi" value={expF.issuedByNIN||""} onChange={e=>setExpF(f=>({...f,issuedByNIN:e.target.value}))} placeholder="Auto-filled from profile"/></div>
               <div className="fg ff">
-                <label className="fl" style={{color:"#1b5e20"}}>Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(must be active BIDA member)</span></label>
+                <label className="fl" style={{color:"var(--mint-600)"}}>Approved By <span style={{fontWeight:400,color:"var(--tmuted)"}}>(must be active BIDA member)</span></label>
                 <select className="fi" style={{borderColor:"#a5d6a7"}} value={expF.approverMemberId||""} onChange={e=>{
                   const m=members.find(m=>m.id===+e.target.value);
                   setExpF(f=>({...f,approverMemberId:e.target.value,approvedBy:m?m.name:"",approverPhone:m?.phone||m?.whatsapp||"",approverNIN:m?.nin||""}));
@@ -5502,14 +5776,14 @@ function AppInner(){
                   <option value="">— Select approving member —</option>
                   {members.map(m=><option key={m.id} value={m.id}>{m.name}{(m.phone||m.nin)?" ✓":""}</option>)}
                 </select>
-                {expF.approvedBy&&<div style={{fontSize:10,color:"#1b5e20",marginTop:3,fontFamily:"var(--mono)"}}>✓ {expF.approvedBy}{expF.approverPhone?" · "+expF.approverPhone:""}{expF.approverNIN?" · "+expF.approverNIN:""}</div>}
+                {expF.approvedBy&&<div style={{fontSize:10,color:"var(--mint-600)",marginTop:3,fontFamily:"var(--mono)"}}>✓ {expF.approvedBy}{expF.approverPhone?" · "+expF.approverPhone:""}{expF.approverNIN?" · "+expF.approverNIN:""}</div>}
                 {expF.issuedById&&(()=>{
                   const sp=serviceProviders.find(p=>p.memberId===+expF.issuedById&&spIsActive(p));
                   const m=members.find(m=>m.id===+expF.issuedById);
                   if(!sp){
                     const anySp=serviceProviders.find(p=>p.memberId===+expF.issuedById);
-                    if(anySp&&!spIsActive(anySp)) return <div style={{marginTop:4,fontSize:10,color:"#c62828",background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:7,padding:"4px 8px"}}>⚠ This provider's mandate has expired. They must re-register before receiving payments.</div>;
-                    return <div style={{marginTop:4,fontSize:10,color:"#e65100",background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:7,padding:"4px 8px"}}>⚠ Not in provider directory. Register this member as a service provider first, or select a registered provider.</div>;
+                    if(anySp&&!spIsActive(anySp)) return <div style={{marginTop:4,fontSize:10,color:"var(--error)",background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:7,padding:"4px 8px"}}>⚠ This provider's mandate has expired. They must re-register before receiving payments.</div>;
+                    return <div style={{marginTop:4,fontSize:10,color:"var(--warning)",background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:7,padding:"4px 8px"}}>⚠ Not in provider directory. Register this member as a service provider first, or select a registered provider.</div>;
                   }
                   const compliant=m&&isProviderCompliant(m);
                   return <div style={{marginTop:4,fontSize:10,color:compliant?"#1b5e20":"#c62828",background:compliant?"#e8f5e9":"#ffebee",border:"1px solid "+(compliant?"#a5d6a7":"#ffcdd2"),borderRadius:7,padding:"4px 8px"}}>
@@ -5517,13 +5791,13 @@ function AppInner(){
                   </div>;
                 })()}
               </div>
-              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Approver Telephone</label><input className="fi" type="tel" value={expF.approverPhone||""} onChange={e=>setExpF(f=>({...f,approverPhone:e.target.value}))} placeholder="Auto-filled from profile" style={{borderColor:"#a5d6a7"}}/></div>
-              <div className="fg"><label className="fl" style={{color:"#1b5e20"}}>Approver NIN</label><input className="fi" value={expF.approverNIN||""} onChange={e=>setExpF(f=>({...f,approverNIN:e.target.value}))} placeholder="Auto-filled from profile" style={{borderColor:"#a5d6a7"}}/></div>
+              <div className="fg"><label className="fl" style={{color:"var(--mint-600)"}}>Approver Telephone</label><input className="fi" type="tel" value={expF.approverPhone||""} onChange={e=>setExpF(f=>({...f,approverPhone:e.target.value}))} placeholder="Auto-filled from profile" style={{borderColor:"#a5d6a7"}}/></div>
+              <div className="fg"><label className="fl" style={{color:"var(--mint-600)"}}>Approver NIN</label><input className="fi" value={expF.approverNIN||""} onChange={e=>setExpF(f=>({...f,approverNIN:e.target.value}))} placeholder="Auto-filled from profile" style={{borderColor:"#a5d6a7"}}/></div>
 
               <div className="fg ff"><label className="fl">Mode of Payment</label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
                   {[["cash","💵 Cash"],["bank","🏦 Bank Transfer"],["mtn","📱 MTN MoMo"],["airtel","📱 Airtel Money"]].map(([v,lbl])=>(
-                    <button key={v} onClick={()=>setExpF(f=>({...f,payMode:v}))} style={{flex:1,minWidth:100,padding:"8px 6px",borderRadius:9,border:expF.payMode===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:expF.payMode===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:expF.payMode===v?700:400,color:expF.payMode===v?"var(--b700)":"var(--tm)"}}>
+                    <button key={v} onClick={()=>setExpF(f=>({...f,payMode:v}))} style={{flex:1,minWidth:100,padding:"8px 6px",borderRadius:9,border:expF.payMode===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:expF.payMode===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:expF.payMode===v?700:400,color:expF.payMode===v?"var(--p700)":"var(--tm)"}}>
                       {lbl}
                     </button>
                   ))}
@@ -5541,7 +5815,7 @@ function AppInner(){
               </React.Fragment>}
             </div>
             <div className="div"/>
-            <div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",marginBottom:8,fontSize:11,color:"#c62828"}}>
+            <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",marginBottom:8,fontSize:11,color:"var(--error)"}}>
               ⚠️ This expense reduces cash in bank by <strong>{expF.amount?fmt(+expF.amount):"UGX 0"}</strong>. Cash in bank after: <strong>{fmt(cashInBank-(editExp?0:+expF.amount||0))}</strong>
             </div>
             <div className="fa"><button className="btn bg" onClick={()=>setExpModal(false)}>Cancel</button><button className="btn bp" onClick={saveExp}>{editExp?"Save Changes":"Record Expense"}</button></div>
@@ -5576,29 +5850,29 @@ function AppInner(){
               <div className="fg ff"><label className="fl">Loan Type</label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
                   {[["personal","👤 Personal"],["business","💼 Business"],["education","🎓 Education"],["medical","🏥 Medical"],["agriculture","🌾 Agriculture"],["other","📋 Other"]].map(([v,lbl])=>(
-                    <button key={v} onClick={()=>setLF(f=>({...f,loanType:v}))} style={{padding:"6px 11px",borderRadius:8,border:lF.loanType===v?"2px solid var(--b600)":"2px solid var(--bdr)",background:lF.loanType===v?"var(--b100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:lF.loanType===v?700:400,color:lF.loanType===v?"var(--b700)":"var(--tm)"}}>{lbl}</button>
+                    <button key={v} onClick={()=>setLF(f=>({...f,loanType:v}))} style={{padding:"6px 11px",borderRadius:8,border:lF.loanType===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:lF.loanType===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:lF.loanType===v?700:400,color:lF.loanType===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
                   ))}
                 </div>
               </div>
               <div className="fg ff"><label className="fl">Purpose of Loan <span style={{fontWeight:400,color:"var(--tmuted)"}}>(required)</span></label><input className="fi" value={lF.loanPurpose} onChange={e=>setLF(f=>({...f,loanPurpose:e.target.value}))} placeholder="e.g. Purchase business stock, School fees for children, Medical bills..."/></div>
 
               <div className="fg ff" style={{gridColumn:"1/-1"}}>
-                <div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>👤 Borrower Details</div>
+                <div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>👤 Borrower Details</div>
                 {lF.memberId&&(()=>{
                   const m=members.find(m=>m.id===+lF.memberId);
                   const missing=[];
                   if(m&&!m.phone)missing.push("phone");
                   if(m&&!m.nin)missing.push("NIN");
                   if(m&&!m.address)missing.push("address");
-                  if(missing.length===0)return <div style={{fontSize:10,color:"#1b5e20",background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:7,padding:"4px 9px",marginBottom:4}}>✓ All details auto-filled from member profile</div>;
-                  return <div style={{fontSize:10,color:"#bf360c",background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:7,padding:"4px 9px",marginBottom:4}}>⚠ Missing from profile: <strong>{missing.join(", ")}</strong> — fill in below or update profile first</div>;
+                  if(missing.length===0)return <div style={{fontSize:10,color:"var(--mint-600)",background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:7,padding:"4px 9px",marginBottom:4}}>✓ All details auto-filled from member profile</div>;
+                  return <div style={{fontSize:10,color:"var(--warning)",background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:7,padding:"4px 9px",marginBottom:4}}>⚠ Missing from profile: <strong>{missing.join(", ")}</strong> — fill in below or update profile first</div>;
                 })()}
               </div>
               <div className="fg"><label className="fl">Telephone</label><input className="fi" type="tel" value={lF.borrowerPhone} onChange={e=>setLF(f=>({...f,borrowerPhone:e.target.value}))} placeholder="0772 000 000"/></div>
               <div className="fg"><label className="fl">National ID Number (NIN)</label><input className="fi" value={lF.borrowerNIN} onChange={e=>setLF(f=>({...f,borrowerNIN:e.target.value}))} placeholder="NIN e.g. CM90001234..."/></div>
               <div className="fg ff"><label className="fl">Physical Address</label><input className="fi" value={lF.borrowerAddress} onChange={e=>setLF(f=>({...f,borrowerAddress:e.target.value}))} placeholder="Village, Parish, District"/></div>
 
-              <div className="fg ff" style={{gridColumn:"1/-1"}}><div style={{fontSize:10,fontWeight:700,color:"#1b5e20",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>🛡 Guarantor Details <span style={{fontWeight:400,color:"var(--tmuted)"}}>(must be a BIDA member)</span></div></div>
+              <div className="fg ff" style={{gridColumn:"1/-1"}}><div style={{fontSize:10,fontWeight:700,color:"var(--mint-600)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>🛡 Guarantor Details <span style={{fontWeight:400,color:"var(--tmuted)"}}>(must be a BIDA member)</span></div></div>
               <div className="fg ff"><label className="fl">Select Guarantor</label>
                 <select className="fi" value={lF.guarantorMemberId} onChange={e=>{
                   const m=members.find(m=>m.id===+e.target.value);
@@ -5617,15 +5891,15 @@ function AppInner(){
                   if(m&&!m.phone)missing.push("phone");
                   if(m&&!m.nin)missing.push("NIN");
                   if(m&&!m.address)missing.push("address");
-                  if(missing.length===0)return <div style={{fontSize:10,color:"#1b5e20",background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:7,padding:"4px 9px",marginTop:4}}>✓ All guarantor details auto-filled from member profile</div>;
-                  return <div style={{fontSize:10,color:"#bf360c",background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:7,padding:"4px 9px",marginTop:4}}>⚠ Missing from guarantor profile: <strong>{missing.join(", ")}</strong> — fill in below or update their profile first</div>;
+                  if(missing.length===0)return <div style={{fontSize:10,color:"var(--mint-600)",background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:7,padding:"4px 9px",marginTop:4}}>✓ All guarantor details auto-filled from member profile</div>;
+                  return <div style={{fontSize:10,color:"var(--warning)",background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:7,padding:"4px 9px",marginTop:4}}>⚠ Missing from guarantor profile: <strong>{missing.join(", ")}</strong> — fill in below or update their profile first</div>;
                 })()}
               </div>
               <div className="fg"><label className="fl">Guarantor Telephone</label><input className="fi" type="tel" value={lF.guarantorPhone} onChange={e=>setLF(f=>({...f,guarantorPhone:e.target.value}))} placeholder="0772 000 000"/></div>
               <div className="fg"><label className="fl">Guarantor NIN</label><input className="fi" value={lF.guarantorNIN} onChange={e=>setLF(f=>({...f,guarantorNIN:e.target.value}))} placeholder="NIN e.g. CM90001234..."/></div>
               <div className="fg ff"><label className="fl">Guarantor Address</label><input className="fi" value={lF.guarantorAddress} onChange={e=>setLF(f=>({...f,guarantorAddress:e.target.value}))} placeholder="Village, Parish, District"/></div>
 
-              <div className="fg ff" style={{gridColumn:"1/-1"}}><div style={{fontSize:10,fontWeight:700,color:"var(--b700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>📅 Repayment Terms</div></div>
+              <div className="fg ff" style={{gridColumn:"1/-1"}}><div style={{fontSize:10,fontWeight:700,color:"var(--p700)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:1,margin:"8px 0 4px",borderTop:"1px solid var(--bdr)",paddingTop:10}}>📅 Repayment Terms</div></div>
               {(+lF.amountLoaned||0)>0&&(+lF.amountLoaned||0)<7000000&&(
                 <div className="fg ff" style={{gridColumn:"1/-1"}}>
                   <label className="fl">Repayment Period <span style={{fontWeight:400,color:"var(--tmuted)"}}>(agreed verbally with member)</span></label>
@@ -5652,10 +5926,10 @@ function AppInner(){
                 <div className="div"/>
                 {lFPreview.method==="flat"&&<FlatLoanPreview lFPreview={lFPreview} lF={lF} setLF={setLF}/>}
                 {lFPreview.method==="reducing"&&(
-                  <div style={{background:"var(--b50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px"}}>
-                    <div style={{fontSize:9,fontWeight:700,color:"var(--b700)",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontFamily:"var(--mono)"}}>📐 6% Reducing Balance — 12-month fixed</div>
+                  <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px"}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"var(--p700)",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontFamily:"var(--mono)"}}>📐 6% Reducing Balance — 12-month fixed</div>
                     <div className="crow"><span className="cl">First month payment (highest)</span><span className="cv ok" style={{fontSize:14,fontWeight:900}}>{fmt(lFPreview.monthlyPayment)}</span></div>
-                    <div className="crow"><span className="cl">Payment decreases as principal reduces</span><span className="cv" style={{color:"#1565c0"}}>✓</span></div>
+                    <div className="crow"><span className="cl">Payment decreases as principal reduces</span><span className="cv" style={{color:"var(--p600)"}}>✓</span></div>
                     <div className="crow"><span className="cl">Total interest (12mo)</span><span className="cv d">{fmt(lFPreview.totalInterest)}</span></div>
                     <div className="crow" style={{borderTop:"1px solid var(--bdr)",paddingTop:4,marginTop:3}}><span className="cl">Total due</span><span className="cv" style={{fontWeight:800}}>{fmt(lFPreview.totalDue)}</span></div>
                     {lFPreview.amountPaid>0&&<div className="crow"><span className="cl">Balance remaining</span><span className={"cv"+(lFPreview.balance>0?" d":" ok")}>{fmt(lFPreview.balance)}</span></div>}
@@ -5673,8 +5947,8 @@ function AppInner(){
               const totalInv=investments.reduce((s,i)=>s+(+i.amount||0),0);
               const liq=liquidityCheck(amt,cib,totalInv);
               return liq.ok
-                ?<div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:9,padding:"7px 12px",marginBottom:8,fontSize:11,color:"#1b5e20"}}>✅ Liquidity OK — {fmt(liq.available)} available after 30% reserve</div>
-                :<div style={{background:"#ffebee",border:"1.5px solid #ef9a9a",borderRadius:9,padding:"9px 12px",marginBottom:8,fontSize:11,color:"#c62828"}}><strong>⚠ Liquidity Alert:</strong> Available: {fmt(liq.available)} · Shortfall: {fmt(liq.shortfall)}</div>;
+                ?<div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:9,padding:"7px 12px",marginBottom:8,fontSize:11,color:"var(--mint-600)"}}>✅ Liquidity OK — {fmt(liq.available)} available after 30% reserve</div>
+                :<div style={{background:"rgba(229,57,53,.07)",border:"1.5px solid rgba(229,57,53,.3)",borderRadius:9,padding:"9px 12px",marginBottom:8,fontSize:11,color:"var(--error)"}}><strong>⚠ Liquidity Alert:</strong> Available: {fmt(liq.available)} · Shortfall: {fmt(liq.shortfall)}</div>;
             })()}
             <div className="fa"><button className="btn bg" onClick={()=>setLModal(false)}>Cancel</button><button className="btn bp" onClick={saveL}>{editL?"Save Changes":"Issue Loan"}</button></div>
           </div>
@@ -5743,20 +6017,20 @@ function PaymentRequestsInbox({members,setMembers,saveRecord,setSyncStatus,authU
   if(requests.length===0&&!loading) return null;
 
   return (
-    <div style={{background:"#fff3e0",border:"1.5px solid #ffcc80",borderRadius:12,padding:"12px 16px",marginBottom:14}}>
+    <div style={{background:"rgba(255,109,0,.07)",border:"1.5px solid #ffcc80",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:20}}>📬</span>
           <div>
-            <div style={{fontWeight:800,fontSize:13,color:"#e65100"}}>
+            <div style={{fontWeight:800,fontSize:13,color:"var(--warning)"}}>
               {loading?"Loading…":requests.length+" Pending Payment Request"+(requests.length!==1?"s":"")}
             </div>
-            <div style={{fontSize:10,color:"#f57f17"}}>Members have submitted payments awaiting your confirmation</div>
+            <div style={{fontSize:10,color:"var(--warning)"}}>Members have submitted payments awaiting your confirmation</div>
           </div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={e=>{e.stopPropagation();load();}} style={{background:"none",border:"none",color:"#e65100",fontWeight:700,fontSize:11,cursor:"pointer"}}>↻ Refresh</button>
-          <span style={{fontSize:12,color:"#e65100",fontWeight:700}}>{open?"▲":"▼"}</span>
+          <button onClick={e=>{e.stopPropagation();load();}} style={{background:"none",border:"none",color:"var(--warning)",fontWeight:700,fontSize:11,cursor:"pointer"}}>↻ Refresh</button>
+          <span style={{fontSize:12,color:"var(--warning)",fontWeight:700}}>{open?"▲":"▼"}</span>
         </div>
       </div>
 
@@ -5769,14 +6043,14 @@ function PaymentRequestsInbox({members,setMembers,saveRecord,setSyncStatus,authU
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:10}}>
                   <div>
                     <div style={{fontWeight:700,fontSize:13,color:"#0d2a5e"}}>{mem?.name||req.member_name||"Member #"+req.member_id}</div>
-                    <div style={{fontSize:11,color:"#546e7a",marginTop:3}}>
+                    <div style={{fontSize:11,color:"var(--tmuted)",marginTop:3}}>
                       {PURP_LABELS[req.category]||req.category} · {req.payment_method?.toUpperCase()||"?"} · {req.phone}
                     </div>
-                    {req.transaction_id&&<div style={{fontSize:10,color:"#78909c",fontFamily:"monospace",marginTop:2}}>TX: {req.transaction_id}</div>}
+                    {req.transaction_id&&<div style={{fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)",marginTop:2}}>TX: {req.transaction_id}</div>}
                     {req.created_at&&<div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>{new Date(req.created_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</div>}
                   </div>
                   <div style={{textAlign:"right"}}>
-                    <div style={{fontWeight:900,fontSize:18,color:"#1b5e20",fontFamily:"monospace"}}>UGX {Number(req.amount||0).toLocaleString("en-UG")}</div>
+                    <div style={{fontWeight:900,fontSize:18,color:"var(--mint-600)",fontFamily:"var(--mono)"}}>UGX {Number(req.amount||0).toLocaleString("en-UG")}</div>
                     <div style={{fontSize:10,color:"#90a4ae"}}>amount</div>
                   </div>
                 </div>
@@ -5784,19 +6058,19 @@ function PaymentRequestsInbox({members,setMembers,saveRecord,setSyncStatus,authU
                 {/* Proof image */}
                 {req.proof_url&&req.proof_url.startsWith("data:image")&&(
                   <div style={{marginBottom:10}}>
-                    <div style={{fontSize:10,color:"#546e7a",marginBottom:4,fontWeight:600}}>📎 Attached proof:</div>
+                    <div style={{fontSize:10,color:"var(--tmuted)",marginBottom:4,fontWeight:600}}>📎 Attached proof:</div>
                     <img src={req.proof_url} alt="Payment proof" style={{maxWidth:"100%",maxHeight:120,borderRadius:8,border:"1px solid #e0e0e0",objectFit:"cover"}}/>
                   </div>
                 )}
                 {req.proof_url&&req.proof_url.startsWith("data:application/pdf")&&(
                   <div style={{marginBottom:10}}>
-                    <a href={req.proof_url} download={"proof_"+req.id+".pdf"} style={{fontSize:11,fontWeight:700,color:"#1565c0",textDecoration:"none"}}>📄 Download PDF proof</a>
+                    <a href={req.proof_url} download={"proof_"+req.id+".pdf"} style={{fontSize:11,fontWeight:700,color:"var(--p600)",textDecoration:"none"}}>📄 Download PDF proof</a>
                   </div>
                 )}
 
                 {confirmId===req.id?(
-                  <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:8,padding:"10px 12px"}}>
-                    <div style={{fontWeight:700,color:"#1b5e20",fontSize:12,marginBottom:6}}>
+                  <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontWeight:700,color:"var(--mint-600)",fontSize:12,marginBottom:6}}>
                       Confirm UGX {Number(req.amount||0).toLocaleString("en-UG")} — {PURP_LABELS[req.category]||req.category} for {mem?.name||"this member"}?
                     </div>
                     <div style={{fontSize:11,color:"#555",marginBottom:8}}>This will add the amount to their {req.category} record immediately.</div>
@@ -5806,8 +6080,8 @@ function PaymentRequestsInbox({members,setMembers,saveRecord,setSyncStatus,authU
                     </div>
                   </div>
                 ):rejectId===req.id?(
-                  <div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"10px 12px"}}>
-                    <div style={{fontWeight:700,color:"#c62828",fontSize:12,marginBottom:6}}>Reason for rejection</div>
+                  <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontWeight:700,color:"var(--error)",fontSize:12,marginBottom:6}}>Reason for rejection</div>
                     <input value={rejectNote} onChange={e=>setRejectNote(e.target.value)} placeholder="e.g. Incorrect amount, wrong reference…" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #ef9a9a",fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
                     <div style={{display:"flex",gap:8}}>
                       <button className="btn bd sm" onClick={()=>reject(req)}>❌ Reject</button>
@@ -5927,14 +6201,14 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
       <div style={{display:"grid",gridTemplateColumns:"minmax(220px,1fr) 2fr",gap:14,alignItems:"start"}}>
         {/* Poll list */}
         <div>
-          {polls.length===0&&!pollsLoading&&<div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"24px 16px",textAlign:"center",color:"var(--tmuted)"}}>No polls yet. Create one above.</div>}
+          {polls.length===0&&!pollsLoading&&<div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"24px 16px",textAlign:"center",color:"var(--tmuted)"}}>No polls yet. Create one above.</div>}
           {polls.map(p=>{
             const sc=STATUS_COLORS[p.status]||STATUS_COLORS.draft;
             return (
-              <div key={p.id} onClick={()=>selectPoll(p)} style={{background:"#fff",border:"1.5px solid "+(selPoll?.id===p.id?"#1565c0":"var(--bdr)"),borderRadius:12,padding:"12px 14px",marginBottom:8,cursor:"pointer",transition:"border .15s"}}>
-                <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:4}}>{p.title}</div>
+              <div key={p.id} onClick={()=>selectPoll(p)} style={{background:"#fff",border:"1.5px solid "+(selPoll?.id===p.id?"#1565c0":"var(--bdr)"),borderRadius:"var(--radius-md)",padding:"12px 14px",marginBottom:8,cursor:"pointer",transition:"border .15s"}}>
+                <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:4}}>{p.title}</div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20,background:sc.bg,color:sc.c,fontFamily:"var(--mono)"}}>{sc.label}</span>
+                  <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:"var(--radius-xl)",background:sc.bg,color:sc.c,fontFamily:"var(--mono)"}}>{sc.label}</span>
                   <span style={{fontSize:10,color:"var(--tmuted)"}}>{(p.options||[]).length} candidates</span>
                 </div>
                 {p.end_date&&<div style={{fontSize:9,color:"var(--tmuted)",marginTop:4,fontFamily:"var(--mono)"}}>Ends: {new Date(p.end_date).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}</div>}
@@ -5945,7 +6219,7 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
 
         {/* Poll detail / results */}
         <div>
-          {!selPoll&&<div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"40px 20px",textAlign:"center",color:"var(--tmuted)"}}>
+          {!selPoll&&<div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"40px 20px",textAlign:"center",color:"var(--tmuted)"}}>
             <div style={{fontSize:32,marginBottom:8}}>🗳</div>
             <div style={{fontWeight:700}}>Select a poll to view results</div>
           </div>}
@@ -5954,7 +6228,7 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
             <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:14,padding:"16px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,gap:8,flexWrap:"wrap"}}>
                 <div>
-                  <div style={{fontWeight:800,fontSize:16,color:"var(--b800)"}}>{selPoll.title}</div>
+                  <div style={{fontWeight:800,fontSize:16,color:"var(--p800)"}}>{selPoll.title}</div>
                   {selPoll.description&&<div style={{fontSize:12,color:"var(--tmuted)",marginTop:3}}>{selPoll.description}</div>}
                   <div style={{fontSize:10,color:"var(--tmuted)",marginTop:4,fontFamily:"var(--mono)"}}>Type: {(selPoll.poll_type||"").replace(/_/g," ")} · Created by: {selPoll.created_by}</div>
                 </div>
@@ -5966,8 +6240,8 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
                 </div>
               </div>
 
-              {confirmClose&&<div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 14px",marginBottom:12}}>
-                <div style={{fontWeight:700,color:"#e65100",fontSize:13,marginBottom:6}}>⚠ Close this poll?</div>
+              {confirmClose&&<div style={{background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 14px",marginBottom:12}}>
+                <div style={{fontWeight:700,color:"var(--warning)",fontSize:13,marginBottom:6}}>⚠ Close this poll?</div>
                 <div style={{fontSize:11,color:"#555",marginBottom:8}}>Once closed, no more votes can be cast. Results will be final and the winner declared.</div>
                 <div style={{display:"flex",gap:8}}>
                   <button className="btn bd sm" onClick={()=>closePoll(selPoll)}>Yes, close poll</button>
@@ -5976,14 +6250,14 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
               </div>}
 
               {winner&&(
-                <div style={{background:"linear-gradient(135deg,#1b5e20,#2e7d32)",borderRadius:12,padding:"14px 16px",marginBottom:14,color:"#fff",textAlign:"center"}}>
+                <div style={{background:"linear-gradient(135deg,#1b5e20,#2e7d32)",borderRadius:"var(--radius-md)",padding:"14px 16px",marginBottom:14,color:"#fff",textAlign:"center"}}>
                   <div style={{fontSize:28,marginBottom:6}}>🏆</div>
                   <div style={{fontWeight:900,fontSize:18}}>{winner.label}</div>
                   <div style={{fontSize:13,opacity:.85,marginTop:4}}>{winner.votes} vote{winner.votes!==1?"s":""} · Winner</div>
                 </div>
               )}
 
-              <div style={{fontSize:11,fontWeight:700,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>
                 Results ({votes.length} vote{votes.length!==1?"s":""})
                 {votesLoading&&<span style={{marginLeft:8,fontWeight:400}}>loading…</span>}
               </div>
@@ -5996,7 +6270,7 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
                   <div key={o.id} style={{marginBottom:12}}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
                       <span style={{fontSize:13,fontWeight:isWin?800:500,color:isWin?"#1b5e20":"var(--td)"}}>{isWin?"🏆 ":""}{o.label}</span>
-                      <span style={{fontFamily:"var(--mono)",fontSize:13,fontWeight:700,color:isWin?"#1b5e20":"var(--b700)"}}>{cnt} ({pct}%)</span>
+                      <span style={{fontFamily:"var(--mono)",fontSize:13,fontWeight:700,color:isWin?"#1b5e20":"var(--p700)"}}>{cnt} ({pct}%)</span>
                     </div>
                     <div style={{background:"var(--bdr)",borderRadius:99,height:12,overflow:"hidden"}}>
                       <div style={{height:12,width:pct+"%",background:isWin?"#2e7d32":"#1565c0",borderRadius:99,transition:"width .5s"}}/>
@@ -6008,11 +6282,11 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
               {/* Individual votes log */}
               {votes.length>0&&(
                 <div style={{marginTop:16}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--b700)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:8}}>Vote Log (time-stamped)</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:8}}>Vote Log (time-stamped)</div>
                   <div style={{maxHeight:200,overflowY:"auto",border:"1px solid var(--bdr)",borderRadius:9}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
-                      <thead><tr style={{background:"var(--b50)",position:"sticky",top:0}}>
-                        {["Member ID","Choice(s)","Cast At"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--b700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>)}
+                      <thead><tr style={{background:"var(--p50)",position:"sticky",top:0}}>
+                        {["Member ID","Choice(s)","Cast At"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--p700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>)}
                       </tr></thead>
                       <tbody>
                         {votes.map((v,i)=>{
@@ -6065,7 +6339,7 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
                   <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
                     <input className="fi" style={{flex:2}} value={o.label} onChange={e=>setOpt(i,"label",e.target.value)} placeholder={"Candidate "+(i+1)+" name"}/>
                     <input className="fi" style={{flex:3}} value={o.description||""} onChange={e=>setOpt(i,"description",e.target.value)} placeholder="Brief description (optional)"/>
-                    {pollF.options.length>2&&<button onClick={()=>removeOption(i)} style={{background:"#ffebee",border:"1px solid #ffcdd2",color:"#c62828",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0}}>✕</button>}
+                    {pollF.options.length>2&&<button onClick={()=>removeOption(i)} style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",color:"var(--error)",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0}}>✕</button>}
                   </div>
                 ))}
                 <button onClick={addOption} className="btn bg sm" style={{marginTop:4}}>＋ Add Candidate</button>
@@ -6127,13 +6401,13 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
 
   return (
     <div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,padding:"4px 0"}}>
+      {authUser?.role==="auditor"&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,padding:"4px 0"}}>
         {HUB_TABS.map(([id,lbl])=>(
-          <button key={id} onClick={()=>setHubTab(id)} style={{padding:"7px 14px",border:"none",borderRadius:9,cursor:"pointer",fontWeight:hubTab===id?700:500,fontSize:12,background:hubTab===id?"var(--b600)":"var(--b50)",color:hubTab===id?"#fff":"var(--b700)"}}>
+          <button key={id} onClick={()=>setHubTab(id)} style={{padding:"7px 14px",border:"none",borderRadius:9,cursor:"pointer",fontWeight:hubTab===id?700:500,fontSize:12,background:hubTab===id?"var(--p600)":"var(--p50)",color:hubTab===id?"#fff":"var(--p700)"}}>
             {lbl}
           </button>
         ))}
-      </div>
+      </div>}
 
       {hubTab==="overview"&&(
         <div>
@@ -6142,37 +6416,37 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
               {[["Total Pool",fmt(pool),"#90caf9"],["Members",totalMembers,"#a5d6a7"],["Active Loans",activeLoans,"#ffcc80"],["Pending Approvals",pendingApprovals,pendingApprovals>0?"#ef9a9a":"#a5d6a7"],["Expenses",fmt(totalExpenses),"#f48fb1"],["Invested",fmt(totalInvested),"#80cbc4"]].map(([l,v,c])=>(
                 <div key={l} style={{background:"rgba(255,255,255,.1)",borderRadius:10,padding:"10px 12px"}}>
-                  <div style={{fontSize:9,opacity:.7,fontFamily:"monospace",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{l}</div>
-                  <div style={{fontSize:16,fontWeight:900,color:c,fontFamily:"monospace"}}>{v}</div>
+                  <div style={{fontSize:9,opacity:.7,fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{l}</div>
+                  <div style={{fontSize:16,fontWeight:900,color:c,fontFamily:"var(--mono)"}}>{v}</div>
                 </div>
               ))}
             </div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12}}>
-            <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-              <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr)",paddingBottom:6}}>📋 Loan Portfolio</div>
-              {[["Total Disbursed",fmt(loans.reduce((s,l)=>s+(l.amountLoaned||0),0)),"var(--b700)"],["Outstanding Balance",fmt(outstanding),"#c62828"],["Loans Issued",loans.length+" total","var(--tmuted)"],["Active Loans",activeLoans+" active","#e65100"],["Settled Loans",loans.filter(l=>l.status==="paid").length+" settled","#1b5e20"]].map(([l,v,c])=>(
+            <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+              <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:10,borderBottom:"2px solid var(--bdr)",paddingBottom:6}}>📋 Loan Portfolio</div>
+              {[["Total Disbursed",fmt(loans.reduce((s,l)=>s+(l.amountLoaned||0),0)),"var(--p700)"],["Outstanding Balance",fmt(outstanding),"#c62828"],["Loans Issued",loans.length+" total","var(--tmuted)"],["Active Loans",activeLoans+" active","#e65100"],["Settled Loans",loans.filter(l=>l.status==="paid").length+" settled","#1b5e20"]].map(([l,v,c])=>(
                 <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid var(--bdr)"}}>
                   <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
                   <span style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:c}}>{v}</span>
                 </div>
               ))}
             </div>
-            <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-              <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr)",paddingBottom:6}}>💰 Financial Position</div>
-              {[["Member Pool",fmt(pool),"var(--b700)"],["Total Expenses",fmt(totalExpenses),"#c62828"],["Cash in Bank",fmt(cashInBank),cashInBank>=0?"#1b5e20":"#c62828"],["Invested",fmt(totalInvested),"#e65100"],["Dividend Runs",dividendPayouts.length+" recorded","var(--tmuted)"]].map(([l,v,c])=>(
+            <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+              <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:10,borderBottom:"2px solid var(--bdr)",paddingBottom:6}}>💰 Financial Position</div>
+              {[["Member Pool",fmt(pool),"var(--p700)"],["Total Expenses",fmt(totalExpenses),"#c62828"],["Cash in Bank",fmt(cashInBank),cashInBank>=0?"#1b5e20":"#c62828"],["Invested",fmt(totalInvested),"#e65100"],["Dividend Runs",dividendPayouts.length+" recorded","var(--tmuted)"]].map(([l,v,c])=>(
                 <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid var(--bdr)"}}>
                   <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
                   <span style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:c}}>{v}</span>
                 </div>
               ))}
             </div>
-            <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-              <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:10,borderBottom:"2px solid var(--bdr)",paddingBottom:6}}>🗳 Polls Summary</div>
+            <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+              <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:10,borderBottom:"2px solid var(--bdr)",paddingBottom:6}}>🗳 Polls Summary</div>
               {[["Total Polls",polls.length],["Active",polls.filter(p=>p.status==="active").length],["Closed",polls.filter(p=>p.status==="closed").length],["Draft",polls.filter(p=>p.status==="draft").length]].map(([l,v])=>(
                 <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid var(--bdr)"}}>
                   <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
-                  <span style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:"var(--b700)"}}>{v}</span>
+                  <span style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:"var(--p700)"}}>{v}</span>
                 </div>
               ))}
             </div>
@@ -6182,19 +6456,19 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
 
       {hubTab==="approvals"&&(
         <div>
-          <div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:11,color:"#1565c0"}}>
+          <div style={{background:"rgba(21,101,192,.07)",border:"1px solid rgba(21,101,192,.25)",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:11,color:"var(--p600)"}}>
             📌 As Auditor, you give the <strong>final stamp</strong> on all loans and member registrations. Once you approve, the loan becomes active and the agreement PDF is generated.
           </div>
           {(myPendingItems||[]).length===0?(
-            <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"30px 16px",textAlign:"center"}}>
+            <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"30px 16px",textAlign:"center"}}>
               <div style={{fontSize:32,marginBottom:8}}>✅</div>
-              <div style={{fontWeight:700,fontSize:14,color:"var(--b800)"}}>No items pending your approval</div>
+              <div style={{fontWeight:700,fontSize:14,color:"var(--p800)"}}>No items pending your approval</div>
               <div style={{fontSize:11,color:"var(--tmuted)",marginTop:4}}>Items requiring your final stamp will appear here.</div>
             </div>
           ):(
             (myPendingItems||[]).map((item,idx)=>(
-              <div key={idx} style={{background:"#fff",border:"1.5px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:10}}>
-                <div style={{fontWeight:800,fontSize:14,color:"var(--b800)",marginBottom:4}}>{item.label}</div>
+              <div key={idx} style={{background:"#fff",border:"1.5px solid var(--bdr)",borderRadius:"var(--radius-md)",padding:"14px 16px",marginBottom:10}}>
+                <div style={{fontWeight:800,fontSize:14,color:"var(--p800)",marginBottom:4}}>{item.label}</div>
                 {item.amount&&<div style={{fontSize:12,color:"var(--tmuted)",marginBottom:8}}>Amount: <strong>{fmt(item.amount)}</strong></div>}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <button className="btn bk sm" onClick={()=>handleApprove&&handleApprove(item.type,item.id,item.status,"Auditor final approval")}>✅ Final Approve</button>
@@ -6208,8 +6482,8 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
 
       {hubTab==="files"&&(
         <div>
-          <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
-            <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:12}}>📤 Upload Document</div>
+          <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:12}}>📤 Upload Document</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
               <div><label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",textTransform:"uppercase",display:"block",marginBottom:5}}>Document Name</label>
                 <input className="fi" value={uploadName} onChange={e=>setUploadName(e.target.value)} placeholder="e.g. John Doe NIN Scan"/></div>
@@ -6226,7 +6500,7 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
             </div>
             <div style={{marginBottom:10}}><label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",textTransform:"uppercase",display:"block",marginBottom:5}}>Notes (optional)</label>
               <input className="fi" value={uploadNote} onChange={e=>setUploadNote(e.target.value)} placeholder="Any notes about this file…"/></div>
-            <label style={{display:"inline-block",padding:"8px 16px",background:"var(--b600)",color:"#fff",borderRadius:9,cursor:"pointer",fontWeight:700,fontSize:12}}>
+            <label style={{display:"inline-block",padding:"8px 16px",background:"var(--p600)",color:"#fff",borderRadius:9,cursor:"pointer",fontWeight:700,fontSize:12}}>
               {uploading?"⏳ Uploading…":"📁 Choose File & Upload"}
               <input type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" style={{display:"none"}} disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)uploadDoc(f);e.target.value="";}}/>
             </label>
@@ -6234,7 +6508,7 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
 
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
             {["all","member","loan","expense","investment","minutes","legal","other"].map(cat=>(
-              <button key={cat} onClick={()=>setDocsFilter(cat)} style={{padding:"5px 12px",borderRadius:20,border:"none",fontWeight:docsFilter===cat?700:400,background:docsFilter===cat?"var(--b600)":"var(--b50)",color:docsFilter===cat?"#fff":"var(--b700)",cursor:"pointer",fontSize:11,textTransform:"capitalize"}}>{cat==="all"?"All":cat}</button>
+              <button key={cat} onClick={()=>setDocsFilter(cat)} style={{padding:"5px 12px",borderRadius:"var(--radius-xl)",border:"none",fontWeight:docsFilter===cat?700:400,background:docsFilter===cat?"var(--p600)":"var(--p50)",color:docsFilter===cat?"#fff":"var(--p700)",cursor:"pointer",fontSize:11,textTransform:"capitalize"}}>{cat==="all"?"All":cat}</button>
             ))}
           </div>
 
@@ -6246,14 +6520,14 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
               const isImg=doc.file_type?.startsWith("image/")||/\.(jpg|jpeg|png|gif|webp)$/i.test(doc.file_name||"");
               const isPdf=/\.pdf$/i.test(doc.file_name||"")||doc.file_type==="application/pdf";
               return (
-                <div key={doc.id||i} style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"12px 14px"}}>
+                <div key={doc.id||i} style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"12px 14px"}}>
                   <div style={{fontSize:24,marginBottom:6,textAlign:"center"}}>{isPdf?"📄":isImg?"🖼":"📎"}</div>
-                  <div style={{fontWeight:700,fontSize:12,color:"var(--b800)",marginBottom:3,wordBreak:"break-word"}}>{doc.file_name}</div>
-                  <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase",marginBottom:4}}>{doc.category}</div>
+                  <div style={{fontWeight:700,fontSize:12,color:"var(--p800)",marginBottom:3,wordBreak:"break-word"}}>{doc.file_name}</div>
+                  <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",letterSpacing:.3,textTransform:"uppercase",marginBottom:4}}>{doc.category}</div>
                   {doc.notes&&<div style={{fontSize:10,color:"var(--tmuted)",marginBottom:6}}>{doc.notes}</div>}
                   <div style={{fontSize:9,color:"var(--tmuted)",marginBottom:8}}>By: {doc.uploaded_by} · {doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}</div>
                   {doc.storage_path&&(
-                    <a href={doc.storage_path} download={doc.file_name} style={{display:"block",textAlign:"center",padding:"6px 10px",background:"#e3f2fd",color:"#1565c0",borderRadius:8,fontSize:11,fontWeight:700,textDecoration:"none"}}>📥 Download</a>
+                    <a href={doc.storage_path} download={doc.file_name} style={{display:"block",textAlign:"center",padding:"6px 10px",background:"rgba(21,101,192,.07)",color:"var(--p600)",borderRadius:8,fontSize:11,fontWeight:700,textDecoration:"none"}}>📥 Download</a>
                   )}
                 </div>
               );
@@ -6265,16 +6539,16 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
       {hubTab==="financials"&&(
         <div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:12,marginBottom:12}}>
-            <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-              <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>📊 Income Statement</div>
+            <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+              <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>📊 Income Statement</div>
               {(()=>{const lp=loans.filter(l=>l.status==="paid").reduce((s,l)=>{const c=calcLoan(l);return s+c.profit;},0),ie=investments.reduce((s,i)=>s+(+i.interestEarned||0),0),gi=lp+ie,ni=gi-totalExpenses;return [["Loan Interest Income",lp,"#2e7d32"],["Investment Returns",ie,"#2e7d32"],["Gross Income",gi,"#1565c0"],["Less: Expenses",-totalExpenses,"#c62828"],["Net Surplus",ni,ni>=0?"#2e7d32":"#c62828"]].map(([l,v,c],i)=>(
                 <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i===3?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i>=2?700:400}}>
                   <span style={{fontSize:11,color:"var(--td)"}}>{l}</span><span style={{fontFamily:"var(--mono)",fontSize:11,color:c}}>{v<0?"("+fmt(Math.abs(v))+")":fmt(v)}</span>
                 </div>
               ));})()}
             </div>
-            <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-              <div style={{fontWeight:800,fontSize:13,color:"var(--b800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>🏦 Balance Sheet</div>
+            <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+              <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>🏦 Balance Sheet</div>
               {[["Cash in Bank",cashInBank],["Loan Book",outstanding],["Investments",totalInvested],["Total Assets",cashInBank+outstanding+totalInvested]].map(([l,v],i)=>(
                 <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===2?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===3?700:400}}>
                   <span style={{fontSize:11,color:"var(--td)"}}>{l}</span><span style={{fontFamily:"var(--mono)",fontSize:11,color:i===3?"#1565c0":"var(--td)"}}>{fmt(v)}</span>
@@ -6282,19 +6556,19 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
               ))}
             </div>
           </div>
-          <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px",marginBottom:12}}>
-            <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:10}}>🧾 Recent Expenses ({expenses.slice(0,10).length})</div>
+          <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:10}}>🧾 Recent Expenses ({expenses.slice(0,10).length})</div>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-                <thead><tr style={{background:"var(--b50)"}}>
-                  {["Date","Activity","Amount","Category","Issued By"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:h==="Amount"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--b700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>)}
+                <thead><tr style={{background:"var(--p50)"}}>
+                  {["Date","Activity","Amount","Category","Issued By"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:h==="Amount"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--p700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {expenses.slice(0,10).map((e,i)=>(
                     <tr key={i} style={{borderBottom:"1px solid var(--bdr)"}}>
                       <td style={{padding:"5px 10px",fontFamily:"var(--mono)",fontSize:9,whiteSpace:"nowrap"}}>{fmtD(e.date)}</td>
                       <td style={{padding:"5px 10px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.activity}</td>
-                      <td style={{padding:"5px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#c62828"}}>{fmt(e.amount)}</td>
+                      <td style={{padding:"5px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"var(--error)"}}>{fmt(e.amount)}</td>
                       <td style={{padding:"5px 10px",fontSize:9,textTransform:"capitalize"}}>{(e.category||"").replace(/_/g," ")}</td>
                       <td style={{padding:"5px 10px",fontSize:9}}>{e.issuedBy}</td>
                     </tr>
@@ -6308,8 +6582,8 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
 
       {hubTab==="audit"&&(
         <div>
-          <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:12,padding:"14px 16px"}}>
-            <div style={{fontWeight:700,fontSize:13,color:"var(--b800)",marginBottom:10}}>🔍 Full Audit Trail ({auditLog.length} events)</div>
+          <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
+            <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:10}}>🔍 Full Audit Trail ({auditLog.length} events)</div>
             {auditLog.length===0?<div style={{color:"var(--tmuted)",fontSize:11,padding:"10px 0"}}>No audit events yet.</div>:(
               <div style={{maxHeight:500,overflowY:"auto"}}>
                 {[...auditLog].reverse().map((e,i)=>{
@@ -6337,9 +6611,9 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
 // MEMBER PORTAL — INLINE COMPONENTS
 // ══════════════════════════════════════════════
 
-// ── Inline DB helpers for member portal (use same Supabase project as manager app) ──
-const MEMBER_SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
-const MEMBER_SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zY3VhdWFpZmdhZWF1enZraWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTU2MzEsImV4cCI6MjA4OTEzMTYzMX0.tsdr1vL7Q5DcrSt-0AMHeWpxfXCWvi4KXuYuYoLblI0";
+// ── Inline DB helpers for member portal (same Supabase project — keys from env) ──
+const MEMBER_SUPA_URL = SUPA_URL;
+const MEMBER_SUPA_KEY = SUPA_ANON_KEY;
 
 async function memberRest(method,table,body,query){
   const url=MEMBER_SUPA_URL+"/rest/v1/"+table+(query?"?"+query:"");
@@ -6365,7 +6639,7 @@ function normPhoneInline(raw){const d=raw.replace(/[\s\-().+]/g,"");if(/^256\d{9
 
 function TimeLeft({ end }) {
   const ms = new Date(end) - Date.now();
-  if (ms <= 0) return <span style={{color:"#c62828",fontSize:11}}>Closed</span>;
+  if (ms <= 0) return <span style={{color:"var(--error)",fontSize:11}}>Closed</span>;
   const h = Math.floor(ms/3600000), m = Math.floor((ms%3600000)/60000);
   return <span style={{color:h<2?"#c62828":"#1b5e20",fontSize:11}}>⏱ {h}h {m}m left</span>;
 }
@@ -6421,26 +6695,26 @@ function PollCard({ poll, memberId, onVoted }) {
   const multi = poll.poll_type==="multiple_choice";
 
   return (
-    <div style={{background:"#fff",borderRadius:16,padding:"18px 20px",marginBottom:16,border:"1.5px solid #e3f2fd",boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+    <div style={{background:"#fff",borderRadius:"var(--radius-lg)",padding:"18px 20px",marginBottom:16,border:"1.5px solid #e3f2fd",boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:10}}>
         <div style={{flex:1}}>
           <div style={{fontWeight:800,fontSize:15,color:"#0d2a5e"}}>{poll.title}</div>
-          {poll.description&&<div style={{fontSize:12,color:"#546e7a",marginTop:3}}>{poll.description}</div>}
+          {poll.description&&<div style={{fontSize:12,color:"var(--tmuted)",marginTop:3}}>{poll.description}</div>}
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
           <TimeLeft end={poll.end_date}/>
           <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>{tally.total} vote{tally.total!==1?"s":""}</div>
         </div>
       </div>
-      <div style={{fontSize:10,fontWeight:700,color:"#1565c0",background:"#e3f2fd",display:"inline-block",padding:"2px 9px",borderRadius:20,marginBottom:14,fontFamily:"monospace",textTransform:"uppercase"}}>
+      <div style={{fontSize:10,fontWeight:700,color:"var(--p600)",background:"rgba(21,101,192,.07)",display:"inline-block",padding:"2px 9px",borderRadius:"var(--radius-xl)",marginBottom:14,fontFamily:"var(--mono)",textTransform:"uppercase"}}>
         {(poll.poll_type||"").replace(/_/g," ")}
       </div>
 
       {init ? <div style={{height:60,background:"#f5f5f5",borderRadius:8}}/> :
 
       mine ? <>
-        <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:10,padding:"10px 14px",marginBottom:14}}>
-          <div style={{fontWeight:700,color:"#1b5e20",fontSize:12}}>✅ Your vote is recorded</div>
+        <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+          <div style={{fontWeight:700,color:"var(--mint-600)",fontSize:12}}>✅ Your vote is recorded</div>
           <div style={{fontSize:11,color:"#388e3c",marginTop:3}}>Choice: <strong>{(mine.choices||[]).map(c=>(opts.find(o=>o.id===c)||{}).label||c).join(", ")}</strong></div>
         </div>
         {opts.map(o=>{
@@ -6449,7 +6723,7 @@ function PollCard({ poll, memberId, onVoted }) {
             <div key={o.id} style={{marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                 <span style={{fontSize:13,fontWeight:isM?700:400,color:isM?"#1565c0":"#546e7a"}}>{isM?"✓ ":""}{o.label}</span>
-                <span style={{fontSize:12,fontFamily:"monospace",color:"#78909c"}}>{cnt} ({pct}%)</span>
+                <span style={{fontSize:12,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{cnt} ({pct}%)</span>
               </div>
               <div style={{background:"#eceff1",borderRadius:99,height:8}}>
                 <div style={{height:8,width:pct+"%",background:isM?"#1565c0":"#b0bec5",borderRadius:99,transition:"width .5s"}}/>
@@ -6459,7 +6733,7 @@ function PollCard({ poll, memberId, onVoted }) {
         })}
       </> :
 
-      past ? <div style={{background:"#ffebee",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#c62828"}}>This poll has closed.</div> :
+      past ? <div style={{background:"rgba(229,57,53,.07)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"var(--error)"}}>This poll has closed.</div> :
 
       <>
         <div style={{marginBottom:14}}>
@@ -6478,7 +6752,7 @@ function PollCard({ poll, memberId, onVoted }) {
             );
           })}
         </div>
-        {err&&<div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#c62828",marginBottom:12}}>{err}</div>}
+        {err&&<div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:8,padding:"8px 12px",fontSize:12,color:"var(--error)",marginBottom:12}}>{err}</div>}
         <button onClick={cast} disabled={busy||!sel.length} style={{width:"100%",padding:12,borderRadius:10,border:"none",fontWeight:700,fontSize:14,cursor:busy||!sel.length?"not-allowed":"pointer",background:busy||!sel.length?"#cfd8dc":"linear-gradient(135deg,#1565c0,#0d47a1)",color:busy||!sel.length?"#90a4ae":"#fff"}}>
           {busy?"⏳ Submitting…":"🗳 Cast My Vote"}
         </button>
@@ -6503,20 +6777,20 @@ function VotingPanelInline({ memberId, polls=[], onRefresh }) {
   if (!list.length) return (
     <div style={{textAlign:"center",padding:"40px 20px"}}>
       <div style={{fontSize:48,marginBottom:12}}>🗳</div>
-      <div style={{fontWeight:700,color:"#546e7a",fontSize:15}}>No active polls</div>
+      <div style={{fontWeight:700,color:"var(--tmuted)",fontSize:15}}>No active polls</div>
       <div style={{fontSize:12,color:"#90a4ae",marginTop:6}}>Check back when your cooperative has an election scheduled.</div>
-      <button onClick={refresh} style={{marginTop:16,background:"#e3f2fd",border:"none",color:"#1565c0",fontWeight:700,padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:12}}>{busy?"…":"↻ Refresh"}</button>
+      <button onClick={refresh} style={{marginTop:16,background:"rgba(21,101,192,.07)",border:"none",color:"var(--p600)",fontWeight:700,padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:12}}>{busy?"…":"↻ Refresh"}</button>
     </div>
   );
 
   return (
     <>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace"}}>Active Polls ({list.length})</div>
-        <button onClick={refresh} style={{background:"none",border:"none",color:"#1565c0",fontWeight:700,fontSize:12,cursor:"pointer"}}>{busy?"…":"↻ Refresh"}</button>
+        <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>Active Polls ({list.length})</div>
+        <button onClick={refresh} style={{background:"none",border:"none",color:"var(--p600)",fontWeight:700,fontSize:12,cursor:"pointer"}}>{busy?"…":"↻ Refresh"}</button>
       </div>
       {list.map(p=><PollCard key={p.id} poll={p} memberId={memberId} onVoted={refresh}/>)}
-      <div style={{background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:12,padding:"12px 14px",fontSize:11,color:"#1b5e20"}}>
+      <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #c8e6c9",borderRadius:"var(--radius-md)",padding:"12px 14px",fontSize:11,color:"var(--mint-600)"}}>
         🔒 <strong>Secure voting.</strong> Each vote is hashed with SHA-256 and stored immutably. A device fingerprint is recorded for auditing. You cannot change your vote.
       </div>
     </>
@@ -6603,7 +6877,7 @@ function PaymentModalInline({ member, onClose }) {
   const S = {
     ov:  { position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999,padding:16 },
     sh:  { background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:500,padding:"24px 20px",maxHeight:"92vh",overflowY:"auto" },
-    lb:  { fontSize:10,fontWeight:700,color:"#78909c",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6,fontFamily:"monospace" },
+    lb:  { fontSize:10,fontWeight:700,color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6,fontFamily:"var(--mono)" },
     inp: { width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #cfd8dc",fontSize:15,outline:"none",boxSizing:"border-box" },
     btn: (d) => ({ width:"100%",padding:13,borderRadius:10,border:"none",fontWeight:700,fontSize:15,cursor:d?"not-allowed":"pointer",background:d?"#cfd8dc":"linear-gradient(135deg,#1b5e20,#2e7d32)",color:d?"#90a4ae":"#fff" }),
   };
@@ -6613,13 +6887,13 @@ function PaymentModalInline({ member, onClose }) {
       <div style={S.sh} onClick={e=>e.stopPropagation()}>
         <div style={{textAlign:"center",padding:"20px 0"}}>
           <div style={{fontSize:48,marginBottom:12}}>✅</div>
-          <div style={{fontWeight:800,fontSize:18,color:"#1b5e20"}}>Payment Request Submitted</div>
-          <div style={{fontSize:13,color:"#546e7a",marginTop:8,lineHeight:1.7}}>
+          <div style={{fontWeight:800,fontSize:18,color:"var(--mint-600)"}}>Payment Request Submitted</div>
+          <div style={{fontSize:13,color:"var(--tmuted)",marginTop:8,lineHeight:1.7}}>
             {mFmt(done.amt)} via {done.method==="mtn"?"MTN MoMo":"Airtel Money"} has been logged.<br/>
             Your manager will confirm it shortly and your balance will update.
           </div>
-          {done.ref && <div style={{fontSize:10,color:"#90a4ae",marginTop:10,fontFamily:"monospace"}}>Ref: {done.ref}</div>}
-          <button onClick={onClose} style={{marginTop:20,background:"#e8f5e9",border:"none",color:"#1b5e20",fontWeight:700,padding:"10px 28px",borderRadius:10,cursor:"pointer",fontSize:13}}>Done</button>
+          {done.ref && <div style={{fontSize:10,color:"#90a4ae",marginTop:10,fontFamily:"var(--mono)"}}>Ref: {done.ref}</div>}
+          <button onClick={onClose} style={{marginTop:20,background:"rgba(0,200,83,.08)",border:"none",color:"var(--mint-600)",fontWeight:700,padding:"10px 28px",borderRadius:10,cursor:"pointer",fontSize:13}}>Done</button>
         </div>
       </div>
     </div>
@@ -6661,7 +6935,7 @@ function PaymentModalInline({ member, onClose }) {
         <div style={{marginBottom:16}}>
           <label style={S.lb}>Amount (UGX)</label>
           <input style={S.inp} type="number" placeholder="e.g. 50000" value={amount} onChange={e=>setAmount(e.target.value)}/>
-          {amount && !isNaN(+amount) && +amount > 0 && <div style={{fontSize:12,color:"#1565c0",marginTop:5,fontFamily:"monospace",fontWeight:700}}>{mFmt(+amount)}</div>}
+          {amount && !isNaN(+amount) && +amount > 0 && <div style={{fontSize:12,color:"var(--p600)",marginTop:5,fontFamily:"var(--mono)",fontWeight:700}}>{mFmt(+amount)}</div>}
         </div>
 
         {/* Transaction ID */}
@@ -6676,20 +6950,20 @@ function PaymentModalInline({ member, onClose }) {
           <label style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"1.5px dashed #cfd8dc",borderRadius:10,cursor:"pointer",background:"#fafafa"}}>
             <span style={{fontSize:20}}>📎</span>
             <div>
-              <div style={{fontSize:13,fontWeight:600,color:"#546e7a"}}>{proof ? proof.name : "Tap to attach MoMo screenshot or receipt"}</div>
+              <div style={{fontSize:13,fontWeight:600,color:"var(--tmuted)"}}>{proof ? proof.name : "Tap to attach MoMo screenshot or receipt"}</div>
               <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>JPG, PNG or PDF</div>
             </div>
             <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={handleProof}/>
           </label>
           {proof && (
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"6px 10px",background:"#e8f5e9",borderRadius:8}}>
-              <span style={{fontSize:11,color:"#1b5e20",fontWeight:600}}>✓ {proof.name}</span>
-              <button onClick={()=>setProof(null)} style={{background:"none",border:"none",color:"#c62828",cursor:"pointer",fontSize:12,fontWeight:700}}>✕ Remove</button>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"6px 10px",background:"rgba(0,200,83,.08)",borderRadius:8}}>
+              <span style={{fontSize:11,color:"var(--mint-600)",fontWeight:600}}>✓ {proof.name}</span>
+              <button onClick={()=>setProof(null)} style={{background:"none",border:"none",color:"var(--error)",cursor:"pointer",fontSize:12,fontWeight:700}}>✕ Remove</button>
             </div>
           )}
         </div>
 
-        {err && <div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:9,padding:"9px 12px",fontSize:12,color:"#c62828",marginBottom:12}}>{err}</div>}
+        {err && <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:9,padding:"9px 12px",fontSize:12,color:"var(--error)",marginBottom:12}}>{err}</div>}
 
         <button style={S.btn(busy||!amount)} onClick={submit} disabled={busy||!amount}>
           {busy ? "⏳ Submitting…" : "Submit Payment " + (!isNaN(+amount)&&+amount>0 ? mFmt(+amount) : "") + " →"}
@@ -6744,6 +7018,116 @@ function Timer({ s, onEnd }) {
   }, [s]);
   if (!left) return null;
   return <span style={{ fontFamily: "monospace", color: "#78909c", fontSize: 12 }}>Resend in {left}s</span>;
+}
+
+
+// ─────────────────────────────────────────────────────────────────
+// EMAIL OTP WIDGET — used on the welcome page member login card
+// ─────────────────────────────────────────────────────────────────
+function MemberEmailOTPWidget({ onLogin }) {
+  const [phase, setPhase] = React.useState("email");
+  const [email, setEmail] = React.useState("");
+  const [otp, setOtp] = React.useState("");
+  const [memberName, setMemberName] = React.useState("");
+  const [devCode, setDevCode] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [cd, setCd] = React.useState(0);
+
+  React.useEffect(() => {
+    if (cd <= 0) return;
+    const t = setTimeout(() => setCd(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cd]);
+
+  const sendCode = async () => {
+    setErr("");
+    const e = email.trim().toLowerCase();
+    if (!e || !e.includes("@")) { setErr("Enter a valid email address"); return; }
+    setBusy(true);
+    try {
+      const all = await mDb.get("members");
+      const member = all.find(m => (m.email||"").trim().toLowerCase() === e);
+      if (!member) {
+        setErr("No member found with that email. Ask your manager to add your email to your profile.");
+        setBusy(false); return;
+      }
+      setMemberName(member.name);
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const exp = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const old = await mDb.get("login_codes", "email=eq."+encodeURIComponent(e)+"&used=eq.false").catch(() => []);
+      for (const c of (old||[])) await mDb.update("login_codes", "id=eq."+c.id, { used: true }).catch(() => {});
+      await mDb.insert("login_codes", { email: e, code, expires_at: exp, used: false, member_id: member.id });
+      let emailSent = false;
+      try {
+        const body = "Dear "+member.name.split(" ")[0]+",\n\nYour BIDA login code is: "+code+"\n\nValid for 5 minutes. Do not share this code.\n\n\u2014 Bida Multi-Purpose Co-operative Society";
+        const res = await fetch("/api/send-email", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ to: e, subject: "BIDA \u2014 Your Login Code", text: body }) });
+        if (res.ok) emailSent = true;
+      } catch (_) {}
+      setDevCode(emailSent ? null : code);
+      setPhase("verify"); setCd(60); setOtp("");
+    } catch (ex) { setErr("Failed to send code. Check your connection and try again."); }
+    finally { setBusy(false); }
+  };
+
+  const verify = async () => {
+    const c = otp.replace(/\s/g,"");
+    setErr("");
+    if (c.length !== 6) { setErr("Enter the 6-digit code"); return; }
+    setBusy(true);
+    try {
+      const e = email.trim().toLowerCase();
+      const now = new Date().toISOString();
+      const rows = await mDb.get("login_codes", "email=eq."+encodeURIComponent(e)+"&used=eq.false&expires_at=gt."+now+"&order=created_at.desc&limit=1");
+      if (!rows.length || rows[0].code !== c) throw new Error("Invalid or expired code. Try again.");
+      await mDb.update("login_codes", "id=eq."+rows[0].id, { used: true });
+      const fp = await mFingerprint();
+      const token = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36))+"-"+Date.now();
+      await mDb.insert("member_sessions", { member_id: rows[0].member_id, token, device_id: fp, user_agent: navigator.userAgent, expires_at: new Date(Date.now()+8*3600*1000).toISOString() }).catch(()=>{});
+      onLogin({ type:"member", token, memberId: rows[0].member_id, memberName });
+    } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  };
+
+  const iSt = { width:"100%", padding:"12px 14px", borderRadius:10, border:"1.5px solid rgba(255,255,255,.15)", fontSize:15, outline:"none", boxSizing:"border-box", fontFamily:"var(--sans)", background:"rgba(255,255,255,.07)", color:"#fff", caretColor:"#00E5A0", transition:"border-color .18s,background .18s" };
+  const bSt = (d) => ({ width:"100%", padding:13, borderRadius:"var(--radius-md)", border:"none", fontWeight:700, fontSize:14, cursor:d?"not-allowed":"pointer", background:d?"rgba(255,255,255,.08)":"linear-gradient(135deg,#00C853,#00897B)", color:d?"rgba(255,255,255,.3)":"#fff", marginTop:4, fontFamily:"var(--sans)", boxShadow:d?"none":"0 4px 16px rgba(0,200,83,.3)", transition:"all .18s" });
+  const lSt = { fontSize:10, fontWeight:700, color:"rgba(255,255,255,.5)", textTransform:"uppercase", letterSpacing:.9, display:"block", marginBottom:6, fontFamily:"var(--mono)" };
+
+  if (phase === "email") return (
+    <React.Fragment>
+      <div style={{marginBottom:14}}>
+        <label style={lSt}>Your registered email address</label>
+        <input style={iSt} type="email" placeholder="you@example.com" value={email}
+          onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendCode()} autoComplete="email"/>
+      </div>
+      {err&&<div className="login-err">{err}</div>}
+      <button style={bSt(busy||!email)} onClick={sendCode} disabled={busy||!email}>{busy?"Sending code...":"Send Login Code →"}</button>
+      <div style={{textAlign:"center",marginTop:10,fontSize:11,color:"rgba(255,255,255,.35)"}}>A 6-digit code will be emailed to you</div>
+    </React.Fragment>
+  );
+
+  return (
+    <React.Fragment>
+      {memberName&&<div style={{background:"rgba(0,200,83,.15)",border:"1px solid rgba(0,200,83,.3)",borderRadius:9,padding:"9px 12px",fontSize:12,color:"var(--mint-500)",marginBottom:12,textAlign:"center"}}>👋 Welcome, <strong>{memberName}</strong>! Check your email for the code.</div>}
+      {devCode&&<div style={{background:"rgba(255,160,0,.15)",border:"1px solid rgba(255,160,0,.3)",borderRadius:9,padding:"10px 12px",fontSize:12,color:"#ffcc02",marginBottom:12,textAlign:"center"}}>
+        Dev mode — email API not set up. Code: <strong style={{fontFamily:"var(--mono)",fontSize:20,letterSpacing:2}}>{devCode}</strong>
+        <div style={{fontSize:10,marginTop:4,opacity:.8}}>Deploy /api/send-email.js to Vercel and this disappears.</div>
+      </div>}
+      <div style={{marginBottom:14}}>
+        <label style={lSt}>6-digit code from your email</label>
+        <input style={{...iSt,textAlign:"center",letterSpacing:8,fontSize:24,fontFamily:"var(--mono)"}}
+          type="text" inputMode="numeric" maxLength={6} placeholder="······"
+          value={otp} onChange={e=>{const v=e.target.value.replace(/\D/g,"");setOtp(v);}}
+          onKeyDown={e=>e.key==="Enter"&&verify()}/>
+      </div>
+      {err&&<div className="login-err">{err}</div>}
+      <button style={bSt(busy||otp.length<6)} onClick={verify} disabled={busy||otp.length<6}>{busy?"⏳ Verifying...":"✓ Verify & Login"}</button>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:10,fontSize:11,color:"rgba(255,255,255,.35)"}}>
+        <button onClick={()=>{setPhase("email");setOtp("");setErr("");setDevCode(null);}} style={{background:"none",border:"none",color:"rgba(0,229,160,.8)",cursor:"pointer",fontSize:11,fontWeight:600,padding:0}}>← Change email</button>
+        {cd>0?<span>Resend in {cd}s</span>:<button onClick={sendCode} style={{background:"none",border:"none",color:"rgba(0,229,160,.8)",cursor:"pointer",fontSize:11,fontWeight:600,padding:0}}>Resend code</button>}
+      </div>
+    </React.Fragment>
+  );
 }
 
 function MemberLoginScreenInline({ onLogin, onBack }) {
@@ -6849,7 +7233,7 @@ function MemberLoginScreenInline({ onLogin, onBack }) {
   };
 
   const styles = {
-    page: { minHeight: "100vh", background: "linear-gradient(135deg,#0d2a5e,#1565c0)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'Outfit',sans-serif" },
+    page: { minHeight: "100vh", background: "linear-gradient(135deg,#0d2a5e,#1565c0)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "var(--sans)" },
     card: { background: "#fff", borderRadius: 22, padding: "36px 28px", width: "100%", maxWidth: 400, boxShadow: "0 24px 64px rgba(0,0,0,.35)" },
     label: { fontSize: 10, fontWeight: 700, color: "#90a4ae", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 7, fontFamily: "monospace" },
     input: { width: "100%", padding: "13px 14px", borderRadius: 11, border: "1.5px solid #cfd8dc", fontSize: 15, outline: "none", boxSizing: "border-box" },
@@ -6943,8 +7327,8 @@ function MemberLoginScreenInline({ onLogin, onBack }) {
 function Card({ label, value, sub, color="#1565c0", icon="" }) {
   return (
     <div style={{background:"#fff",borderRadius:14,padding:"14px 16px",borderLeft:"4px solid "+color,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-      <div style={{fontSize:10,color:"#90a4ae",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:4}}>{icon} {label}</div>
-      <div style={{fontSize:18,fontWeight:900,color,fontFamily:"monospace"}}>{value}</div>
+      <div style={{fontSize:10,color:"#90a4ae",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:4}}>{icon} {label}</div>
+      <div style={{fontSize:18,fontWeight:900,color,fontFamily:"var(--mono)"}}>{value}</div>
       {sub&&<div style={{fontSize:10,color:"#90a4ae",marginTop:3}}>{sub}</div>}
     </div>
   );
@@ -7051,14 +7435,14 @@ function LoanCard({ loan }) {
   };
 
   return (
-    <div style={{background:"#fff",borderRadius:12,padding:"14px 16px",marginBottom:10,border:"1px solid #e3f2fd"}}>
+    <div style={{background:"#fff",borderRadius:"var(--radius-md)",padding:"14px 16px",marginBottom:10,border:"1px solid #e3f2fd"}}>
       <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
         <div>
           <div style={{fontWeight:700,fontSize:13,color:"#0d2a5e"}}>Loan #{loan.id}</div>
           <div style={{fontSize:11,color:"#90a4ae"}}>Issued {mFmtD(loan.dateBanked)} · {term} months · {isR?"6% Reducing":"4% Flat"}</div>
         </div>
         <div style={{textAlign:"right"}}>
-          <div style={{fontWeight:800,fontSize:14,color:bal>0?"#e65100":"#1b5e20",fontFamily:"monospace"}}>{mFmt(bal)}</div>
+          <div style={{fontWeight:800,fontSize:14,color:bal>0?"#e65100":"#1b5e20",fontFamily:"var(--mono)"}}>{mFmt(bal)}</div>
           <div style={{fontSize:10,color:"#90a4ae"}}>balance</div>
         </div>
       </div>
@@ -7068,29 +7452,29 @@ function LoanCard({ loan }) {
       <div style={{fontSize:10,color:"#90a4ae",marginTop:4,marginBottom:10}}>{pct}% repaid · {mFmt(p+ti)} total due</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         {schedule.length>0&&(
-          <button onClick={()=>setShowSched(s=>!s)} style={{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #e3f2fd",background:"#f5f9ff",color:"#1565c0",cursor:"pointer"}}>
+          <button onClick={()=>setShowSched(s=>!s)} style={{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #e3f2fd",background:"#f5f9ff",color:"var(--p600)",cursor:"pointer"}}>
             {showSched?"▲ Hide Schedule":"📅 View Schedule"}
           </button>
         )}
-        <button onClick={downloadSchedule} disabled={dlBusy} style={{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #e3f2fd",background:"#e3f2fd",color:"#0d47a1",cursor:dlBusy?"not-allowed":"pointer"}}>
+        <button onClick={downloadSchedule} disabled={dlBusy} style={{fontSize:11,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"1px solid #e3f2fd",background:"rgba(21,101,192,.07)",color:"#0d47a1",cursor:dlBusy?"not-allowed":"pointer"}}>
           {dlBusy?"⏳ Generating…":"📥 Download Schedule"}
         </button>
       </div>
       {showSched&&schedule.length>0&&(
         <div style={{marginTop:10,overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
-            <thead><tr style={{background:"#e3f2fd"}}>
+            <thead><tr style={{background:"rgba(21,101,192,.07)"}}>
               {["Mo","Due Date","Payment","Balance","Status"].map(h=>(
-                <th key={h} style={{padding:"4px 6px",textAlign:h==="Mo"||h==="Status"?"center":"right",fontSize:9,fontFamily:"monospace",fontWeight:700,color:"#0d2a5e",borderBottom:"1.5px solid #bbdefb",whiteSpace:"nowrap"}}>{h}</th>
+                <th key={h} style={{padding:"4px 6px",textAlign:h==="Mo"||h==="Status"?"center":"right",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"#0d2a5e",borderBottom:"1.5px solid #bbdefb",whiteSpace:"nowrap"}}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {schedule.map(row=>(
                 <tr key={row.n} style={{background:row.isPaid?"#f1f8e9":new Date()>row.due&&!row.isPaid?"#ffebee":"#fff",borderBottom:"1px solid #e3f2fd"}}>
-                  <td style={{padding:"4px 6px",textAlign:"center",fontFamily:"monospace",fontWeight:700,color:"#1565c0",fontSize:9}}>{row.n}</td>
-                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"monospace",fontSize:9,whiteSpace:"nowrap"}}>{row.due.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</td>
-                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"monospace",fontWeight:700,color:"#1565c0",fontSize:9}}>{mFmt(row.payment)}</td>
-                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"monospace",fontSize:9,color:row.balance>0?"#e65100":"#1b5e20",fontWeight:700}}>{mFmt(row.balance)}</td>
+                  <td style={{padding:"4px 6px",textAlign:"center",fontFamily:"var(--mono)",fontWeight:700,color:"var(--p600)",fontSize:9}}>{row.n}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,whiteSpace:"nowrap"}}>{row.due.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"var(--p600)",fontSize:9}}>{mFmt(row.payment)}</td>
+                  <td style={{padding:"4px 6px",textAlign:"right",fontFamily:"var(--mono)",fontSize:9,color:row.balance>0?"#e65100":"#1b5e20",fontWeight:700}}>{mFmt(row.balance)}</td>
                   <td style={{padding:"4px 6px",textAlign:"center"}}>
                     <span style={{fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:10,background:row.isPaid?"#e8f5e9":new Date()>row.due?"#ffebee":"#e3f2fd",color:row.isPaid?"#1b5e20":new Date()>row.due?"#c62828":"#1565c0"}}>
                       {row.isPaid?"✓ Paid":new Date()>row.due?"Overdue":"Pending"}
@@ -7115,7 +7499,7 @@ function ContribRow({ c }) {
         <div style={{fontSize:12,fontWeight:600,color:"#263238"}}>{LABS[c.category]||c.category}</div>
         <div style={{fontSize:10,color:"#90a4ae"}}>{mFmtD(c.date)}{c.note?" · "+c.note:""}</div>
       </div>
-      <div style={{fontWeight:800,fontSize:13,color:COLS[c.category]||"#546e7a",fontFamily:"monospace"}}>{mFmt(c.amount)}</div>
+      <div style={{fontWeight:800,fontSize:13,color:COLS[c.category]||"#546e7a",fontFamily:"var(--mono)"}}>{mFmt(c.amount)}</div>
     </div>
   );
 }
@@ -7163,7 +7547,7 @@ function MemberDashboardInline({ session, onLogout }) {
   const TABS=[["overview","📊 Overview"],["loans","💳 Loans"],["history","📋 History"],["profile","👤 Profile"],["votes","🗳 Voting"+(polls.length?" ("+polls.length+")":"")]];
 
   return (
-    <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"'Outfit',sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"var(--sans)"}}>
       <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
       {/* Header */}
@@ -7191,19 +7575,19 @@ function MemberDashboardInline({ session, onLogout }) {
       </div>
 
       <div style={{padding:16,maxWidth:620,margin:"0 auto"}}>
-        {err&&<div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:13,color:"#c62828"}}>⚠ {err} <button onClick={fetch_} style={{marginLeft:8,background:"none",border:"none",color:"#1565c0",fontWeight:700,cursor:"pointer"}}>Retry</button></div>}
+        {err&&<div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:13,color:"var(--error)"}}>⚠ {err} <button onClick={fetch_} style={{marginLeft:8,background:"none",border:"none",color:"var(--p600)",fontWeight:700,cursor:"pointer"}}>Retry</button></div>}
 
         {/* ── OVERVIEW ── */}
         {tab==="overview"&&<>
-          <div style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",borderRadius:18,padding:"22px 20px",marginBottom:14,color:"#fff"}}>
+          <div style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",borderRadius:"var(--radius-lg)",padding:"22px 20px",marginBottom:14,color:"#fff"}}>
             {!load&&m?.photoUrl&&(
               <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
                 <img src={m.photoUrl} alt={m.name} style={{width:72,height:72,borderRadius:"50%",objectFit:"cover",border:"3px solid rgba(255,255,255,.4)",boxShadow:"0 2px 12px rgba(0,0,0,.25)"}}/>
               </div>
             )}
-            <div style={{fontSize:11,opacity:.7,textTransform:"uppercase",letterSpacing:.8,fontFamily:"monospace"}}>Total Banked</div>
+            <div style={{fontSize:11,opacity:.7,textTransform:"uppercase",letterSpacing:.8,fontFamily:"var(--mono)"}}>Total Banked</div>
             {load?<div style={{height:38,background:"rgba(255,255,255,.2)",borderRadius:8,marginTop:8}}/>
-                 :<div style={{fontSize:30,fontWeight:900,fontFamily:"monospace",marginTop:6}}>{mFmt(total)}</div>}
+                 :<div style={{fontSize:30,fontWeight:900,fontFamily:"var(--mono)",marginTop:6}}>{mFmt(total)}</div>}
             <div style={{fontSize:11,opacity:.6,marginTop:6}}>Member since {mFmtD(m?.joinDate)}</div>
           </div>
 
@@ -7216,27 +7600,27 @@ function MemberDashboardInline({ session, onLogout }) {
           </div>}
 
           {!load&&m&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:12}}>Savings Breakdown</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:12}}>Savings Breakdown</div>
             {[["Membership","membership","#6a1b9a"],["Annual Sub","annualSub","#e65100"],["Monthly Savings","monthlySavings","#1565c0"],["Welfare","welfare","#2e7d32"],["Shares","shares","#00695c"],["Voluntary","voluntaryDeposit","#546e7a"]].filter(([,k])=>(m[k]||0)>0).map(([lbl,k,col])=>(
               <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #f5f5f5"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:col}}/><span style={{fontSize:12,color:"#546e7a"}}>{lbl}</span></div>
-                <span style={{fontSize:12,fontWeight:800,color:col,fontFamily:"monospace"}}>{mFmt(m[k])}</span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:col}}/><span style={{fontSize:12,color:"var(--tmuted)"}}>{lbl}</span></div>
+                <span style={{fontSize:12,fontWeight:800,color:col,fontFamily:"var(--mono)"}}>{mFmt(m[k])}</span>
               </div>
             ))}
             <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0 0",borderTop:"2px solid #e3f2fd",marginTop:4}}>
               <span style={{fontSize:13,fontWeight:800,color:"#0d2a5e"}}>Total</span>
-              <span style={{fontSize:15,fontWeight:900,color:"#1565c0",fontFamily:"monospace"}}>{mFmt(total)}</span>
+              <span style={{fontSize:15,fontWeight:900,color:"var(--p600)",fontFamily:"var(--mono)"}}>{mFmt(total)}</span>
             </div>
           </div>}
 
           {!load&&cl.length>0&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:10}}>Recent Contributions</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>Recent Contributions</div>
             {cl.slice(0,5).map((c,i)=><ContribRow key={i} c={c}/>)}
-            {cl.length>5&&<button onClick={()=>setTab("history")} style={{background:"none",border:"none",color:"#1565c0",cursor:"pointer",fontSize:12,fontWeight:700,marginTop:8,padding:0}}>View all {cl.length} →</button>}
+            {cl.length>5&&<button onClick={()=>setTab("history")} style={{background:"none",border:"none",color:"var(--p600)",cursor:"pointer",fontSize:12,fontWeight:700,marginTop:8,padding:0}}>View all {cl.length} →</button>}
           </div>}
 
-          {!load&&polls.length>0&&<div onClick={()=>setTab("votes")} style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:12,padding:"12px 16px",marginBottom:14,cursor:"pointer"}}>
-            <div style={{fontWeight:700,color:"#1b5e20",fontSize:13}}>🗳 {polls.length} active poll{polls.length>1?"s":""} — Cast your vote!</div>
+          {!load&&polls.length>0&&<div onClick={()=>setTab("votes")} style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14,cursor:"pointer"}}>
+            <div style={{fontWeight:700,color:"var(--mint-600)",fontSize:13}}>🗳 {polls.length} active poll{polls.length>1?"s":""} — Cast your vote!</div>
             <div style={{fontSize:11,color:"#388e3c",marginTop:3}}>Tap to view →</div>
           </div>}
 
@@ -7339,7 +7723,7 @@ function MemberDashboardInline({ session, onLogout }) {
 
         {/* ── HISTORY ── */}
         {tab==="history"&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:12}}>Contribution History</div>
+          <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:12}}>Contribution History</div>
           {load?<Skel/>:cl.length===0
             ?<div style={{textAlign:"center",padding:30,color:"#90a4ae"}}>No records found</div>
             :cl.map((c,i)=><ContribRow key={i} c={c}/>)}
@@ -7356,14 +7740,14 @@ function MemberDashboardInline({ session, onLogout }) {
               <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
                 {m.photoUrl
                   ?<img src={m.photoUrl} alt={m.name} style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:"3px solid #e3f2fd",flexShrink:0}}/>
-                  :<div style={{width:64,height:64,borderRadius:"50%",background:"#1565c0",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,flexShrink:0}}>{(m.name||"?")[0]}</div>
+                  :<div style={{width:64,height:64,borderRadius:"50%",background:"var(--p600)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,flexShrink:0}}>{(m.name||"?")[0]}</div>
                 }
                 <div>
                   <div style={{fontWeight:800,fontSize:17,color:"#0d2a5e"}}>{m.name}</div>
                   <div style={{fontSize:11,color:"#90a4ae",marginTop:2}}>Member #{ m.id} · Joined {mFmtD(m.joinDate)}</div>
                 </div>
               </div>
-              <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:10}}>Personal Details</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>Personal Details</div>
               {[
                 ["📞 Phone",m.phone||m.whatsapp||"—"],
                 ["📧 Email",m.email||"—"],
@@ -7380,7 +7764,7 @@ function MemberDashboardInline({ session, onLogout }) {
             {/* Next of Kin */}
             {m.nextOfKin&&(
               <div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"monospace",marginBottom:10}}>🧑‍🤝‍🧑 Next of Kin</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>🧑‍🤝‍🧑 Next of Kin</div>
                 {m.nextOfKin.photoUrl&&(
                   <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
                     <img src={m.nextOfKin.photoUrl} alt={m.nextOfKin.name||"NOK"} style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:"2px solid #e3f2fd"}}/>
@@ -7401,7 +7785,7 @@ function MemberDashboardInline({ session, onLogout }) {
               </div>
             )}
 
-            <div style={{background:"#e3f2fd",borderRadius:12,padding:"12px 14px",fontSize:11,color:"#1565c0",lineHeight:1.6}}>
+            <div style={{background:"rgba(21,101,192,.07)",borderRadius:"var(--radius-md)",padding:"12px 14px",fontSize:11,color:"var(--p600)",lineHeight:1.6}}>
               ℹ️ To update your details — photo, phone, address, or next of kin — please contact your BIDA manager.<br/>
               📧 <strong>bidacooperative@gmail.com</strong>
             </div>
