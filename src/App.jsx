@@ -2709,12 +2709,16 @@ function AppInner(){
   };
   const delExp=(id)=>{if(window.confirm("Delete this expense?")){setExpenses(prev=>prev.filter(e=>e.id!==id));deleteRecord("expenses",id,setSyncStatus);}};
 
+  const blobToBase64=(blob)=>new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result.split(",")[1]);
+    reader.onerror=()=>reject(new Error("Failed to read PDF"));
+    reader.readAsDataURL(blob);
+  });
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename)=>{
     setEmailSending(s=>({...s,[key]:"sending"}));
     try{
-      const ab=await pdfBlob.arrayBuffer();const bytes=new Uint8Array(ab);let bin="";
-      for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
-      const base64=btoa(bin);
+      const base64=await blobToBase64(pdfBlob);
       const res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:toEmail,subject,text:textBody,attachment:{content:base64,filename:pdfFilename}})});
       if(res.status===404){setEmailSetup(true);setEmailSending(s=>({...s,[key]:"nosetup"}));window.open("mailto:"+toEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(textBody));return;}
       if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.error||"Send failed ("+res.status+")");}
