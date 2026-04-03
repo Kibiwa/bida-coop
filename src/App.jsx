@@ -3402,7 +3402,7 @@ function AppInner(){
                           <td className="sn">{i+1}</td>
                           <td>
                             <span className="nc" onClick={()=>{const m=members.find(m=>m.id===l.memberId);if(m){setTab("savings");setTimeout(()=>openProfile(m),50);}}}>{l.memberName}</span>
-                            {l.status!=="paid"&&(l.approvalStatus==="approved"||!l.approvalStatus)&&<button className="btn bk xs" style={{marginLeft:6,fontSize:9}} onClick={()=>openPayModal(l)}>+ Pay</button>}
+                            {l.status!=="paid"&&(l.approvalStatus==="approved"||!l.approvalStatus)&&<button className="btn xs" style={{marginLeft:6,fontSize:10,background:"#2e7d32",color:"#fff",border:"1.5px solid #2e7d32",fontWeight:700,borderRadius:7,padding:"3px 9px",cursor:"pointer"}} onClick={()=>openPayModal(l)}>💚 Pay</button>}
                           </td>
                           <td className="mc">{fmtD(l.dateBanked)}</td>
                           <td className="mc">{fmt(l.amountLoaned)}</td>
@@ -3419,6 +3419,7 @@ function AppInner(){
                           <td><div className="abtn">
                             {l.approvalStatus==="approved"||!l.approvalStatus
                               ?<React.Fragment>
+                                {l.status!=="paid"&&<button className="btn xs" style={{background:"#2e7d32",color:"#fff",border:"1.5px solid #2e7d32",fontWeight:700,borderRadius:7,padding:"3px 9px",cursor:"pointer",fontSize:10}} onClick={()=>openPayModal(l)}>💰 Pay</button>}
                                 <button className="btn bg xs" onClick={()=>openEditL(l)}>✏️</button>
                                 {l.status!=="paid"&&<button className="btn bk xs" onClick={()=>markPd(l.id)}>✓</button>}
                               </React.Fragment>
