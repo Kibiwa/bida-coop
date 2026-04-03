@@ -16,19 +16,19 @@ const loadScript = (src) => new Promise((res, rej) => {
 const SUPA_URL = (
   (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_SUPA_URL) ||
   (typeof window !== "undefined" && window.__BIDA_SUPA_URL) ||
-  ""
+  "https://oscuauaifgaeauzvkihu.supabase.co"
 );
 const SUPA_ANON_KEY = (
   (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_SUPA_ANON_KEY) ||
   (typeof window !== "undefined" && window.__BIDA_SUPA_ANON_KEY) ||
-  ""
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zY3VhdWFpZmdhZWF1enZraWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTU2MzEsImV4cCI6MjA4OTEzMTYzMX0.tsdr1vL7Q5DcrSt-0AMHeWpxfXCWvi4KXuYuYoLblI0"
 );
 const SYNC_INTERVAL_MS = 15000;
 
 let SUPA_KEY = SUPA_ANON_KEY;
 // Clear stale keys from old Supabase project
 try{const s=localStorage.getItem("bida_supa_key");if(s&&!s.startsWith("sb_")&&!s.startsWith("eyJ"))localStorage.removeItem("bida_supa_key");}catch(e){}
-function getSupaKey(){ const stored=localStorage.getItem("bida_supa_key"); return (stored&&stored!==SUPA_ANON_KEY&&stored.length>20)?stored:SUPA_ANON_KEY||SUPA_ANON_KEY; }
+function getSupaKey(){ const stored=localStorage.getItem("bida_supa_key"); return (stored&&stored!==SUPA_ANON_KEY&&stored.length>20)?stored:SUPA_ANON_KEY; }
 function setSupaKey(k){ localStorage.setItem("bida_supa_key",k); SUPA_KEY=k; }
 SUPA_KEY = SUPA_ANON_KEY;
 
@@ -242,7 +242,7 @@ function sanitiseInvestment(r){
 }
 
 async function loadAllFromSupabase(){
-  const [rawMembers,rawLoans,rawExpenses,rawInvestments,providers,receipts,ledger,auditLog,settings,rawContribLog,rawDividendPayouts,rawPolls]=await Promise.all([
+  const [rawMembers,rawLoans,rawExpenses,rawInvestments,providers,receipts,rawContribLog,rawDividendPayouts,ledger,auditLog,settings,rawPolls]=await Promise.all([
     supaFetch("members"),
     supaFetch("loans"),
     supaFetch("expenses"),
