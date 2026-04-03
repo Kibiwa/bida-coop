@@ -1,6 +1,6 @@
 // api/send-email.js
 // BIDA Co-operative — Gmail sender (Vercel Serverless Function)
-// Handles: member OTP login codes + PDF reminder attachments
+// Handles: member OTP login codes + HTML reminder emails + PDF attachments
 //
 // Required Vercel env vars:
 //   GMAIL_USER         = bidacooperative@gmail.com
@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { to, subject, text, attachment } = req.body || {};
+  const { to, subject, text, html, attachment } = req.body || {};
 
   if (!to || !subject || !text) {
     return res.status(400).json({ error: "Missing fields: to, subject, text" });
@@ -21,8 +21,8 @@ export default async function handler(req, res) {
   const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
 
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
-    console.error("[send-email] GMAIL_USER or GMAIL_APP_PASSWORD not set in Vercel env vars.");
-    return res.status(503).json({ error: "Email not configured. Set GMAIL_USER and GMAIL_APP_PASSWORD in Vercel." });
+    console.error("[send-email] GMAIL_USER or GMAIL_APP_PASSWORD not set.");
+    return res.status(503).json({ error: "Email not configured." });
   }
 
   try {
@@ -43,7 +43,12 @@ export default async function handler(req, res) {
       text:    text,
     };
 
-    // PDF attachment support (for savings/loan statement reminders)
+    // HTML version (renders beautifully in email clients)
+    if (html) {
+      mailOptions.html = html;
+    }
+
+    // PDF attachment (for savings/loan statement reminders)
     if (attachment?.content && attachment?.filename) {
       mailOptions.attachments = [{
         filename:    attachment.filename,
@@ -53,7 +58,7 @@ export default async function handler(req, res) {
     }
 
     await transporter.sendMail(mailOptions);
-    console.log("[send-email] Sent to:", to);
+    console.log("[send-email] Sent to:", to, "| Subject:", subject);
     return res.status(200).json({ ok: true });
 
   } catch (e) {
