@@ -1,185 +1,116 @@
-// api/send-email.js
-// ─────────────────────────────────────────────────────────────────
-// Vercel Serverless Function — Email sender for BIDA Co-operative
+// ================================================================
+// api/send-email.js  —  Vercel Serverless Function
+// Handles: OTP login codes + PDF statement attachments
 //
-// SETUP:
-//   1. Copy this file to /api/send-email.js in your project root
-//   2. Go to Vercel → Your Project → Settings → Environment Variables
-//   3. Add ONE of the provider configs below (Resend is easiest)
-//   4. Redeploy — the yellow "Dev mode" OTP box disappears automatically
-//
-// SUPPORTED PROVIDERS (pick one):
-//   A) Resend        — free tier, 100 emails/day — RECOMMENDED
-//   B) SendGrid      — if you already have an account
-//   C) Gmail SMTP    — via nodemailer (needs App Password)
-//
-// REQUEST FORMAT (from the app):
-//   POST /api/send-email
-//   { to, subject, text, attachment?: { content: base64, filename } }
-//
-// RESPONSE:
-//   200 { ok: true }
-//   4xx/5xx { error: "..." }
-// ─────────────────────────────────────────────────────────────────
+// Required environment variables (set in Vercel project settings):
+//   RESEND_API_KEY  — from https://resend.com → API Keys
+//   FROM_EMAIL      — e.g. onboarding@resend.dev  (no custom domain needed)
+//                     or noreply@yourdomain.com if you've verified a domain
+//   FROM_NAME       — e.g. Bida Multi-Purpose Co-operative Society
+// ================================================================
 
 export default async function handler(req, res) {
-  // Only allow POST
+  // ── Only accept POST ──────────────────────────────────────────
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { to, subject, text, attachment } = req.body || {};
+  // ── Check env vars are configured ────────────────────────────
+  const RESEND_API_KEY = process.env.RESEND_API_KEY;
+  const FROM_EMAIL     = process.env.FROM_EMAIL     || "onboarding@resend.dev";
+  const FROM_NAME      = process.env.FROM_NAME      || "Bida Co-operative";
 
-  if (!to || !subject || !text) {
-    return res.status(400).json({ error: "Missing required fields: to, subject, text" });
+  if (!RESEND_API_KEY) {
+    console.error("RESEND_API_KEY environment variable is not set.");
+    return res.status(500).json({ error: "Email service not configured. Set RESEND_API_KEY in Vercel." });
   }
 
-  // ── PROVIDER A: Resend (recommended — free, easiest setup) ──────
-  // Env vars needed: RESEND_API_KEY, EMAIL_FROM
-  //
-  // 1. Sign up at https://resend.com (free)
-  // 2. Verify your sending domain (or use onboarding@resend.dev for testing)
-  // 3. Create an API key under Settings → API Keys
-  // 4. Add to Vercel env: RESEND_API_KEY=re_xxxxxxxxx
-  //                       EMAIL_FROM=noreply@yourdomain.com
-  //    (or: EMAIL_FROM=BIDA Cooperative <noreply@yourdomain.com>)
+  // ── Parse request body ────────────────────────────────────────
+  const { to, subject, text, html, attachment } = req.body || {};
 
-  if (process.env.RESEND_API_KEY) {
-    try {
-      const body = {
-        from:    process.env.EMAIL_FROM || "BIDA Cooperative <noreply@bidacooperative.com>",
-        to:      [to],
-        subject: subject,
-        text:    text,
-      };
+  if (!to || !subject || (!text && !html)) {
+    return res.status(400).json({ error: "Missing required fields: to, subject, and text or html." });
+  }
 
-      // Add PDF attachment if present (for member statements)
-      if (attachment?.content && attachment?.filename) {
-        body.attachments = [{
-          filename: attachment.filename,
-          content:  attachment.content,   // base64 string
-        }];
-      }
+  // ── Validate recipient email ──────────────────────────────────
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(to)) {
+    return res.status(400).json({ error: "Invalid recipient email address." });
+  }
 
-      const r = await fetch("https://api.resend.com/emails", {
-        method:  "POST",
-        headers: {
-          "Authorization": "Bearer " + process.env.RESEND_API_KEY,
-          "Content-Type":  "application/json",
-        },
-        body: JSON.stringify(body),
+  // ── Build Resend payload ──────────────────────────────────────
+  const payload = {
+    from: `${FROM_NAME} <${FROM_EMAIL}>`,
+    to:   [to],
+    subject,
+    text: text || "",
+  };
+
+  // Optional: HTML version (falls back to auto-generating from text if not provided)
+  if (html) {
+    payload.html = html;
+  } else if (text) {
+    // Auto-generate a clean HTML version from plain text for better deliverability
+    const escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    const lines = escaped.split("\n").map(l => l.trim() === "" ? "<br/>" : `<p style="margin:0 0 8px 0;">${l}</p>`).join("\n");
+    payload.html = `
+      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#f9f9f9;">
+        <div style="background:#fff;border-radius:10px;padding:32px;border:1px solid #e5e5e5;">
+          <div style="text-align:center;margin-bottom:24px;">
+            <div style="display:inline-block;background:#00C853;color:#fff;font-weight:700;font-size:16px;padding:8px 20px;border-radius:20px;letter-spacing:.5px;">
+              BIDA Co-operative
+            </div>
+          </div>
+          <div style="color:#333;font-size:15px;line-height:1.7;">
+            ${lines}
+          </div>
+          <hr style="border:none;border-top:1px solid #eee;margin:28px 0;"/>
+          <div style="font-size:11px;color:#999;text-align:center;">
+            Bida Multi-Purpose Co-operative Society &nbsp;·&nbsp; Do not reply to this email
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Optional: PDF attachment  { content: base64string, filename: "statement.pdf" }
+  if (attachment && attachment.content && attachment.filename) {
+    payload.attachments = [
+      {
+        filename: attachment.filename,
+        content:  attachment.content,   // Resend accepts base64 directly
+      },
+    ];
+  }
+
+  // ── Call Resend API ───────────────────────────────────────────
+  try {
+    const resendRes = await fetch("https://api.resend.com/emails", {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${RESEND_API_KEY}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await resendRes.json().catch(() => ({}));
+
+    if (!resendRes.ok) {
+      console.error("Resend API error:", resendRes.status, data);
+      return res.status(resendRes.status).json({
+        error: data?.message || data?.error || `Resend error ${resendRes.status}`,
       });
-
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.message || JSON.stringify(data));
-      return res.status(200).json({ ok: true, id: data.id });
-
-    } catch (e) {
-      console.error("[send-email] Resend error:", e.message);
-      return res.status(500).json({ error: "Email send failed: " + e.message });
     }
+
+    // ── Success ───────────────────────────────────────────────
+    return res.status(200).json({ ok: true, id: data.id });
+
+  } catch (err) {
+    console.error("send-email network error:", err);
+    return res.status(500).json({ error: "Failed to reach email service. " + err.message });
   }
-
-
-  // ── PROVIDER B: SendGrid ─────────────────────────────────────────
-  // Env vars needed: SENDGRID_API_KEY, EMAIL_FROM
-  //
-  // 1. Sign up at https://sendgrid.com
-  // 2. Create an API key (Settings → API Keys → Full Access)
-  // 3. Verify your sender identity (Settings → Sender Authentication)
-  // 4. Add to Vercel env: SENDGRID_API_KEY=SG.xxxxxxxxxx
-  //                       EMAIL_FROM=noreply@yourdomain.com
-
-  if (process.env.SENDGRID_API_KEY) {
-    try {
-      const body = {
-        personalizations: [{ to: [{ email: to }] }],
-        from:    { email: process.env.EMAIL_FROM || "noreply@bidacooperative.com", name: "BIDA Cooperative" },
-        subject: subject,
-        content: [{ type: "text/plain", value: text }],
-      };
-
-      if (attachment?.content && attachment?.filename) {
-        body.attachments = [{
-          content:     attachment.content,
-          filename:    attachment.filename,
-          type:        "application/pdf",
-          disposition: "attachment",
-        }];
-      }
-
-      const r = await fetch("https://api.sendgrid.com/v3/mail/send", {
-        method:  "POST",
-        headers: {
-          "Authorization": "Bearer " + process.env.SENDGRID_API_KEY,
-          "Content-Type":  "application/json",
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!r.ok) {
-        const err = await r.text();
-        throw new Error("SendGrid error " + r.status + ": " + err);
-      }
-      return res.status(200).json({ ok: true });
-
-    } catch (e) {
-      console.error("[send-email] SendGrid error:", e.message);
-      return res.status(500).json({ error: "Email send failed: " + e.message });
-    }
-  }
-
-
-  // ── PROVIDER C: Gmail via nodemailer ─────────────────────────────
-  // Env vars needed: GMAIL_USER, GMAIL_APP_PASSWORD
-  //
-  // 1. Enable 2FA on your Gmail account
-  // 2. Go to Google Account → Security → App Passwords
-  // 3. Create a password for "Mail" on "Other device: BIDA App"
-  // 4. Add to Vercel env: GMAIL_USER=bidacooperative@gmail.com
-  //                       GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
-
-  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
-    try {
-      const nodemailer = await import("nodemailer");
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_APP_PASSWORD,
-        },
-      });
-
-      const mailOptions = {
-        from:    `"BIDA Cooperative" <${process.env.GMAIL_USER}>`,
-        to:      to,
-        subject: subject,
-        text:    text,
-      };
-
-      if (attachment?.content && attachment?.filename) {
-        mailOptions.attachments = [{
-          filename: attachment.filename,
-          content:  Buffer.from(attachment.content, "base64"),
-          contentType: "application/pdf",
-        }];
-      }
-
-      await transporter.sendMail(mailOptions);
-      return res.status(200).json({ ok: true });
-
-    } catch (e) {
-      console.error("[send-email] Gmail error:", e.message);
-      return res.status(500).json({ error: "Email send failed: " + e.message });
-    }
-  }
-
-
-  // ── No provider configured ───────────────────────────────────────
-  // If none of the env vars are set, return 503 so the app
-  // falls back to showing the dev code on screen (dev mode only).
-  console.warn("[send-email] No email provider configured. Set RESEND_API_KEY, SENDGRID_API_KEY, or GMAIL_USER.");
-  return res.status(503).json({
-    error: "Email provider not configured. Add RESEND_API_KEY to Vercel environment variables.",
-  });
 }
