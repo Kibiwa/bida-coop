@@ -6616,8 +6616,8 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
 // ══════════════════════════════════════════════
 
 // ── Inline DB helpers for member portal (same Supabase project — keys from env) ──
-const MEMBER_SUPA_URL = SUPA_URL;
-const MEMBER_SUPA_KEY = SUPA_ANON_KEY;
+const MEMBER_SUPA_URL = "https://oscuauaifgaeauzvkihu.supabase.co";
+const MEMBER_SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9zY3VhdWFpZmdhZWF1enZraWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NTU2MzEsImV4cCI6MjA4OTEzMTYzMX0.tsdr1vL7Q5DcrSt-0AMHeWpxfXCWvi4KXuYuYoLblI0";
 
 async function memberRest(method,table,body,query){
   const url=MEMBER_SUPA_URL+"/rest/v1/"+table+(query?"?"+query:"");
