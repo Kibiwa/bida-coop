@@ -1691,7 +1691,7 @@ function DueLoanRow({loan, members, emailSending, sendDueEmail, sendDueSMS}){
   );
 }
 
-function ProfLoanCard({l, markPd, closeProfile, openEditL}){
+function ProfLoanCard({l, markPd, closeProfile, openEditL, openPayModal}){
   const ov = l.status!=="paid" && l.months>l.term;
   const stats = [
     ["Monthly Payment",fmt(l.monthlyPayment),true],
@@ -1740,12 +1740,12 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL}){
           );
         })}
       </div>
-      <LoanScheduleFooter l={l} markPd={markPd} closeProfile={closeProfile} openEditL={openEditL}/>
+      <LoanScheduleFooter l={l} markPd={markPd} closeProfile={closeProfile} openEditL={openEditL} openPayModal={openPayModal}/>
     </div>
   );
 }
 
-function LoanScheduleFooter({l, markPd, closeProfile, openEditL}){
+function LoanScheduleFooter({l, markPd, closeProfile, openEditL, openPayModal}){
   const [showSched,setShowSched] = React.useState(false);
   const term=l.term||12;
   const isReducing=(l.amountLoaned||0)>=7000000;
@@ -1772,7 +1772,10 @@ function LoanScheduleFooter({l, markPd, closeProfile, openEditL}){
         {l.status!=="paid"&&(
           <React.Fragment>
             {(l.approvalStatus==="approved"||!l.approvalStatus)
-              ?<button className="btn bk sm" onClick={function(){markPd(l.id);}}>✓ Settle</button>
+              ?<React.Fragment>
+                <button className="btn bk sm" onClick={function(){markPd(l.id);}}>✓ Settle</button>
+                <button className="btn bp sm" style={{background:"#2e7d32",borderColor:"#2e7d32",color:"#fff"}} onClick={function(){openPayModal(l);}}>➕ Add Payment</button>
+              </React.Fragment>
               :<button className="btn bg sm" disabled style={{opacity:.5}}>⏳ Pending</button>}
             <button className="btn bg sm" onClick={function(){closeProfile();openEditL(l);}}>✏️ Edit</button>
           </React.Fragment>
@@ -5123,7 +5126,7 @@ function AppInner(){
                   <div className="prof-section">
                     <div className="prof-section-title">Loan History ({profLoans.length})</div>
                     {profLoans.map(l=>(
-                      <ProfLoanCard key={l.id} l={l} markPd={markPd} closeProfile={closeProfile} openEditL={openEditL}/>
+                      <ProfLoanCard key={l.id} l={l} markPd={markPd} closeProfile={closeProfile} openEditL={openEditL} openPayModal={openPayModal}/>
                     ))}
                   </div>
                 )}
