@@ -3164,13 +3164,24 @@ function AppInner(){
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename,htmlBody=null)=>{
     setEmailSending(s=>({...s,[key]:"sending"}));
     try{
-      const base64=await blobToBase64(pdfBlob);
-      const res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:toEmail,subject,text:textBody,html:htmlBody||undefined,attachment:{content:base64,filename:pdfFilename}})});
-      if(res.status===404){setEmailSetup(true);setEmailSending(s=>({...s,[key]:"nosetup"}));window.open("mailto:"+toEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(textBody));return;}
-      if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.error||"Send failed ("+res.status+")");}
+      // Send email via EmailJS (browser-side, no backend needed)
+      await sendViaEmailJS(toEmail, subject, textBody, htmlBody||undefined);
+      // Auto-download the PDF locally so staff can keep a copy / attach manually
+      if(pdfBlob){
+        const url=URL.createObjectURL(pdfBlob);
+        const a=document.createElement("a");
+        a.href=url;a.download=pdfFilename;
+        a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+        document.body.appendChild(a);a.click();
+        setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+      }
       setEmailSending(s=>({...s,[key]:"ok"}));
       setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),4000);
-    }catch(e){console.error("Email error:",e);setEmailSending(s=>({...s,[key]:"err"}));setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),5000);}
+    }catch(e){
+      console.error("Email error:",e);
+      setEmailSending(s=>({...s,[key]:"err"}));
+      setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),5000);
+    }
   };
 
   const dispatchSMS=async(key,toPhone,message)=>{
