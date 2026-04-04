@@ -907,20 +907,24 @@ function blobToDataUrl(blob){
   });
 }
 
+function triggerDownload(blob, filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=filename;
+  a.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none";
+  document.body.appendChild(a);
+  try{a.click();}catch(_){}
+  setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(_){}},10000);
+}
 async function shareViaPDF(blob, filename, memberName){
   if(navigator.canShare&&navigator.canShare({files:[new File([blob],filename,{type:"application/pdf"})]})){
     try{
       await navigator.share({files:[new File([blob],filename,{type:"application/pdf"})],title:"BIDA Cooperative — "+(memberName||"Report"),text:"Please find your BIDA Cooperative statement attached."});
       return "shared";
-    }catch(e){if(e.name!=="AbortError")console.warn("Share failed:",e);}
+    }catch(e){if(e.name!=="AbortError"){triggerDownload(blob,filename);}}
+  } else {
+    triggerDownload(blob,filename);
   }
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url; a.download=filename;
-  a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
   return "downloaded";
 }
 
@@ -2948,12 +2952,7 @@ function AppInner(){
       try{
         const receiptBlob=await generateReceiptPDF(updatedLoan,mem,amt,calc,paymentRecord);
         const receiptNum="REC-"+String(Date.now()).slice(-6);
-        const url=URL.createObjectURL(receiptBlob);
-        const a=document.createElement("a");a.href=url;
-        a.download="BIDA_Receipt_"+receiptNum+".pdf";
-        a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-        document.body.appendChild(a);a.click();
-        setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+        triggerDownload(receiptBlob,"BIDA_Receipt_"+receiptNum+".pdf");
         if(mem.email){
           const first=mem.name.split(" ")[0];
           const rSubj="BIDA Payment Receipt — "+receiptNum;
@@ -3166,7 +3165,13 @@ function AppInner(){
     try{
       const base64=await blobToBase64(pdfBlob);
       const res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:toEmail,subject,text:textBody,html:htmlBody||undefined,attachment:{content:base64,filename:pdfFilename}})});
-      if(res.status===404){setEmailSetup(true);setEmailSending(s=>({...s,[key]:"nosetup"}));window.open("mailto:"+toEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(textBody));return;}
+      if(res.status===404){
+        setEmailSetup(true);setEmailSending(s=>({...s,[key]:"nosetup"}));
+        // No backend yet — download the PDF locally and open mailto as fallback
+        triggerDownload(pdfBlob,pdfFilename);
+        setTimeout(()=>window.open("mailto:"+toEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(textBody+"\\n\\n[Attach the downloaded PDF manually]")),800);
+        return;
+      }
       if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.error||"Send failed ("+res.status+")");}
       setEmailSending(s=>({...s,[key]:"ok"}));
       setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),4000);
@@ -3317,12 +3322,7 @@ function AppInner(){
           try{
             const blob=await generateLoanPDF(finalLoan,mem,calcLoan(finalLoan));
             const fname="BIDA_LoanAgreement_"+(mem.name||"").replace(/\s+/g,"_")+".pdf";
-            const url=URL.createObjectURL(blob);
-            const a=document.createElement("a");
-            a.href=url;a.download=fname;
-            a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-            document.body.appendChild(a);a.click();
-            setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+            triggerDownload(blob,fname);
             alert("✅ Loan fully approved! Loan Agreement PDF downloading now.");
           }catch(e){console.error("Loan PDF error:",e);}
         }
@@ -3754,22 +3754,6 @@ function AppInner(){
                   ))}
                 </div>
                 {cashInBank<0&&<div style={{marginTop:10,background:"rgba(229,57,53,.2)",border:"1px solid rgba(229,57,53,.4)",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#ffcdd2",fontWeight:700}}>⚠️ Cash in bank is negative — expenses exceed total deposits + profit. Review immediately.</div>}
-              </div>
-
-              <div className="stats">
-                <div className="card"><div className="clabel">Members</div><div className="cval">{members.length}</div></div>
-                <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
-                <div className="card"><div className="clabel">Monthly Savings</div><div className="cval">{fmt(savT.monthly)}</div></div>
-                <div className="card"><div className="clabel">Welfare Pool</div><div className="cval">{fmt(savT.welfare)}</div></div>
-                <div className="card ck"><div className="clabel">Voluntary Savings</div><div className="cval ok">{fmt(savT.voluntary)}</div><div className="csub">Member voluntary deposits</div></div>
-                <div className="card"><div className="clabel">Total Share Units</div><div className="cval">{members.reduce((s,m)=>s+Math.round((m.shares||0)/50000),0)} units</div><div className="csub">{fmt(savT.shares)} @ UGX 50,000/unit</div></div>
-                <div className="card cd" title="Includes operational costs + bank transactional charges">
-                  <div className="clabel">Total Expenses</div>
-                  <div className="cval danger">{fmt(totalExpenses)}</div>
-                  <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
-                </div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
-                {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% members · 60% pool</div></div>}
               </div>
 
               <SavingsExpensesChart savingsData={SAVINGS_CHART_DATA} expensesData={EXPENSES_CHART_DATA}/>
@@ -5140,20 +5124,17 @@ function AppInner(){
                 <div style={{background:"rgba(0,200,83,.08)",border:"1.5px solid #a5d6a7",borderRadius:"var(--radius-md)",padding:"14px 16px",marginTop:10}}>
                   <div style={{fontWeight:700,fontSize:13,color:"var(--mint-600)",marginBottom:8}}>✅ {sharedPDF.label} is ready</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,border:"none",cursor:"pointer"}}>📥 Download PDF</button>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;triggerDownload(sharedPDF.blob,sharedPDF.filename);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,border:"none",cursor:"pointer"}}>📥 Download PDF</button>
                     <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--p700)",fontWeight:700,fontSize:12,cursor:"pointer"}}>🔍 Open in New Tab</button>
                     <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:8,background:"#25D366",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={async()=>{
                       if(!sharedPDF.blob)return;
                       const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                       if(navigator.canShare&&navigator.canShare({files:[file]})){
                         try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label,text:"Bida Multi-Purpose Co-operative Society "+sharedPDF.label+" — "+toStr()});}
-                        catch(e){if(e.name!=="AbortError"){const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}}
+                        catch(e){if(e.name!=="AbortError"){triggerDownload(sharedPDF.blob,sharedPDF.filename);}}
                       } else {
-                        const u=URL.createObjectURL(sharedPDF.blob);
-                        const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;
-                        document.body.appendChild(a);a.click();
-                        setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);
-                        setTimeout(()=>window.open("https://web.whatsapp.com","_blank"),800);
+                        triggerDownload(sharedPDF.blob,sharedPDF.filename);
+                        setTimeout(()=>window.open("https://web.whatsapp.com","_blank"),1200);
                       }
                     }}>{WA_SVG} Share via WhatsApp</button>
                   </div>
@@ -5172,11 +5153,7 @@ function AppInner(){
                 <button
                   onClick={()=>{
                     if(!sharedPDF.blob) return;
-                    const url=URL.createObjectURL(sharedPDF.blob);
-                    const a=document.createElement("a");
-                    a.href=url; a.download=sharedPDF.filename;
-                    document.body.appendChild(a); a.click();
-                    setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
+                    triggerDownload(sharedPDF.blob,sharedPDF.filename);
                   }}
                   style={{width:"100%",padding:"16px",borderRadius:"var(--radius-md)",background:"linear-gradient(135deg,#1565c0,#0d3461)",color:"#fff",fontWeight:900,fontSize:16,border:"none",cursor:"pointer",marginBottom:10,letterSpacing:.5}}>
                   📥 Download PDF
@@ -5187,11 +5164,9 @@ function AppInner(){
                     const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                     if(navigator.canShare&&navigator.canShare({files:[file]})){
                       try{ await navigator.share({files:[file],title:"Bida Multi-Purpose Co-operative Society",text:"Please find your BIDA statement attached."}); }
-                      catch(e){ if(e.name!=="AbortError") console.warn(e); }
+                      catch(e){ if(e.name!=="AbortError") triggerDownload(sharedPDF.blob,sharedPDF.filename); }
                     } else {
-                      const url=URL.createObjectURL(sharedPDF.blob);
-                      window.open(url,"_blank");
-                      setTimeout(()=>URL.revokeObjectURL(url),15000);
+                      triggerDownload(sharedPDF.blob,sharedPDF.filename);
                     }
                   }}
                   style={{width:"100%",padding:"14px",borderRadius:"var(--radius-md)",background:"#128C7E",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
@@ -5223,7 +5198,7 @@ function AppInner(){
                 {!profEdit&&<button className="btn bstmt sm" disabled={!!pdfGen} onClick={()=>handleMemberPDF(profMember)}>{pdfGen===("member_"+profMember.id)?"⏳...":"📄 Statement"}</button>}
                 {!profEdit&&sharedPDF&&sharedPDF.type==="member"&&sharedPDF.memberId===profMember.id&&sharedPDF.blob&&(
                   <React.Fragment>
-                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,border:"none",cursor:"pointer"}}>📥 PDF</button>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;triggerDownload(sharedPDF.blob,sharedPDF.filename);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,border:"none",cursor:"pointer"}}>📥 PDF</button>
                     <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--p700)",fontWeight:700,fontSize:10,cursor:"pointer"}}>🔍</button>
                     <button className="btn sm" style={{background:"#25D366",color:"#fff",fontWeight:700}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,profMember.name)}>{WA_SVG} WA</button>
                   </React.Fragment>
@@ -5576,10 +5551,7 @@ function AppInner(){
                           try{
                             const blob=await generateShareCertificate(profMember,shareUnits(profMember),profMember.shares);
                             const fname="BIDA_ShareCert_"+profMember.name.replace(/\s+/g,"_")+".pdf";
-                            const url=URL.createObjectURL(blob);
-                            const a=document.createElement("a");a.href=url;a.download=fname;
-                            document.body.appendChild(a);a.click();
-                            setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
+                            triggerDownload(blob,fname);
                           }catch(e){alert("Certificate error: "+e.message);}
                           finally{setPdfGen(null);}
                         }}
@@ -5614,34 +5586,16 @@ function AppInner(){
                               const fname="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";
                               const file=new File([blob],fname,{type:"application/pdf"});
                               if(navigator.canShare&&navigator.canShare({files:[file]})){
-                                await navigator.share({files:[file],title:"BIDA — "+profMember.name,text:buildWAStatementMsg(profMember)});
+                                try{await navigator.share({files:[file],title:"BIDA — "+profMember.name,text:buildWAStatementMsg(profMember)});}
+                                catch(se){if(se.name!=="AbortError"){triggerDownload(blob,fname);setTimeout(()=>window.open(waLink(profMember.whatsapp,"PDF downloaded! Please attach from Downloads.\n\n"+buildWAStatementMsg(profMember)),"_blank"),1200);}}
                               } else {
-                                const url=URL.createObjectURL(blob);
-                                const a=document.createElement("a");a.href=url;a.download=fname;
-                                document.body.appendChild(a);a.click();
-                                setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
-                                setTimeout(()=>window.open(waLink(profMember.whatsapp,"PDF downloaded! Please attach from your Downloads folder.\n\n"+buildWAStatementMsg(profMember)),"_blank"),800);
+                                triggerDownload(blob,fname);
+                                setTimeout(()=>window.open(waLink(profMember.whatsapp,"PDF downloaded! Please attach from your Downloads folder.\n\n"+buildWAStatementMsg(profMember)),"_blank"),1200);
                               }
                             }catch(e){if(e.name!=="AbortError")alert("WA share error: "+e.message);}
                             finally{setPdfGen(null);}
                           }}>{pdfGen===("wa_"+profMember.id)?"⏳":WA_SVG} WA PDF</button>
                           <a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWASavingsMsg(profMember))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
-                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{
-  try{
-    const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);
-    const filename="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";
-    const file=new File([blob],filename,{type:"application/pdf"});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){
-      await navigator.share({files:[file],title:"BIDA — "+profMember.name});
-    } else {
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;a.download=filename;
-      a.style.cssText="position:fixed;top:-200px;opacity:0";
-      document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
-    }
-  }catch(e){if(e.name!=="AbortError")alert("PDF error: "+e.message);}
-}}>{WA_SVG}WA PDF</button>
                         <button className="btn bsms sm" disabled={emailSending["sms_sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsSMS(profMember)}>{emailSending["sms_sav_"+profMember.id]==="sending"?"⏳...":"📱 SMS"}</button></React.Fragment>}
                       </div>
                     </div>
@@ -7848,12 +7802,7 @@ function LoanScheduleModal({loan, member, schedule, calc, onClose, members_ref, 
     setDlBusy(true);setMsg("");
     try{
       const blob=await generateSchedulePDF(loan,member,schedule,calc);
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;
-      a.download="BIDA_Schedule_"+loan.id+".pdf";
-      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-      document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+      triggerDownload(blob,"BIDA_Schedule_"+loan.id+".pdf");
       setMsg("✓ Downloaded!");
     }catch(e){setMsg("PDF error: "+e.message);}
     finally{setDlBusy(false);}
@@ -8326,12 +8275,7 @@ function MemberDashboardInline({ session, onLogout }) {
                   doc.text("Page "+pg+" of "+pageCount,W-12,H-4,{align:"right"});
                 }
                 const blob=doc.output("blob");
-                const url=URL.createObjectURL(blob);
-                const a=document.createElement("a");
-                a.href=url;a.download="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
-                a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-                document.body.appendChild(a);a.click();
-                setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+                triggerDownload(blob,"BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf");
               }catch(e){alert("Could not generate PDF: "+e.message);}
             }} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
               <div style={{fontSize:24,marginBottom:4}}>📄</div>
