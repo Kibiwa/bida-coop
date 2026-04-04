@@ -18,7 +18,7 @@ const loadScript = (src) => new Promise((res, rej) => {
 // The template must have these variables:
 //   {{to_email}}  {{subject}}  {{message_html}}  {{message_text}}
 // =====================================================
-const EMAILJS_SERVICE_ID  = "service_cgsv914";
+const EMAILJS_SERVICE_ID  = "service_5dt2b18";
 const EMAILJS_TEMPLATE_ID = "template_w62a2ux";
 const EMAILJS_PUBLIC_KEY  = "_tl3GnoGEruSESdeZ";
 
