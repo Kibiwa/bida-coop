@@ -3164,20 +3164,8 @@ function AppInner(){
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename,htmlBody=null)=>{
     setEmailSending(s=>({...s,[key]:"sending"}));
     try{
-      // Try Vercel API endpoint first (Resend-powered, more reliable)
-      let sent=false;
-      try{
-        const res=await fetch("/api/send-email",{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({to:toEmail,subject,text:textBody,html:htmlBody||textBody})
-        });
-        if(res.ok) sent=true;
-      }catch(_){}
-      // Fall back to EmailJS if API not deployed
-      if(!sent){
-        await sendViaEmailJS(toEmail, subject, textBody, htmlBody||undefined);
-      }
+      // Send email via EmailJS (browser-side, no backend needed)
+      await sendViaEmailJS(toEmail, subject, textBody, htmlBody||undefined);
       // Auto-download the PDF locally so staff can keep a copy / attach manually
       if(pdfBlob){
         const url=URL.createObjectURL(pdfBlob);
@@ -6482,102 +6470,139 @@ function AppInner(){
 // PAYMENT REQUESTS INBOX — Manager Side
 // ══════════════════════════════════════════════
 function PaymentRequestsInbox({members,setMembers,saveRecord,setSyncStatus,authUser}){
-  // ── PAYMENT UPDATES INBOX ──
-  // Once mobile money merchant API is integrated, this will auto-receive
-  // real-time payment confirmations from MTN MoMo / Airtel Money.
-  // For now it shows confirmed payments already recorded by the treasurer.
-
-  const [recent,setRecent]=React.useState([]);
+  const [requests,setRequests]=React.useState([]);
   const [loading,setLoading]=React.useState(false);
   const [open,setOpen]=React.useState(false);
+  const [confirmId,setConfirmId]=React.useState(null);
+  const [rejectId,setRejectId]=React.useState(null);
+  const [rejectNote,setRejectNote]=React.useState("");
 
   const load=React.useCallback(async()=>{
     setLoading(true);
     try{
-      // Show recently confirmed/settled payments as "updates"
-      const r=await supa("GET","payment_requests",null,"order=created_at.desc&limit=10").catch(()=>[]);
-      setRecent(r||[]);
-    }catch(e){console.warn("Payment updates load failed:",e.message);}
+      const r=await supa("GET","payment_requests",null,"status=eq.pending&order=created_at.desc");
+      setRequests(r||[]);
+    }catch(e){console.warn("Payment requests load failed:",e.message);}
     finally{setLoading(false);}
   },[]);
 
   React.useEffect(()=>{load();},[]);
 
-  const PURP_LABELS={monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",welfare:"Welfare",shares:"Shares",loan_repayment:"Loan Repayment"};
-  const STATUS_STYLE={
-    confirmed:{bg:"#e8f5e9",border:"#a5d6a7",color:"#1b5e20",label:"✓ Confirmed"},
-    pending:  {bg:"#fff8e1",border:"#ffe082",color:"#e65100",label:"⏳ Pending"},
-    rejected: {bg:"#ffebee",border:"#ffcdd2",color:"#c62828",label:"✗ Rejected"},
-    api_initiated:{bg:"#e3f2fd",border:"#90caf9",color:"#1565c0",label:"⚡ API"},
+  const CATEGORY_MAP={monthly_savings:"monthlySavings",annual_sub:"annualSub",welfare:"welfare",shares:"shares",loan_repayment:"amountPaid"};
+
+  const confirm=async(req)=>{
+    try{
+      // Update payment_requests status
+      await supa("PATCH","payment_requests",{status:"confirmed",confirmed_by:authUser?.name||"Manager",confirmed_at:new Date().toISOString()},"id=eq."+req.id);
+      // Update member record if category maps to a savings field
+      const field=CATEGORY_MAP[req.category];
+      if(field&&field!=="amountPaid"){
+        const mem=members.find(m=>m.id===req.member_id);
+        if(mem){
+          const updated={...mem,[field]:(mem[field]||0)+(+req.amount||0)};
+          setMembers(prev=>prev.map(m=>m.id===mem.id?updated:m));
+          await saveRecord("members",updated,setSyncStatus);
+        }
+      }
+      setRequests(prev=>prev.filter(r=>r.id!==req.id));
+      setConfirmId(null);
+      alert("✅ Payment confirmed. Member's "+req.category+" updated.");
+    }catch(e){alert("Error confirming payment: "+e.message);}
   };
 
+  const reject=async(req)=>{
+    try{
+      await supa("PATCH","payment_requests",{status:"rejected",confirmed_by:authUser?.name||"Manager",confirmed_at:new Date().toISOString(),note:rejectNote||"Rejected by manager"},"id=eq."+req.id);
+      setRequests(prev=>prev.filter(r=>r.id!==req.id));
+      setRejectId(null);setRejectNote("");
+    }catch(e){alert("Error rejecting: "+e.message);}
+  };
+
+  const PURP_LABELS={monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",welfare:"Welfare",shares:"Shares",loan_repayment:"Loan Repayment"};
+
+  if(requests.length===0&&!loading) return null;
+
   return (
-    <div style={{background:"rgba(21,101,192,.05)",border:"1.5px solid #bbdefb",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14}}>
-      {/* Header */}
+    <div style={{background:"rgba(255,109,0,.07)",border:"1.5px solid #ffcc80",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:20}}>📡</span>
+          <span style={{fontSize:20}}>📬</span>
           <div>
-            <div style={{fontWeight:800,fontSize:13,color:"var(--p700)"}}>Payment Updates</div>
-            <div style={{fontSize:10,color:"var(--tmuted)"}}>Live mobile money confirmations — awaiting API integration</div>
+            <div style={{fontWeight:800,fontSize:13,color:"var(--warning)"}}>
+              {loading?"Loading…":requests.length+" Pending Payment Request"+(requests.length!==1?"s":"")}
+            </div>
+            <div style={{fontSize:10,color:"var(--warning)"}}>Members have submitted payments awaiting your confirmation</div>
           </div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={e=>{e.stopPropagation();load();}} style={{background:"none",border:"none",color:"var(--p600)",fontWeight:700,fontSize:11,cursor:"pointer"}}>↻ Refresh</button>
-          <span style={{fontSize:12,color:"var(--p600)",fontWeight:700}}>{open?"▲":"▼"}</span>
+          <button onClick={e=>{e.stopPropagation();load();}} style={{background:"none",border:"none",color:"var(--warning)",fontWeight:700,fontSize:11,cursor:"pointer"}}>↻ Refresh</button>
+          <span style={{fontSize:12,color:"var(--warning)",fontWeight:700}}>{open?"▲":"▼"}</span>
         </div>
       </div>
 
       {open&&(
-        <div style={{marginTop:14}}>
-          {/* API integration notice */}
-          <div style={{background:"linear-gradient(135deg,#fff8e1,#fff3cd)",border:"1.5px solid #ffcc02",borderRadius:12,padding:"14px 16px",marginBottom:14,display:"flex",gap:12,alignItems:"flex-start"}}>
-            <div style={{fontSize:28,flexShrink:0}}>🔗</div>
-            <div>
-              <div style={{fontWeight:800,fontSize:13,color:"#e65100",marginBottom:4}}>Mobile Money API — Integration Pending</div>
-              <div style={{fontSize:12,color:"#5d4037",lineHeight:1.7}}>
-                Once MTN MoMo and Airtel Money merchant codes are attached to this app, <strong>payment confirmations will appear here automatically</strong> — no manual entry needed. Members will be able to pay directly from the member portal and their balances will update in real time.
-              </div>
-              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
-                {["MTN MoMo API","Airtel Money API","Webhook listener","Auto balance update"].map(tag=>(
-                  <span key={tag} style={{fontSize:9,fontWeight:700,padding:"3px 9px",borderRadius:20,background:"rgba(255,204,0,.2)",border:"1px solid #ffcc02",color:"#e65100",fontFamily:"var(--mono)"}}>{tag}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Recent payment records (read-only) */}
-          {loading&&<div style={{textAlign:"center",padding:16,color:"var(--tmuted)",fontSize:12}}>⏳ Loading…</div>}
-          {!loading&&recent.length===0&&(
-            <div style={{textAlign:"center",padding:"20px 0",color:"var(--tmuted)",fontSize:12}}>
-              <div style={{fontSize:32,marginBottom:8}}>📭</div>
-              No payment records yet. They will appear here once the mobile money API is connected.
-            </div>
-          )}
-          {!loading&&recent.length>0&&(
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              <div style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:4}}>Recent Payment Records</div>
-              {recent.map(req=>{
-                const mem=members.find(m=>m.id===req.member_id);
-                const st=STATUS_STYLE[req.status]||STATUS_STYLE.pending;
-                return (
-                  <div key={req.id} style={{background:"#fff",borderRadius:10,padding:"11px 13px",border:"1px solid #e3f2fd",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:700,fontSize:12,color:"#0d2a5e"}}>{mem?.name||req.member_name||"Member #"+req.member_id}</div>
-                      <div style={{fontSize:10,color:"var(--tmuted)",marginTop:2}}>
-                        {PURP_LABELS[req.category]||req.category} · {req.payment_method?.toUpperCase()||"?"} · {req.phone}
-                      </div>
-                      {req.created_at&&<div style={{fontSize:9,color:"#90a4ae",marginTop:2,fontFamily:"var(--mono)"}}>{new Date(req.created_at).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}</div>}
+        <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:10}}>
+          {requests.map(req=>{
+            const mem=members.find(m=>m.id===req.member_id);
+            return (
+              <div key={req.id} style={{background:"#fff",borderRadius:10,padding:"12px 14px",border:"1px solid #ffe0b2"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:10}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:13,color:"#0d2a5e"}}>{mem?.name||req.member_name||"Member #"+req.member_id}</div>
+                    <div style={{fontSize:11,color:"var(--tmuted)",marginTop:3}}>
+                      {PURP_LABELS[req.category]||req.category} · {req.payment_method?.toUpperCase()||"?"} · {req.phone}
                     </div>
-                    <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontWeight:800,fontSize:14,color:"var(--p600)",fontFamily:"var(--mono)"}}>UGX {Number(req.amount||0).toLocaleString("en-UG")}</div>
-                      <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20,background:st.bg,border:"1px solid "+st.border,color:st.color}}>{st.label}</span>
+                    {req.transaction_id&&<div style={{fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)",marginTop:2}}>TX: {req.transaction_id}</div>}
+                    {req.created_at&&<div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>{new Date(req.created_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</div>}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontWeight:900,fontSize:18,color:"var(--mint-600)",fontFamily:"var(--mono)"}}>UGX {Number(req.amount||0).toLocaleString("en-UG")}</div>
+                    <div style={{fontSize:10,color:"#90a4ae"}}>amount</div>
+                  </div>
+                </div>
+
+                {/* Proof image */}
+                {req.proof_url&&req.proof_url.startsWith("data:image")&&(
+                  <div style={{marginBottom:10}}>
+                    <div style={{fontSize:10,color:"var(--tmuted)",marginBottom:4,fontWeight:600}}>📎 Attached proof:</div>
+                    <img src={req.proof_url} alt="Payment proof" style={{maxWidth:"100%",maxHeight:120,borderRadius:8,border:"1px solid #e0e0e0",objectFit:"cover"}}/>
+                  </div>
+                )}
+                {req.proof_url&&req.proof_url.startsWith("data:application/pdf")&&(
+                  <div style={{marginBottom:10}}>
+                    <a href={req.proof_url} download={"proof_"+req.id+".pdf"} style={{fontSize:11,fontWeight:700,color:"var(--p600)",textDecoration:"none"}}>📄 Download PDF proof</a>
+                  </div>
+                )}
+
+                {confirmId===req.id?(
+                  <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontWeight:700,color:"var(--mint-600)",fontSize:12,marginBottom:6}}>
+                      Confirm UGX {Number(req.amount||0).toLocaleString("en-UG")} — {PURP_LABELS[req.category]||req.category} for {mem?.name||"this member"}?
+                    </div>
+                    <div style={{fontSize:11,color:"#555",marginBottom:8}}>This will add the amount to their {req.category} record immediately.</div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button className="btn bk sm" onClick={()=>confirm(req)}>✅ Yes, Confirm</button>
+                      <button className="btn bg sm" onClick={()=>setConfirmId(null)}>Cancel</button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ):rejectId===req.id?(
+                  <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:8,padding:"10px 12px"}}>
+                    <div style={{fontWeight:700,color:"var(--error)",fontSize:12,marginBottom:6}}>Reason for rejection</div>
+                    <input value={rejectNote} onChange={e=>setRejectNote(e.target.value)} placeholder="e.g. Incorrect amount, wrong reference…" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #ef9a9a",fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
+                    <div style={{display:"flex",gap:8}}>
+                      <button className="btn bd sm" onClick={()=>reject(req)}>❌ Reject</button>
+                      <button className="btn bg sm" onClick={()=>{setRejectId(null);setRejectNote("");}}>Cancel</button>
+                    </div>
+                  </div>
+                ):(
+                  <div style={{display:"flex",gap:8}}>
+                    <button className="btn bk sm" onClick={()=>setConfirmId(req.id)}>✅ Confirm</button>
+                    <button className="btn bd sm" onClick={()=>setRejectId(req.id)}>❌ Reject</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -7296,59 +7321,12 @@ const PURPOSES=[
 ];
 
 function PaymentModalInline({ member, onClose }) {
-  const S = {
-    ov:  { position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999,padding:16 },
-    sh:  { background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:500,padding:"24px 20px",maxHeight:"92vh",overflowY:"auto" },
-  };
-
-  return (
-    <div style={S.ov} onClick={onClose}>
-      <div style={S.sh} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontWeight:800,fontSize:17,color:"#0d2a5e"}}>Make a Payment</div>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#90a4ae"}}>✕</button>
-        </div>
-
-        {/* Coming soon banner */}
-        <div style={{background:"linear-gradient(135deg,#fff8e1,#fff3cd)",border:"2px solid #ffcc02",borderRadius:14,padding:"20px 18px",marginBottom:20,textAlign:"center"}}>
-          <div style={{fontSize:36,marginBottom:10}}>🔗</div>
-          <div style={{fontWeight:800,fontSize:15,color:"#e65100",marginBottom:8}}>Mobile Money Integration</div>
-          <div style={{fontSize:13,color:"#5d4037",lineHeight:1.7,marginBottom:12}}>
-            Direct MTN MoMo &amp; Airtel Money payments are <strong>coming soon</strong>. Once the mobile money merchant API is connected to this app, you will be able to pay directly here and your account will update instantly.
-          </div>
-          <div style={{background:"rgba(255,204,0,.15)",border:"1px solid #ffcc02",borderRadius:9,padding:"10px 14px",fontSize:12,color:"#5d4037",lineHeight:1.6}}>
-            <strong>In the meantime, to make a payment:</strong><br/>
-            Send to BIDA via MTN MoMo or Airtel Money and inform your manager with your name and transaction ID.
-          </div>
-        </div>
-
-        {/* MoMo numbers placeholder */}
-        <div style={{background:"#f5f9ff",border:"1px solid #e3f2fd",borderRadius:12,padding:"14px 16px",marginBottom:16}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>BIDA Payment Numbers</div>
-          {[["🟡 MTN MoMo","— (contact manager)"],["🔴 Airtel Money","— (contact manager)"]].map(([lbl,val])=>(
-            <div key={lbl} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #e3f2fd"}}>
-              <span style={{fontSize:13,fontWeight:600,color:"#263238"}}>{lbl}</span>
-              <span style={{fontSize:12,color:"#90a4ae",fontFamily:"var(--mono)"}}>{val}</span>
-            </div>
-          ))}
-          <div style={{fontSize:10,color:"#90a4ae",marginTop:8}}>Contact bidacooperative@gmail.com for payment details.</div>
-        </div>
-
-        <button onClick={onClose} style={{width:"100%",padding:13,borderRadius:10,border:"1.5px solid #e3f2fd",background:"#f5f9ff",fontWeight:700,fontSize:14,cursor:"pointer",color:"#1565c0"}}>
-          Close
-        </button>
-      </div>
-    </div>
-  );
-
-  // ── DEAD CODE BELOW — activated once merchant API is integrated ──
-  // eslint-disable-next-line no-unreachable
   const [method,  setMethod]  = useState("mtn");
   const [phone,   setPhone]   = useState(member?.whatsapp||member?.phone||"");
   const [amount,  setAmount]  = useState("");
   const [purpose, setPurpose] = useState("monthly_savings");
   const [txId,    setTxId]    = useState("");
-  const [proof,   setProof]   = useState(null);
+  const [proof,   setProof]   = useState(null); // {name, data}
   const [busy,    setBusy]    = useState(false);
   const [err,     setErr]     = useState("");
   const [done,    setDone]    = useState(null);
@@ -7385,24 +7363,123 @@ function PaymentModalInline({ member, onClose }) {
         note:           proof?.name ? "Proof attached: " + proof.name : null,
         metadata:       { memberName: member.name, proofFileName: proof?.name || null },
       };
-      const r = await fetch("/api/initiate-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memberId: member.id, phone: n, amount: amt, purpose, method })
-      });
-      if (!r.ok) throw new Error("Payment API not yet integrated");
-      record.status = "api_initiated";
+      // Try merchant API first (for when you have merchant codes)
+      let apiOk = false;
+      try {
+        const r = await fetch("/api/initiate-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ memberId: member.id, phone: n, amount: amt, purpose, method })
+        });
+        if (r.ok) { apiOk = true; record.status = "api_initiated"; }
+      } catch (_) {}
+      // Always insert to payment_requests for manager visibility
       await mDb.insert("payment_requests", record);
-      setDone({ amt, phone: n, method, ref });
+      setDone({ amt, phone: n, method, ref, apiOk });
     } catch(e) { setErr(e.message); }
     finally { setBusy(false); }
   };
 
-  /* Transaction ID placeholder — kept for when API goes live */
-  const _txId = txId; const _setTxId = setTxId; const _proof = proof; const _handleProof = handleProof;
-  void(_txId); void(_setTxId); void(_proof); void(_handleProof); void(submit); void(done); void(busy); void(err);
-  void(method); void(phone); void(amount); void(purpose); void(setMethod); void(setPhone); void(setAmount); void(setPurpose);
-  /* end placeholder */
+  const S = {
+    ov:  { position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999,padding:16 },
+    sh:  { background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:500,padding:"24px 20px",maxHeight:"92vh",overflowY:"auto" },
+    lb:  { fontSize:10,fontWeight:700,color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6,fontFamily:"var(--mono)" },
+    inp: { width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #cfd8dc",fontSize:15,outline:"none",boxSizing:"border-box" },
+    btn: (d) => ({ width:"100%",padding:13,borderRadius:10,border:"none",fontWeight:700,fontSize:15,cursor:d?"not-allowed":"pointer",background:d?"#cfd8dc":"linear-gradient(135deg,#1b5e20,#2e7d32)",color:d?"#90a4ae":"#fff" }),
+  };
+
+  if (done) return (
+    <div style={S.ov} onClick={onClose}>
+      <div style={S.sh} onClick={e=>e.stopPropagation()}>
+        <div style={{textAlign:"center",padding:"20px 0"}}>
+          <div style={{fontSize:48,marginBottom:12}}>✅</div>
+          <div style={{fontWeight:800,fontSize:18,color:"var(--mint-600)"}}>Payment Request Submitted</div>
+          <div style={{fontSize:13,color:"var(--tmuted)",marginTop:8,lineHeight:1.7}}>
+            {mFmt(done.amt)} via {done.method==="mtn"?"MTN MoMo":"Airtel Money"} has been logged.<br/>
+            Your manager will confirm it shortly and your balance will update.
+          </div>
+          {done.ref && <div style={{fontSize:10,color:"#90a4ae",marginTop:10,fontFamily:"var(--mono)"}}>Ref: {done.ref}</div>}
+          <button onClick={onClose} style={{marginTop:20,background:"rgba(0,200,83,.08)",border:"none",color:"var(--mint-600)",fontWeight:700,padding:"10px 28px",borderRadius:10,cursor:"pointer",fontSize:13}}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={S.ov} onClick={onClose}>
+      <div style={S.sh} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+          <div style={{fontWeight:800,fontSize:17,color:"#0d2a5e"}}>Make a Payment</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#90a4ae"}}>✕</button>
+        </div>
+
+        {/* Payment method */}
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Payment Method</label>
+          <div style={{display:"flex",gap:10}}>
+            {[["mtn","🟡 MTN MoMo"],["airtel","🔴 Airtel Money"],["bank","🏦 Bank"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setMethod(v)} style={{flex:1,padding:10,borderRadius:10,fontWeight:method===v?700:400,border:"2px solid "+(method===v?"#1565c0":"#cfd8dc"),background:method===v?"#e3f2fd":"#fff",cursor:"pointer",fontSize:12,color:method===v?"#0d47a1":"#546e7a"}}>{l}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Phone / Account */}
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>{method==="bank"?"Bank Account / Ref":"Phone Number"}</label>
+          <input style={S.inp} type={method==="bank"?"text":"tel"} placeholder={method==="bank"?"Your account number":"0772 123 456"} value={phone} onChange={e=>setPhone(e.target.value)}/>
+        </div>
+
+        {/* Purpose */}
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Purpose</label>
+          <select style={S.inp} value={purpose} onChange={e=>setPurpose(e.target.value)}>
+            {PURPOSES.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
+          </select>
+        </div>
+
+        {/* Amount */}
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Amount (UGX)</label>
+          <input style={S.inp} type="number" placeholder="e.g. 50000" value={amount} onChange={e=>setAmount(e.target.value)}/>
+          {amount && !isNaN(+amount) && +amount > 0 && <div style={{fontSize:12,color:"var(--p600)",marginTop:5,fontFamily:"var(--mono)",fontWeight:700}}>{mFmt(+amount)}</div>}
+        </div>
+
+        {/* Transaction ID */}
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Transaction / MoMo ID <span style={{fontWeight:400,opacity:.7}}>(enter after you pay)</span></label>
+          <input style={S.inp} placeholder="e.g. QK7XXXXXX or bank reference" value={txId} onChange={e=>setTxId(e.target.value)}/>
+        </div>
+
+        {/* Proof attachment */}
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Attach Proof <span style={{fontWeight:400,opacity:.7}}>(screenshot or photo)</span></label>
+          <label style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"1.5px dashed #cfd8dc",borderRadius:10,cursor:"pointer",background:"#fafafa"}}>
+            <span style={{fontSize:20}}>📎</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:"var(--tmuted)"}}>{proof ? proof.name : "Tap to attach MoMo screenshot or receipt"}</div>
+              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>JPG, PNG or PDF</div>
+            </div>
+            <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={handleProof}/>
+          </label>
+          {proof && (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"6px 10px",background:"rgba(0,200,83,.08)",borderRadius:8}}>
+              <span style={{fontSize:11,color:"var(--mint-600)",fontWeight:600}}>✓ {proof.name}</span>
+              <button onClick={()=>setProof(null)} style={{background:"none",border:"none",color:"var(--error)",cursor:"pointer",fontSize:12,fontWeight:700}}>✕ Remove</button>
+            </div>
+          )}
+        </div>
+
+        {err && <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:9,padding:"9px 12px",fontSize:12,color:"var(--error)",marginBottom:12}}>{err}</div>}
+
+        <button style={S.btn(busy||!amount)} onClick={submit} disabled={busy||!amount}>
+          {busy ? "⏳ Submitting…" : "Submit Payment " + (!isNaN(+amount)&&+amount>0 ? mFmt(+amount) : "") + " →"}
+        </button>
+        <div style={{fontSize:10,color:"#90a4ae",textAlign:"center",marginTop:10,lineHeight:1.5}}>
+          Your manager will be notified and confirm your payment. Your balance updates once confirmed.
+        </div>
+      </div>
+    </div>
+  );
 }
 
 
@@ -8059,114 +8136,6 @@ function Skel() {
   return <div style={{background:"linear-gradient(90deg,#eceff1 25%,#e3f2fd 50%,#eceff1 75%)",backgroundSize:"200% 100%",animation:"shimmer 1.4s infinite",borderRadius:10,height:80,marginBottom:10}}/>;
 }
 
-// ─── Member portal PDF download button — proper stateful component ───
-function MemberStatementButton({ m, loans }) {
-  const [busy, setBusy] = useState(false);
-  const [msg,  setMsg]  = useState("");
-
-  const download = async () => {
-    if (!m || busy) return;
-    setBusy(true); setMsg("Generating PDF…");
-    try {
-      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
-      if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("jsPDF library failed to load. Check your internet connection.");
-      const {jsPDF} = window.jspdf;
-      const doc = new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
-      const W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight();
-      const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREY=[94,127,160];
-      // Header
-      doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
-      doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
-      (()=>{const cx=22,cy=16,r=8,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
-      doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",36,13);
-      doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",14,19);doc.text("bidacooperative@gmail.com",14,25);
-      doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,13,{align:"center"});
-      doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Individual Financial Summary — Confidential",W/2,20,{align:"center"});
-      doc.setFontSize(6.5);doc.text("Generated: "+new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),W-10,13,{align:"right"});
-      const tb=(m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0);
-      const bY=37;
-      doc.setFillColor(...BLITE);doc.roundedRect(10,bY,W-20,24,2,2,"F");
-      try{if(m.photoUrl){doc.addImage(m.photoUrl,"JPEG",13,bY+3,18,18);}else throw new Error("no photo");}
-      catch(_pe){doc.setFillColor(...BLUE);doc.circle(22,bY+12,9,"F");doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...WHITE);doc.text((m.name||"?")[0],22,bY+15,{align:"center"});}
-      doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text(m.name,35,bY+8);
-      doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
-      doc.text("Member ID: #"+m.id,35,bY+14);
-      doc.text("Joined: "+(m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}):"—"),35,bY+19);
-      if(m.phone||m.whatsapp)doc.text("Phone: "+(m.phone||m.whatsapp),W/2+2,bY+14);
-      const sY=bY+27;
-      doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",12,sY);
-      doc.autoTable({startY:sY+3,
-        head:[["Category","Amount (UGX)"]],
-        body:[
-          ["Membership Fee",Number(m.membership||0).toLocaleString("en-UG")],
-          ["Annual Subscription",Number(m.annualSub||0).toLocaleString("en-UG")],
-          ["Monthly Savings (cumulative)",Number(m.monthlySavings||0).toLocaleString("en-UG")],
-          ["Welfare Contributions",Number(m.welfare||0).toLocaleString("en-UG")],
-          ["Shares",Number(m.shares||0).toLocaleString("en-UG")],
-          ["Voluntary Deposit",Number(m.voluntaryDeposit||0).toLocaleString("en-UG")],
-          ["TOTAL BANKED","UGX "+Number(tb).toLocaleString("en-UG")],
-        ],
-        styles:{fontSize:9,cellPadding:2.8},
-        headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
-        columnStyles:{0:{cellWidth:110,fontStyle:"bold"},1:{halign:"right",fontWeight:"bold"}},
-        didParseCell:(d)=>{if(d.row.index===6&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
-        margin:{left:12,right:12}
-      });
-      if(loans&&loans.length>0){
-        const lY2=doc.lastAutoTable.finalY+8;
-        doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("LOAN HISTORY",12,lY2);
-        doc.autoTable({startY:lY2+3,
-          head:[["Issued","Principal","Term","Monthly Pay","Paid","Balance","Status"]],
-          body:loans.map(l=>{
-            const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
-            let ti=0;if(isR){let b=p;for(let i2=0;i2<term;i2++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
-            const bal=Math.max(0,p+ti-paid);
-            const mp=Math.round(p/term)+(isR?Math.round(p*rate):Math.round(p*rate));
-            return [new Date(l.dateBanked).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),Number(p).toLocaleString("en-UG"),term+"mo",Number(mp).toLocaleString("en-UG"),Number(paid).toLocaleString("en-UG"),bal>0?"UGX "+Number(bal).toLocaleString("en-UG"):"✓ CLEAR",l.status==="paid"?"✓ PAID":"● ACTIVE"];
-          }),
-          styles:{fontSize:8,cellPadding:2.2},
-          headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7.5},
-          margin:{left:12,right:12}
-        });
-      }
-      const pageCount=doc.internal.getNumberOfPages();
-      for(let pg=1;pg<=pageCount;pg++){
-        doc.setPage(pg);
-        doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
-        doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
-        doc.text("Thank you for being a valued member of the BIDA family. Together we grow stronger. — The Treasurer",12,H-4,{maxWidth:W-55});
-        doc.text("Page "+pg+" of "+pageCount,W-12,H-4,{align:"right"});
-      }
-      const blob=doc.output("blob");
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");
-      a.href=url;a.download="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
-      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-      document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
-      setMsg("✓ Downloaded!");
-      setTimeout(()=>setMsg(""),4000);
-    } catch(e) {
-      setMsg("⚠ " + e.message);
-      setTimeout(()=>setMsg(""),7000);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <button onClick={download} disabled={busy}
-      style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:busy?"not-allowed":"pointer",textAlign:"center",opacity:busy?.7:1,transition:"opacity .2s"}}>
-      <div style={{fontSize:24,marginBottom:4}}>{busy?"⏳":"📄"}</div>
-      <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>{busy?"Generating…":"Download Statement"}</div>
-      <div style={{fontSize:10,color:msg.startsWith("✓")?"#1b5e20":msg.startsWith("⚠")?"#c62828":"#90a4ae",marginTop:2,fontWeight:msg?"700":"400"}}>
-        {msg||"PDF — savings & loans"}
-      </div>
-    </button>
-  );
-}
-
 function MemberDashboardInline({ session, onLogout }) {
   const [m,      setM]      = useState(null);
   const [loans,  setLoans]  = useState([]);
@@ -8285,12 +8254,101 @@ function MemberDashboardInline({ session, onLogout }) {
           </div>}
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <button onClick={()=>setShowPay(true)} style={{background:"#fff",border:"1.5px solid #fff3cd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
-              <div style={{fontSize:24,marginBottom:4}}>🔗</div>
+            <button onClick={()=>setShowPay(true)} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:4}}>📲</div>
               <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>Make Payment</div>
-              <div style={{fontSize:10,color:"#e65100",marginTop:2,fontWeight:600}}>API Integration Pending</div>
+              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>MTN / Airtel MoMo</div>
             </button>
-            <MemberStatementButton m={m} loans={loans}/>
+            <button onClick={async()=>{
+              if(!m)return;
+              try{
+                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+                const {jsPDF}=window.jspdf;
+                const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+                const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+                const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREY=[94,127,160],GREEN=[27,94,32];
+                doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
+                doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
+                (()=>{const cx=22,cy=16,r=8,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
+                doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",36,13);
+                doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",14,19);doc.text("bidacooperative@gmail.com",14,25);
+                doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,13,{align:"center"});
+                doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Individual Financial Summary — Confidential",W/2,20,{align:"center"});
+                doc.setFontSize(6.5);doc.text("Generated: "+new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),W-10,13,{align:"right"});
+                const tb=(m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0);
+                const bY=37;
+                doc.setFillColor(...BLITE);doc.roundedRect(10,bY,W-20,24,2,2,"F");
+                try{
+                  if(m.photoUrl){doc.addImage(m.photoUrl,"JPEG",13,bY+3,18,18);}
+                  else throw new Error("no photo");
+                }catch(_pe2){
+                  doc.setFillColor(...BLUE);doc.circle(22,bY+12,9,"F");
+                  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...WHITE);
+                  doc.text((m.name||"?")[0],22,bY+15,{align:"center"});
+                }
+                doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text(m.name,35,bY+8);
+                doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+                doc.text("Member ID: #"+m.id,35,bY+14);
+                doc.text("Joined: "+(m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}):"—"),35,bY+19);
+                if(m.phone||m.whatsapp)doc.text("Phone: "+(m.phone||m.whatsapp),W/2+2,bY+14);
+                const sY=bY+27;
+                doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",12,sY);
+                doc.autoTable({startY:sY+3,
+                  head:[["Category","Amount (UGX)"]],
+                  body:[
+                    ["Membership Fee",Number(m.membership||0).toLocaleString("en-UG")],
+                    ["Annual Subscription",Number(m.annualSub||0).toLocaleString("en-UG")],
+                    ["Monthly Savings (cumulative)",Number(m.monthlySavings||0).toLocaleString("en-UG")],
+                    ["Welfare Contributions",Number(m.welfare||0).toLocaleString("en-UG")],
+                    ["Shares",Number(m.shares||0).toLocaleString("en-UG")],
+                    ["Voluntary Deposit",Number(m.voluntaryDeposit||0).toLocaleString("en-UG")],
+                    ["TOTAL BANKED","UGX "+Number(tb).toLocaleString("en-UG")],
+                  ],
+                  styles:{fontSize:9,cellPadding:2.8},
+                  headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
+                  columnStyles:{0:{cellWidth:110,fontStyle:"bold"},1:{halign:"right",fontWeight:"bold"}},
+                  didParseCell:(d)=>{if(d.row.index===6&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
+                  margin:{left:12,right:12}
+                });
+                if(loans.length>0){
+                  const lY2=doc.lastAutoTable.finalY+8;
+                  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("LOAN HISTORY",12,lY2);
+                  doc.autoTable({startY:lY2+3,
+                    head:[["Issued","Principal","Term","Monthly Pay","Paid","Balance","Status"]],
+                    body:loans.map(l=>{
+                      const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
+                      let ti=0;if(isR){let b=p;for(let i2=0;i2<term;i2++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
+                      const bal=Math.max(0,p+ti-paid);
+                      const mp=Math.round(p/term)+(isR?Math.round(p*rate):Math.round(p*rate));
+                      return [new Date(l.dateBanked).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),Number(p).toLocaleString("en-UG"),term+"mo",Number(mp).toLocaleString("en-UG"),Number(paid).toLocaleString("en-UG"),bal>0?"UGX "+Number(bal).toLocaleString("en-UG"):"✓ CLEAR",l.status==="paid"?"✓ PAID":"● ACTIVE"];
+                    }),
+                    styles:{fontSize:8,cellPadding:2.2},
+                    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7.5},
+                    margin:{left:12,right:12}
+                  });
+                }
+                const pageCount=doc.internal.getNumberOfPages();
+                for(let pg=1;pg<=pageCount;pg++){
+                  doc.setPage(pg);
+                  doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
+                  doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+                  doc.text("Thank you for being a valued member of the BIDA family. Together we grow stronger. — The Treasurer",12,H-4,{maxWidth:W-55});
+                  doc.text("Page "+pg+" of "+pageCount,W-12,H-4,{align:"right"});
+                }
+                const blob=doc.output("blob");
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement("a");
+                a.href=url;a.download="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
+                a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+                document.body.appendChild(a);a.click();
+                setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+              }catch(e){alert("Could not generate PDF: "+e.message);}
+            }} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:4}}>📄</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>Download Statement</div>
+              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>PDF — savings &amp; loans</div>
+            </button>
           </div>
         </>}
 
