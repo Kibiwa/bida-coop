@@ -7536,7 +7536,7 @@ function MemberEmailOTPWidget({ onLogin }) {
       } catch (_) { console.warn("EmailJS OTP send failed:", _.message); }
       setDevCode(emailSent ? null : code);
       setPhase("verify"); setCd(60); setOtp("");
-    } catch (ex) { setErr("Failed to send code. Check your connection and try again."); }
+    } catch (ex) { setErr("Error: " + (ex.message || "Unknown error. Open browser console for details.")); console.error("sendCode failed:", ex); }
     finally { setBusy(false); }
   };
 
