@@ -909,12 +909,19 @@ function blobToDataUrl(blob){
 
 function triggerDownload(blob, filename){
   const url=URL.createObjectURL(blob);
+  // Anchor click for desktop, window.open as universal fallback
   const a=document.createElement("a");
   a.href=url; a.download=filename;
   a.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none";
   document.body.appendChild(a);
   try{a.click();}catch(_){}
-  setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(_){}},10000);
+  try{document.body.removeChild(a);}catch(_){}
+  // Also open in new tab — reliable on iOS Safari and mobile Chrome
+  // (user sees PDF and can Save / Share from there)
+  setTimeout(()=>{
+    try{window.open(url,"_blank");}catch(_){}
+    setTimeout(()=>URL.revokeObjectURL(url),15000);
+  },400);
 }
 async function shareViaPDF(blob, filename, memberName){
   if(navigator.canShare&&navigator.canShare({files:[new File([blob],filename,{type:"application/pdf"})]})){
@@ -3163,19 +3170,19 @@ function AppInner(){
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename,htmlBody=null)=>{
     setEmailSending(s=>({...s,[key]:"sending"}));
     try{
-      const base64=await blobToBase64(pdfBlob);
-      const res=await fetch("/api/send-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:toEmail,subject,text:textBody,html:htmlBody||undefined,attachment:{content:base64,filename:pdfFilename}})});
-      if(res.status===404){
-        setEmailSetup(true);setEmailSending(s=>({...s,[key]:"nosetup"}));
-        // No backend yet — download the PDF locally and open mailto as fallback
-        triggerDownload(pdfBlob,pdfFilename);
-        setTimeout(()=>window.open("mailto:"+toEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(textBody+"\\n\\n[Attach the downloaded PDF manually]")),800);
-        return;
-      }
-      if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.error||"Send failed ("+res.status+")");}
+      // Download PDF immediately — works even if email fails
+      triggerDownload(pdfBlob,pdfFilename);
+      // Send via EmailJS (browser-side, no backend needed)
+      await sendViaEmailJS(toEmail,subject,textBody,htmlBody||undefined);
       setEmailSending(s=>({...s,[key]:"ok"}));
       setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),4000);
-    }catch(e){console.error("Email error:",e);setEmailSending(s=>({...s,[key]:"err"}));setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),5000);}
+    }catch(e){
+      console.error("Email error:",e);
+      setEmailSending(s=>({...s,[key]:"err"}));
+      setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),5000);
+      // Fallback: open mailto so manager can send manually
+      try{window.open("mailto:"+toEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(textBody));}catch(_){}
+    }
   };
 
   const dispatchSMS=async(key,toPhone,message)=>{
@@ -7991,12 +7998,7 @@ function LoanCard({ loan }) {
       const sched=buildLoanSchedule(loan);
       const calc=calcLoan(loan);
       const blob=await generateSchedulePDF(loan,{name:loan.memberName||"Member",id:loan.memberId,photoUrl:""},sched,calc);
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;
-      a.download="BIDA_Schedule_"+loan.id+".pdf";
-      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
-      document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+      triggerDownload(blob,"BIDA_Schedule_"+loan.id+".pdf");
     }catch(e){alert("PDF error: "+e.message);}
     finally{setDlBusy(false);}
   };
