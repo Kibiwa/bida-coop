@@ -858,10 +858,8 @@ function buildSavingsEmail(m){
   const subj="BIDA Co-operative — "+mn+" "+yr+" Savings Reminder";
   const tb=totBanked(m);
   const body="Dear "+first+",\n\nThis is a friendly reminder that your monthly savings and welfare contributions for "+mn+" "+yr+" are now due. Please ensure your payment reaches us by the 5th of this month.\n\nYour Savings Dashboard as at "+mn+" "+yr+":\n  Membership Fee:       "+fmt(m.membership||0)+"\n  Annual Subscription:  "+fmt(m.annualSub||0)+"\n  Monthly Savings:      "+fmt(m.monthlySavings||0)+"\n  Welfare:              "+fmt(m.welfare||0)+"\n  Shares:               "+fmt(m.shares||0)+"\n  Voluntary Deposit:    "+fmt(m.voluntaryDeposit||0)+"\n  ─────────────────────────────────\n  TOTAL BANKED:         "+fmt(tb)+"\n\nShould you have any questions, please do not hesitate to reach out to your BIDA manager.\n\nThank you for being a valued member of the BIDA family. Together we grow stronger.\n\nWarm regards,\nThe Treasurer\nBida Multi-Purpose Co-operative Society\n\nThis is an automated message. Please do not reply to this email.";
-  // Photo block — shows real photo if available, else coloured initial
-  const photoBlock=m.photoUrl
-    ?'<tr><td style="padding:24px 32px 0;text-align:center;"><img src="'+m.photoUrl+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:4px solid rgba(255,255,255,.5);box-shadow:0 4px 16px rgba(0,0,0,.25);" alt="'+first+'"/><div style="margin-top:8px;font-size:15px;font-weight:800;color:#fff;">'+m.name+'</div><div style="font-size:10px;color:rgba(255,255,255,.7);letter-spacing:1px;">BIDA Member</div></td></tr>'
-    :'<tr><td style="padding:24px 32px 0;text-align:center;"><div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:32px;font-weight:900;line-height:80px;text-align:center;display:inline-block;border:3px solid rgba(255,255,255,.4);">'+first[0].toUpperCase()+'</div><div style="margin-top:8px;font-size:15px;font-weight:800;color:#fff;">'+m.name+'</div><div style="font-size:10px;color:rgba(255,255,255,.7);letter-spacing:1px;">BIDA Member</div></td></tr>';
+  // Name-only header — no photo (base64 images don't render in email clients)
+  const nameBlock='<tr><td style="padding:20px 32px 4px;text-align:center;"><div style="display:inline-block;background:rgba(255,255,255,.15);border-radius:10px;padding:8px 24px;"><span style="font-size:17px;font-weight:900;color:#fff;letter-spacing:1px;">'+m.name+'</span></div><div style="font-size:10px;color:rgba(255,255,255,.7);letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;">BIDA Member</div></td></tr>';
   // Savings dashboard table rows
   const rows=[
     ["Membership Fee",          m.membership||0,    "#e3f2fd"],
@@ -872,7 +870,7 @@ function buildSavingsEmail(m){
     ["Voluntary Deposit",       m.voluntaryDeposit||0,"#fff"],
   ].map(([label,val,bg])=>'<tr style="background:'+bg+';"><td style="padding:10px 16px;font-size:13px;color:#444;border-bottom:1px solid #e3eaf5;">'+label+'</td><td style="padding:10px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(val)+'</td></tr>').join("");
   const dashboardTable='<table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e3eaf5;border-radius:10px;overflow:hidden;"><tr><td colspan="2" style="background:#1565c0;padding:10px 16px;"><span style="color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">📊 Your Savings Dashboard — '+mn+' '+yr+'</span></td></tr>'+rows+'<tr style="background:#0d3461;"><td style="padding:12px 16px;font-size:14px;font-weight:800;color:#fff;">TOTAL BANKED</td><td style="padding:12px 16px;font-size:15px;font-weight:900;color:#90CAF9;text-align:right;">'+fmt(tb)+'</td></tr></table>';
-  const html='<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:32px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);"><tr><td style="background:linear-gradient(135deg,#0d3461,#1565c0);padding:24px 32px 18px;text-align:center;"><table cellpadding="0" cellspacing="0" style="margin:0 auto 10px;"><tr><td><svg width="48" height="48" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="bge2" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#42A5F5"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient></defs><polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#bge2)" stroke="rgba(66,165,245,.6)" stroke-width="1.5"/><rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity="0.9"/><rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6"/><rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff"/><polygon points="50,17 56,23 44,23" fill="#fff"/></svg></td></tr></table><div style="display:inline-block;background:#fff;border-radius:8px;padding:4px 16px;margin-bottom:6px;"><span style="font-size:22px;font-weight:900;color:#1565c0;letter-spacing:3px;">BIDA</span></div><div style="color:rgba(255,255,255,0.8);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Multi-Purpose Co-operative Society</div></td></tr>'+photoBlock+'<tr><td style="padding:20px 32px 8px;"><p style="font-size:16px;color:#1a1a2e;margin:0 0 6px 0;">Dear <strong>'+first+'</strong>,</p><p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 16px 0;">This is a friendly reminder that your <strong>monthly savings and welfare contributions</strong> for <strong>'+mn+' '+yr+'</strong> are now due. Please ensure your payment reaches us by the <strong>5th of this month</strong>.</p></td></tr><tr><td style="padding:0 32px 20px;">'+dashboardTable+'</td></tr><tr><td style="padding:0 32px 20px;"><p style="font-size:13px;color:#666;line-height:1.6;margin:0 0 12px 0;">Should you have any questions, please do not hesitate to reach out to your BIDA manager.</p><hr style="border:none;border-top:1px solid #e3eaf5;margin:0 0 16px;"/><p style="font-size:13px;color:#444;line-height:1.8;margin:0;">Thank you for being a valued member of the BIDA family. Together we grow stronger.</p><p style="font-size:13px;color:#555;margin:12px 0 0;">Warm regards,<br/><strong style="color:#0d3461;">The Treasurer</strong><br/><span style="color:#1565c0;font-weight:700;">Bida Multi-Purpose Co-operative Society</span></p></td></tr><tr><td style="background:#f0f4f8;padding:12px 32px;text-align:center;border-top:1px solid #e3eaf5;"><p style="font-size:10px;color:#999;margin:0;">This is an automated message. Please do not reply to this email.</p></td></tr></table></td></tr></table></body></html>';
+  const html='<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:32px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);"><tr><td style="background:linear-gradient(135deg,#0d3461,#1565c0);padding:24px 32px 18px;text-align:center;"><table cellpadding="0" cellspacing="0" style="margin:0 auto 10px;"><tr><td><svg width="48" height="48" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="bge2" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#42A5F5"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient></defs><polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#bge2)" stroke="rgba(66,165,245,.6)" stroke-width="1.5"/><rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity="0.9"/><rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6"/><rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff"/><polygon points="50,17 56,23 44,23" fill="#fff"/></svg></td></tr></table><div style="display:inline-block;background:#fff;border-radius:8px;padding:4px 16px;margin-bottom:6px;"><span style="font-size:22px;font-weight:900;color:#1565c0;letter-spacing:3px;">BIDA</span></div><div style="color:rgba(255,255,255,0.8);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Multi-Purpose Co-operative Society</div></td></tr>'+nameBlock+'<tr><td style="padding:20px 32px 8px;"><p style="font-size:16px;color:#1a1a2e;margin:0 0 6px 0;">Dear <strong>'+first+'</strong>,</p><p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 16px 0;">This is a friendly reminder that your <strong>monthly savings and welfare contributions</strong> for <strong>'+mn+' '+yr+'</strong> are now due. Please ensure your payment reaches us by the <strong>5th of this month</strong>.</p></td></tr><tr><td style="padding:0 32px 20px;">'+dashboardTable+'</td></tr><tr><td style="padding:0 32px 20px;"><p style="font-size:13px;color:#666;line-height:1.6;margin:0 0 12px 0;">Should you have any questions, please do not hesitate to reach out to your BIDA manager.</p><hr style="border:none;border-top:1px solid #e3eaf5;margin:0 0 16px;"/><p style="font-size:13px;color:#444;line-height:1.8;margin:0;">Thank you for being a valued member of the BIDA family. Together we grow stronger.</p><p style="font-size:13px;color:#555;margin:12px 0 0;">Warm regards,<br/><strong style="color:#0d3461;">The Treasurer</strong><br/><span style="color:#1565c0;font-weight:700;">Bida Multi-Purpose Co-operative Society</span></p></td></tr><tr><td style="background:#f0f4f8;padding:12px 32px;text-align:center;border-top:1px solid #e3eaf5;"><p style="font-size:10px;color:#999;margin:0;">This is an automated message. Please do not reply to this email.</p></td></tr></table></td></tr></table></body></html>';
   return{subj,body,html};
 }
 function buildLoanEmail(m,loan){
@@ -942,7 +940,17 @@ async function generateLoanPDF(loan, member, calc){
   const NAVY=[13,52,97],BLUE=[21,101,192],WHITE=[255,255,255],GREY=[94,127,160],RED=[198,40,40],GREEN=[27,94,32],BLITE=[227,242,253];
   doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
   doc.setFillColor(...BLUE);doc.rect(0,28,W,2,"F");
-  (()=>{const cx=22,cy=15,r=8;doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");})();
+  (()=>{
+    const cx=22,cy=15,r=8,pts=[];
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+    doc.setFillColor(21,101,192);
+    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    const bw=r*0.22,bx=cx-r*0.34;
+    doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
+    doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");
+  })();
   doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("BIDA",36,12);
   doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",36,18);
   doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("LOAN AGREEMENT",W/2,12,{align:"center"});
@@ -1074,13 +1082,18 @@ async function generateReceiptPDF(loan, member, amountPaid, calc, payRecord){
   // Header
   doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
   doc.setFillColor(...BLUE);doc.rect(0,32,W,2,"F");
-  // Logo
-  const cx=22,cy=16,r=8;
-  doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");
-  doc.setFillColor(...WHITE);
-  doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");
-  doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");
-  doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");
+  // Logo — hexagon
+  (()=>{
+    const cx=22,cy=16,r=8,pts=[];
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+    doc.setFillColor(21,101,192);
+    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    const bw=r*0.22,bx=cx-r*0.34;
+    doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
+    doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");
+  })();
   doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("BIDA",36,12);
   doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",36,18);
   doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("PAYMENT RECEIPT",W/2,12,{align:"center"});
@@ -1163,12 +1176,17 @@ async function generateSchedulePDF(loan, member, schedule, calc){
   // Header
   doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
   doc.setFillColor(...BLUE);doc.rect(0,32,W,2,"F");
-  const cx=22,cy=16,r=8;
-  doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");
-  doc.setFillColor(...WHITE);
-  doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");
-  doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");
-  doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");
+  (()=>{
+    const cx=22,cy=16,r=8,pts=[];
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+    doc.setFillColor(21,101,192);
+    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    const bw=r*0.22,bx=cx-r*0.34;
+    doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
+    doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");
+  })();
   doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("BIDA",36,12);
   doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",36,18);
   doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("LOAN REPAYMENT SCHEDULE",W/2,12,{align:"center"});
@@ -1292,7 +1310,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160],ORANGE=[191,54,12];
   const dH=(title,sub)=>{
     doc.setFillColor(...NAVY);doc.rect(0,0,W,24,"F");doc.setFillColor(...BLUE);doc.rect(0,24,W,2,"F");
-    (()=>{const cx=18,cy=12,r=7;doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");doc.setFillColor(...WHITE);doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");})();
+    (()=>{const cx=18,cy=12,r=7,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
     doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("BIDA",30,10);
     doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",30,16);
     doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text(title,W/2,10,{align:"center"});
@@ -1492,18 +1510,26 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160];
 
-  const drawLogo=(cx,cy,r)=>{
-    doc.setFillColor(...BLUE);
-    doc.rect(cx-r,cy-r,r*2,r*2,"F");
-    doc.setFillColor(...WHITE);
-    doc.rect(cx-r*0.42,cy+r*0.02,r*0.20,r*0.50,"F");
-    doc.rect(cx-r*0.10,cy-r*0.26,r*0.20,r*0.78,"F");
-    doc.rect(cx+r*0.22,cy-r*0.54,r*0.20,r*1.06,"F");
+  // Proper BIDA hexagon logo matching the login page
+  const drawBidaLogo=(cx,cy,r)=>{
+    // Hexagon fill (gradient simulation with two layers)
+    const pts=[];
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+    doc.setFillColor(21,101,192);
+    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    // Three bar chart bars inside hexagon
+    const bw=r*0.22,bx=cx-r*0.34;
+    doc.setFillColor(144,202,249);doc.roundedRect(bx,        cy+r*0.08, bw,r*0.52,0.5,0.5,"F");
+    doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38, cy-r*0.22, bw,r*0.82,0.5,0.5,"F");
+    doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76, cy-r*0.52, bw,r*1.12,0.5,0.5,"F");
+    // Arrow tip on tallest bar
+    doc.setFillColor(255,255,255);
+    doc.triangle(bx+r*0.76,cy-r*0.62, bx+r*0.76+bw,cy-r*0.62, bx+r*0.76+bw/2,cy-r*0.82,"F");
   };
 
   doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
   doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
-  drawLogo(22,16,9);
+  drawBidaLogo(22,16,9);
   doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",36,13);
   doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);
   doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",36,19);
@@ -1533,7 +1559,7 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   sBox(12,"Total Banked",fmt(tb),BLUE);
   sBox(12+bW+bGap,"Max Borrow",fmt(lim),GREEN);
   sBox(12+2*(bW+bGap),"Rank","#"+rank+" / "+allMembers.length,NAVY);
-  sBox(12+3*(bW+bGap),"Pool Share",pct+"% of pool",BLUE);
+  sBox(12+3*(bW+bGap),"Pool Share",pct+" of pool",BLUE);
 
   const cY=boxY+boxH+4;
   doc.setFillColor(248,252,255);doc.roundedRect(10,cY,W-20,24,2,2,"F");
@@ -1595,7 +1621,7 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     body:[
       ["Total pool (all "+allMembers.length+" members)",fmt(poolTotal),"Combined savings of all members"],
       ["Pool average per member",fmt(avgTotal),"Average contribution"],
-      ["Your total banked",fmt(tb),pct+"% of the entire pool"],
+      ["Your total banked",fmt(tb),pct+" of the entire pool"],
       [diff>=0?"Above pool average":"Below pool average",fmt(Math.abs(diff)),diff>=0?"▲ You are above average":"▼ You are below average"],
       ["Your rank","#"+rank+" of "+allMembers.length,rank===1?"🏅 Top contributor":rank<=3?"Top 3":"By total amount banked"],
     ],
@@ -1658,12 +1684,17 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
 
   doc.setFillColor(...NAVY);doc.rect(9,9,W-18,22,"F");
 
-  const cx=24,cy=20,r=7;
-  doc.setFillColor(...BLUE);doc.rect(cx-r,cy-r,r*2,r*2,"F");
-  doc.setFillColor(...WHITE);
-  doc.rect(cx-r*.42,cy+r*.02,r*.20,r*.50,"F");
-  doc.rect(cx-r*.10,cy-r*.26,r*.20,r*.78,"F");
-  doc.rect(cx+r*.22,cy-r*.54,r*.20,r*1.06,"F");
+  (()=>{
+    const cx=24,cy=20,r=7,pts=[];
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+    doc.setFillColor(21,101,192);
+    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    const bw=r*0.22,bx=cx-r*0.34;
+    doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
+    doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");
+  })();
 
   doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);
   doc.text("BIDA",36,17);
@@ -8228,7 +8259,8 @@ function MemberDashboardInline({ session, onLogout }) {
                 const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREY=[94,127,160],GREEN=[27,94,32];
                 doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
                 doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
-                doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",14,13);
+                (()=>{const cx=22,cy=16,r=8,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
+                doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",36,13);
                 doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",14,19);doc.text("bidacooperative@gmail.com",14,25);
                 doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,13,{align:"center"});
                 doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Individual Financial Summary — Confidential",W/2,20,{align:"center"});
