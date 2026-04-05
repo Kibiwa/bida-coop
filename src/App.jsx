@@ -1350,7 +1350,8 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const tM=members.reduce((s,m)=>s+(m.membership||0),0),tA=members.reduce((s,m)=>s+(m.annualSub||0),0),tS=members.reduce((s,m)=>s+(m.monthlySavings||0),0),tW=members.reduce((s,m)=>s+(m.welfare||0),0),tSh=members.reduce((s,m)=>s+(m.shares||0),0),grand=members.reduce((s,m)=>s+totBanked(m),0);
     const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
     const profit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-    const cashInBk=grand+profit-totalExp;
+    const activeDisb=loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
+    const cashInBk=grand+profit-totalExp-activeDisb;
     dH("BIDA CO-OPERATIVE — MEMBER SAVINGS LEDGER","Financial Statement as at "+toStr());
     sB(10,27,38,16,"Members",""+members.length,BLUE);
     sB(52,27,46,16,"Total Banked",fmt(grand),BLUE);
@@ -1409,7 +1410,8 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
     const pool=members.reduce((s,m)=>s+totBanked(m),0);
     const profit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-    const cashInBk=pool+profit-totalExp;
+    const activeDisb=loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
+    const cashInBk=pool+profit-totalExp-activeDisb;
     const catTotals={};expenses.forEach(e=>{catTotals[e.category]=(catTotals[e.category]||0)+(+e.amount||0);});
     dH("BIDA CO-OPERATIVE — EXPENSES REGISTER","Full Expenditure Ledger with Running Balance — "+toStr());
     sB(10,27,42,16,"Fund Pool",fmt(pool),BLUE);
@@ -1423,7 +1425,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("CATEGORY SUMMARY",10,50);
     doc.autoTable({startY:53,head:[["Category","Amount (UGX)","%"]],body:catRows,styles:{fontSize:7.5,cellPadding:2},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},columnStyles:{0:{cellWidth:60,fontStyle:"bold"},1:{halign:"right",cellWidth:40},2:{halign:"center",cellWidth:20}},didParseCell:(d)=>{if(d.row.index===catRows.length-1&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";}},tableWidth:120,margin:{left:10}});
     const sortedExp=[...expenses].sort((a,b)=>new Date(a.date)-new Date(b.date));
-    let running=pool+profit;
+    let running=pool+profit-activeDisb;
     const rows=sortedExp.map((e,i)=>{
       running-=(+e.amount||0);
       const payDetail=e.payMode==="cash"?"💵 Cash":e.payMode==="bank"?"🏦 "+(e.bankName||"Bank"):e.payMode==="mtn"?"📱 MTN "+(e.mobileNumber||""):e.payMode==="airtel"?"📱 Airtel "+(e.mobileNumber||""):e.payMode||"—";
@@ -1463,7 +1465,8 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const aL=loans.filter(l=>l.status!=="paid");
     const aI=aL.reduce((s,l)=>s+calcLoan(l).monthlyInt,0);
     const tP=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-    const cashInBk=gT+tP-totalExp;
+    const activeDisb_proj=loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
+    const cashInBk=gT+tP-totalExp-activeDisb_proj;
     const now=new Date();const sixAgo=new Date(now);sixAgo.setMonth(sixAgo.getMonth()-6);
     const recentNewMembers=members.filter(m=>m.joinDate&&new Date(m.joinDate)>=sixAgo).length;
     const avgMbrSavings=members.length>0?Math.round(tM/members.length):50000;
@@ -1739,14 +1742,32 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
 
   // Cover / summary page
   drawHeader(1);
+  // Snapshot figures: everything up to and including the selected month end
   const totalBanked=members.reduce((s,m)=>s+totBanked(m),0);
   const totalMonthly=members.reduce((s,m)=>s+(m.monthlySavings||0),0);
   const totalWelfare=members.reduce((s,m)=>s+(m.welfare||0),0);
-  const activeLoans=loans.filter(l=>l.status!=="paid");
+  // Loans active as at month end: issued on or before mEnd and not paid, OR paid after mEnd
+  const activeLoans=loans.filter(l=>{
+    const issued=l.dateBanked?new Date(l.dateBanked):null;
+    if(!issued||issued>mEnd) return false;
+    if(l.status==="paid"){
+      const paidDate=l.datePaid?new Date(l.datePaid):null;
+      return paidDate&&paidDate>mEnd;
+    }
+    return true;
+  });
   const totalOutstanding=activeLoans.reduce((s,l)=>s+calcLoan(l).balance,0);
   const totalPenalty=activeLoans.reduce((s,l)=>s+calcPenalty(l).penaltyAmt,0);
+  // Profit from loans fully closed on or before month end
+  const mLoanProfit=loans.filter(l=>l.status==="paid"&&l.datePaid&&new Date(l.datePaid)<=mEnd).reduce((s,l)=>s+calcLoan(l).profit,0);
+  // Active loan disbursements as at month end
+  const mActiveDisb=activeLoans.reduce((s,l)=>s+(+l.amountLoaned||0),0);
+  // Expenses: this month and cumulative to month end
   const mExpenses=expenses.filter(e=>{const d=new Date(e.date);return d>=mStart&&d<=mEnd;});
   const mExpTotal=mExpenses.reduce((s,e)=>s+(+e.amount||0),0);
+  const allExpToDateTotal=expenses.filter(e=>e.date&&new Date(e.date)<=mEnd).reduce((s,e)=>s+(+e.amount||0),0);
+  // Cash in bank as at month end (correct formula)
+  const mCashInBank=totalBanked+mLoanProfit-allExpToDateTotal-mActiveDisb;
 
   // Summary stats box
   let y=35;
@@ -1755,13 +1776,13 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
   doc.text("PERIOD SUMMARY — "+mLabel.toUpperCase(),12,y+7);
   const sItems=[
     ["Total Members",""+members.length,[...NAVY]],
-    ["Total Fund Pool",fmt2(totalBanked),[...BLUE]],
+    ["Fund Pool (Cumulative)",fmt2(totalBanked),[...BLUE]],
     ["Monthly Savings Rate",fmt2(totalMonthly),[27,94,32]],
     ["Welfare Pool",fmt2(totalWelfare),[...BLUE]],
-    ["Active Loans",""+activeLoans.length,[191,54,12]],
+    ["Active Loans (at "+mLabel+")",""+activeLoans.length,[191,54,12]],
     ["Outstanding Balance",fmt2(totalOutstanding),[...RED]],
-    ["Penalty Accrued",fmt2(totalPenalty),[...RED]],
     ["Expenses This Month",fmt2(mExpTotal),[...RED]],
+    ["Cash in Bank (at "+mLabel+")",fmt2(mCashInBank),mCashInBank>=0?27:198,mCashInBank>=0?94:40,mCashInBank>=0?32:40],
   ];
   const cols=4,cw=(W-20)/cols;
   sItems.forEach((item,i)=>{
@@ -1773,7 +1794,7 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
   y+=38;
   // Member-by-member summary table
   doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);
-  doc.text("MEMBER SAVINGS SUMMARY — "+mLabel,10,y);
+  doc.text("MEMBER SAVINGS SUMMARY — Cumulative Position as at "+mLabel,10,y);
   const rows=members.map((m,i)=>{
     const activeLoan=loans.find(l=>l.memberId===m.id&&l.status!=="paid");
     const pen=activeLoan?calcPenalty(activeLoan):{penaltyMonths:0,penaltyAmt:0,totalOwed:0};
@@ -1821,9 +1842,9 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
     drawHeader(doc.getNumberOfPages());
     let ey=35;
     doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);
-    doc.text("EXPENSES — "+mLabel,10,ey);
+    doc.text("EXPENSES — "+mLabel+" ("+mExpenses.length+" transaction"+(mExpenses.length===1?"":"s")+")",10,ey);
     const expRows=mExpenses.map((e,i)=>[i+1,new Date(e.date).toLocaleDateString("en-GB",{day:"2-digit",month:"short"}),e.activity.substring(0,40),e.issuedBy||"—",fmtN2(+e.amount||0),(e.category||"—").replace(/_/g," "),e.payMode||"—"]);
-    expRows.push(["","","TOTAL","",fmtN2(mExpTotal),"",""]);
+    expRows.push(["","","TOTAL THIS MONTH","",fmtN2(mExpTotal),"",""]);
     doc.autoTable({
       startY:ey+3,
       head:[["#","Date","Activity","Issued By","Amount (UGX)","Category","Pay Mode"]],
@@ -1836,6 +1857,20 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
       margin:{left:8,right:8},
       didDrawPage:()=>drawFooter()
     });
+    // Cash in bank summary box after expenses table
+    const summaryY=doc.lastAutoTable.finalY+6;
+    if(summaryY<H-30){
+      doc.setFillColor(mCashInBank>=0?232:255,mCashInBank>=0?245:235,mCashInBank>=0?233:238);
+      doc.roundedRect(8,summaryY,W-16,18,2,2,"F");
+      doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(...NAVY);
+      doc.text("FINANCIAL POSITION AS AT END OF "+mLabel.toUpperCase(),12,summaryY+6);
+      const posItems=[["Fund Pool",fmt2(totalBanked)],["Loan Profit (realised)",fmt2(mLoanProfit)],["Expenses to Date","("+fmt2(allExpToDateTotal)+")"],["Loans Outstanding","("+fmt2(mActiveDisb)+")"],["Cash in Bank",fmt2(mCashInBank)]];
+      posItems.forEach((item,i)=>{
+        const px=10+(i*38);
+        doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(...GREY);doc.text(item[0].toUpperCase(),px,summaryY+10);
+        doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(mCashInBank<0&&i===4?198:13,mCashInBank<0&&i===4?40:52,mCashInBank<0&&i===4?40:97);doc.text(item[1],px,summaryY+15);
+      });
+    }
   }
 
   drawFooter();
@@ -1884,11 +1919,13 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
   const totalBanked=members.reduce((s,m)=>s+totBanked(m),0);
   const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
   const loanProfit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-  const cashInBk=totalBanked+loanProfit-totalExp;
+  const invReturns_agm=(investments||[]).reduce((s,i)=>s+(+i.interestEarned||0),0);
+  const activeOutstanding_agm=loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
+  const invMade_agm=(investments||[]).filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0);
+  const cashInBk=totalBanked+loanProfit+invReturns_agm-totalExp-activeOutstanding_agm-invMade_agm;
   const activeLoans=loans.filter(l=>l.status!=="paid");
   const totalOutstanding=activeLoans.reduce((s,l)=>s+calcLoan(l).balance,0);
-  const invTotal=(investments||[]).reduce((s,i)=>s+(+i.amount||0),0);
-  const totalAssets=cashInBk+totalOutstanding+invTotal;
+  const totalAssets=cashInBk+totalOutstanding+invMade_agm;
   const totalPenalty=activeLoans.reduce((s,l)=>s+calcPenalty(l).penaltyAmt,0);
   const overdueLoans=activeLoans.filter(l=>monthsOverdue(l)>0);
 
@@ -1910,7 +1947,7 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
     ["Loan Interest Income",fmt2(loanProfit),...GREEN],
     ["Total Expenses",fmt2(totalExp),...RED],
     ["Cash in Bank",fmt2(cashInBk),cashInBk>=0?27:198,cashInBk>=0?94:40,cashInBk>=0?32:40],
-    ["Investments",fmt2(invTotal),...BLUE],
+    ["Investments",fmt2(invMade_agm),...BLUE],
     ["Total Assets",fmt2(totalAssets),...NAVY],
   ];
   const hcols=4,hcw=(W-20)/hcols;
@@ -1925,14 +1962,13 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
   doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("INCOME & EXPENDITURE STATEMENT",10,y);y+=3;
   const ieRows=[
     ["INCOME","",""],
-    ["  Loan Interest Income",fmtN2(loanProfit),""],
-    ["  Investment Returns",fmtN2((investments||[]).reduce((s,i)=>s+(+i.expectedReturn||0),0)),""],
-    ["  Processing Fees","(included in interest)",""],
-    ["TOTAL INCOME",fmtN2(loanProfit),""],
+    ["  Loan Interest & Processing Fees",fmtN2(loanProfit),""],
+    ["  Investment Interest Earned",fmtN2(invReturns_agm),""],
+    ["TOTAL INCOME",fmtN2(loanProfit+invReturns_agm),""],
     ["EXPENDITURE","",""],
     ...Object.entries(expenses.reduce((acc,e)=>{acc[e.category||"other"]=(acc[e.category||"other"]||0)+(+e.amount||0);return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>["  "+k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()),fmtN2(v),""]),
     ["TOTAL EXPENDITURE",fmtN2(totalExp),""],
-    ["NET SURPLUS / (DEFICIT)",fmtN2(loanProfit-totalExp),""],
+    ["NET SURPLUS / (DEFICIT)",fmtN2(loanProfit+invReturns_agm-totalExp),""],
   ];
   doc.autoTable({
     startY:y,
@@ -1943,7 +1979,7 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
       const raw=d.cell.raw||"";
       if(raw==="INCOME"||raw==="EXPENDITURE")d.cell.styles.fillColor=BLITE,d.cell.styles.fontStyle="bold",d.cell.styles.textColor=NAVY;
       if(raw.startsWith("TOTAL")||raw.startsWith("NET"))d.cell.styles.fontStyle="bold",d.cell.styles.fillColor=[240,255,240];
-      if(raw.startsWith("NET")&&(loanProfit-totalExp)<0)d.cell.styles.textColor=RED;
+      if(raw.startsWith("NET")&&(loanProfit+invReturns_agm-totalExp)<0)d.cell.styles.textColor=RED;
     },
     margin:{left:10,right:10},
     didDrawPage:(d)=>{
@@ -1961,14 +1997,14 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
   const bsRows=[
     ["ASSETS","",""],
     ["  Cash in Bank",fmtN2(cashInBk),""],
-    ["  Loan Book (Outstanding)",fmtN2(totalOutstanding),""],
-    ["  Investments",fmtN2(invTotal),""],
-    ["  Penalty Receivable",fmtN2(totalPenalty),""],
-    ["TOTAL ASSETS",fmtN2(totalAssets+totalPenalty),""],
+    ["  Loan Book (Outstanding — Principal)",fmtN2(totalOutstanding),""],
+    ["  Investments (Active Positions)",fmtN2(invMade_agm),""],
+    ["  Penalty Interest Receivable",fmtN2(totalPenalty),""],
+    ["TOTAL ASSETS",fmtN2(cashInBk+totalOutstanding+invMade_agm+totalPenalty),""],
     ["LIABILITIES & EQUITY","",""],
-    ["  Member Savings (Liability)",fmtN2(totalBanked),""],
-    ["  Retained Surplus",fmtN2(cashInBk-totalBanked+loanProfit),""],
-    ["TOTAL LIABILITIES & EQUITY",fmtN2(totalAssets+totalPenalty),""],
+    ["  Member Savings (Capital Pool)",fmtN2(totalBanked),""],
+    ["  Retained Surplus / (Deficit)",fmtN2(loanProfit+invReturns_agm-totalExp),""],
+    ["TOTAL LIABILITIES & EQUITY",fmtN2(cashInBk+totalOutstanding+invMade_agm+totalPenalty),""],
   ];
   doc.autoTable({
     startY:y,
@@ -3326,16 +3362,22 @@ function AppInner(){
 
   const totalExpenses  = useMemo(()=>expenses.reduce((s,e)=>s+(+e.amount||0),0),[expenses]);
   const cashInBank     = useMemo(()=>{
-    const bidaIncome    = savT.total - totalExpenses;
-    const outstanding   = loans
-      .filter(l=>l.status!=="paid")
-      .reduce((s,l)=>s+(+l.amountLoaned||0),0);
-    const interestEarned = loans
+    // CORRECT formula:
+    // All member deposits (totalBanked)
+    // + realised loan profit (processing fees + interest on paid loans)
+    // + investment interest earned
+    // - total expenses paid out
+    // - active loan principal disbursed (money out of vault, not yet returned)
+    // - active investments (money deployed, not liquid)
+    const loanProfit    = loans
       .filter(l=>l.status==="paid")
       .reduce((s,l)=>s+calcLoan(l).profit,0);
     const invReturns    = investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
+    const activeOutstanding = loans
+      .filter(l=>l.status!=="paid")
+      .reduce((s,l)=>s+(+l.amountLoaned||0),0);
     const invMade       = investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0);
-    return bidaIncome - outstanding + interestEarned + invReturns - invMade;
+    return savT.total + loanProfit + invReturns - totalExpenses - activeOutstanding - invMade;
   },[savT.total,totalExpenses,loans,investments]);
   const netCash        = cashInBank;
   const totalInvested  = useMemo(()=>investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0),[investments]);
@@ -4498,7 +4540,7 @@ function AppInner(){
                   <div className="cval danger">{fmt(totalExpenses)}</div>
                   <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
                 </div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Exp − Loans Out</div></div>
                 {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% members · 60% pool</div></div>}
               </div>
 
@@ -5531,7 +5573,7 @@ function AppInner(){
                 <div>
                   <div style={{fontSize:10,opacity:.75,textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>💳 Cash in Bank (live)</div>
                   <div style={{fontSize:26,fontWeight:900,fontFamily:"var(--mono)",marginTop:2}}>{fmt(cashInBank)}</div>
-                  <div style={{fontSize:10,opacity:.7,marginTop:3}}>Total Banked {fmt(savT.total)} + Profit {fmt(lStat.profit)} − Expenses {fmt(totalExpenses)}</div>
+                  <div style={{fontSize:10,opacity:.7,marginTop:3}}>Banked {fmt(savT.total)} + Profit {fmt(lStat.profit)} − Expenses {fmt(totalExpenses)} − Loans Out {fmt(lStat.outstanding)}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontSize:10,opacity:.7}}>Transactions</div>
@@ -5547,7 +5589,7 @@ function AppInner(){
                   <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
                 </div>
                 <div className="card ck"><div className="clabel">Profit Realised</div><div className="cval ok">{fmt(lStat.profit)}</div></div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Exp − Loans Out</div></div>
                 <div className="card cw"><div className="clabel">Transactions</div><div className="cval warn">{expenses.length}</div></div>
               </div>
 
@@ -5837,7 +5879,7 @@ function AppInner(){
                           {MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}
                         </select>
                         <select value={reportYear} onChange={e=>setReportYear(+e.target.value)} className="fi" style={{width:72,fontSize:11,padding:"4px 6px"}}>
-                          {Array.from({length:5},(_,i)=>new Date().getFullYear()-2+i).map(y=><option key={y} value={y}>{y}</option>)}
+                          {Array.from({length:12},(_,i)=>2022+i).map(y=><option key={y} value={y}>{y}</option>)}
                         </select>
                       </div>
                       <div style={{marginTop:8}}>
@@ -6799,18 +6841,19 @@ function AppInner(){
               <div className="fg">
                 <label className="fl">Investment Year <span style={{fontWeight:400,color:"var(--tmuted)"}}>(annual only)</span></label>
                 <select className="fi" value={invF.investmentYear||new Date().getFullYear()} onChange={e=>setInvF(f=>({...f,investmentYear:+e.target.value}))}>
-                  {[2024,2025,2026,2027,2028].map(y=><option key={y} value={y}>{y}</option>)}
+                  {Array.from({length: new Date().getFullYear()-2022+9},(_,i)=>2022+i).map(y=><option key={y} value={y}>{y}</option>)}
                 </select>
                 <span className="fhint">Investments are annual — one per platform per year.</span>
               </div>
               <div className="fg"><label className="fl">Amount Invested (UGX)</label>
                 <input className="fi" type="number" value={invF.amount} onChange={e=>setInvF(f=>({...f,amount:e.target.value}))} placeholder="0"/>
                 {(()=>{
-                  const _rep=(loans||[]).reduce((s,l)=>s+(+l.amountPaid||0),0);
-                  const _dis=(loans||[]).filter(l=>l.approvalStatus==="approved"||!l.approvalStatus).reduce((s,l)=>s+(+l.amountLoaned||0),0);
-                  const _inv=(investments||[]).reduce((s,i)=>s+(+i.amount||0),0);
+                  // Use the same formula as global cashInBank
+                  const _loanProfit=(loans||[]).filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
                   const _iret=(investments||[]).reduce((s,i)=>s+(+i.interestEarned||0),0);
-                  const cashInBk=(savT.total||0)+_rep+_iret-_dis-(totalExpenses||0)-_inv;
+                  const _activeDisb=(loans||[]).filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
+                  const _inv=(investments||[]).filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0);
+                  const cashInBk=(savT.total||0)+_loanProfit+_iret-(totalExpenses||0)-_activeDisb-_inv;
                   const maxInv=Math.round(cashInBk*0.20);
                   const over=(+invF.amount||0)>maxInv;
                   return <span className="fhint" style={{color:over?"#c62828":"var(--p500)"}}>Max investable: {fmt(maxInv)} (20% of cash in bank {fmt(cashInBk)}){over?" — ⚠ EXCEEDS LIMIT":""}</span>;
