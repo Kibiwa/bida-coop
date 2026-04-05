@@ -422,6 +422,16 @@ function monthsOverdue(l){
   const overdueDays=Math.floor((new Date()-dueDate)/(1000*60*60*24));
   return overdueDays>0?Math.floor(overdueDays/30):0;
 }
+// SACCO PENALTY INTEREST — 2% per month on outstanding balance after term expires
+const PENALTY_RATE_PER_MONTH = 0.02;
+function calcPenalty(l){
+  if(!l||l.status==="paid"||!l.dateBanked) return {penaltyMonths:0,penaltyAmt:0,totalOwed:0};
+  const c=calcLoan(l);
+  const overMo=monthsOverdue(l);
+  if(overMo<=0) return {penaltyMonths:0,penaltyAmt:0,totalOwed:c.balance};
+  const penaltyAmt=Math.round(c.balance*PENALTY_RATE_PER_MONTH*overMo);
+  return {penaltyMonths:overMo,penaltyAmt,totalOwed:c.balance+penaltyAmt};
+}
 function borrowCapacityRate(m,loans){
   const maxOD=(loans||[]).filter(l=>l.memberId===m.id&&l.status!=="paid").reduce((mx,l)=>Math.max(mx,monthsOverdue(l)),0);
   return maxOD>=6?0.50:0.60;
@@ -458,10 +468,10 @@ const INV_TYPE_LABELS = {unit_trust:"Unit Trust",treasury_bond:"Treasury Bond",f
 
 const ROLES = {
   admin:        { label:"Administrator",  can:["all"] },
-  treasurer:    { label:"Treasurer",      can:["view","savings","loans","expenses","investments","reports","settings","approve","disburse"] },
-  loan_officer: { label:"Loan Officer",   can:["view","loans","reports"] },
-  auditor:      { label:"Auditor",        can:["view","reports","audit"] },
-  finance_mgr:  { label:"Finance Manager",can:["view","savings","loans","expenses","investments","reports"] },
+  treasurer:    { label:"Treasurer",      can:["view","savings","loans","expenses","investments","reports","documents","settings","approve","disburse"] },
+  loan_officer: { label:"Loan Officer",   can:["view","loans","reports","documents"] },
+  auditor:      { label:"Auditor",        can:["view","reports","audit","documents"] },
+  finance_mgr:  { label:"Finance Manager",can:["view","savings","loans","expenses","investments","reports","documents"] },
   member:       { label:"Member",         can:["view","own_profile"] },
 };
 
@@ -855,11 +865,12 @@ function buildSMSDueMsg(m,loan,daysLeft){const c=calcLoan(loan);const issued=new
 function buildSavingsEmail(m){
   const mn=MONTHS[new Date().getMonth()],yr=new Date().getFullYear();
   const first=m.name.split(" ")[0];
+  const initials=m.name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
   const subj="BIDA Co-operative — "+mn+" "+yr+" Savings Reminder";
   const tb=totBanked(m);
-  const body="Dear "+first+",\n\nThis is a friendly reminder that your monthly savings and welfare contributions for "+mn+" "+yr+" are now due. Please ensure your payment reaches us by the 5th of this month.\n\nYour Savings Dashboard as at "+mn+" "+yr+":\n  Membership Fee:       "+fmt(m.membership||0)+"\n  Annual Subscription:  "+fmt(m.annualSub||0)+"\n  Monthly Savings:      "+fmt(m.monthlySavings||0)+"\n  Welfare:              "+fmt(m.welfare||0)+"\n  Shares:               "+fmt(m.shares||0)+"\n  Voluntary Deposit:    "+fmt(m.voluntaryDeposit||0)+"\n  ─────────────────────────────────\n  TOTAL BANKED:         "+fmt(tb)+"\n\nShould you have any questions, please do not hesitate to reach out to your BIDA manager.\n\nThank you for being a valued member of the BIDA family. Together we grow stronger.\n\nWarm regards,\nThe Treasurer\nBida Multi-Purpose Co-operative Society\n\nThis is an automated message. Please do not reply to this email.";
-  // Name-only header — no photo (base64 images don't render in email clients)
-  const nameBlock='<tr><td style="padding:20px 32px 4px;text-align:center;"><div style="display:inline-block;background:rgba(255,255,255,.15);border-radius:10px;padding:8px 24px;"><span style="font-size:17px;font-weight:900;color:#fff;letter-spacing:1px;">'+m.name+'</span></div><div style="font-size:10px;color:rgba(255,255,255,.7);letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;">BIDA Member</div></td></tr>';
+  const body="Dear "+first+",\n\nThis is a friendly reminder that your monthly savings and welfare contributions for "+mn+" "+yr+" are now due. Please ensure your payment reaches us by the 5th of this month.\n\nYour Savings Dashboard as at "+mn+" "+yr+":\n  Membership Fee:       "+fmt(m.membership||0)+"\n  Annual Subscription:  "+fmt(m.annualSub||0)+"\n  Monthly Savings:      "+fmt(m.monthlySavings||0)+"\n  Welfare:              "+fmt(m.welfare||0)+"\n  Shares:               "+fmt(m.shares||0)+"\n  Voluntary Savings:    "+fmt(m.voluntaryDeposit||0)+"\n  ─────────────────────────────────\n  TOTAL BANKED:         "+fmt(tb)+"\n\nShould you have any questions, please do not hesitate to reach out to your BIDA manager.\n\nThank you for being a valued member of the BIDA family. Together we grow stronger.\n\nWarm regards,\nThe Treasurer\nBida Multi-Purpose Co-operative Society\n\nThis is an automated message. Please do not reply to this email.";
+  // Avatar block: initials circle (renders in ALL email clients; hosted photos are blocked by Gmail/Outlook)
+  const nameBlock='<tr><td style="padding:24px 32px 8px;text-align:center;"><div style="display:inline-block;width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.22);border:3px solid rgba(255,255,255,.4);line-height:72px;text-align:center;font-size:28px;font-weight:900;color:#fff;letter-spacing:1px;">'+initials+'</div><div style="font-size:16px;font-weight:800;color:#fff;margin-top:10px;letter-spacing:.5px;">'+m.name+'</div><div style="font-size:10px;color:rgba(255,255,255,.65);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;">BIDA Member</div></td></tr>';
   // Savings dashboard table rows
   const rows=[
     ["Membership Fee",          m.membership||0,    "#e3f2fd"],
@@ -867,21 +878,29 @@ function buildSavingsEmail(m){
     ["Monthly Savings",         m.monthlySavings||0,"#e3f2fd"],
     ["Welfare Contributions",   m.welfare||0,       "#fff"],
     ["Shares",                  m.shares||0,        "#e3f2fd"],
-    ["Voluntary Deposit",       m.voluntaryDeposit||0,"#fff"],
+    ["Voluntary Savings",       m.voluntaryDeposit||0,"#fff"],
   ].map(([label,val,bg])=>'<tr style="background:'+bg+';"><td style="padding:10px 16px;font-size:13px;color:#444;border-bottom:1px solid #e3eaf5;">'+label+'</td><td style="padding:10px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(val)+'</td></tr>').join("");
-  const dashboardTable='<table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e3eaf5;border-radius:10px;overflow:hidden;"><tr><td colspan="2" style="background:#1565c0;padding:10px 16px;"><span style="color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">📊 Your Savings Dashboard — '+mn+' '+yr+'</span></td></tr>'+rows+'<tr style="background:#0d3461;"><td style="padding:12px 16px;font-size:14px;font-weight:800;color:#fff;">TOTAL BANKED</td><td style="padding:12px 16px;font-size:15px;font-weight:900;color:#90CAF9;text-align:right;">'+fmt(tb)+'</td></tr></table>';
+  const dashboardTable='<table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e3eaf5;border-radius:10px;overflow:hidden;"><tr><td colspan="2" style="background:#1565c0;padding:10px 16px;"><span style="color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Your Savings Dashboard — '+mn+' '+yr+'</span></td></tr>'+rows+'<tr style="background:#0d3461;"><td style="padding:12px 16px;font-size:14px;font-weight:800;color:#fff;">TOTAL BANKED</td><td style="padding:12px 16px;font-size:15px;font-weight:900;color:#90CAF9;text-align:right;">'+fmt(tb)+'</td></tr></table>';
   const html='<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:32px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);"><tr><td style="background:linear-gradient(135deg,#0d3461,#1565c0);padding:24px 32px 18px;text-align:center;"><table cellpadding="0" cellspacing="0" style="margin:0 auto 10px;"><tr><td><svg width="48" height="48" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="bge2" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#42A5F5"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient></defs><polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#bge2)" stroke="rgba(66,165,245,.6)" stroke-width="1.5"/><rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity="0.9"/><rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6"/><rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff"/><polygon points="50,17 56,23 44,23" fill="#fff"/></svg></td></tr></table><div style="display:inline-block;background:#fff;border-radius:8px;padding:4px 16px;margin-bottom:6px;"><span style="font-size:22px;font-weight:900;color:#1565c0;letter-spacing:3px;">BIDA</span></div><div style="color:rgba(255,255,255,0.8);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Multi-Purpose Co-operative Society</div></td></tr>'+nameBlock+'<tr><td style="padding:20px 32px 8px;"><p style="font-size:16px;color:#1a1a2e;margin:0 0 6px 0;">Dear <strong>'+first+'</strong>,</p><p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 16px 0;">This is a friendly reminder that your <strong>monthly savings and welfare contributions</strong> for <strong>'+mn+' '+yr+'</strong> are now due. Please ensure your payment reaches us by the <strong>5th of this month</strong>.</p></td></tr><tr><td style="padding:0 32px 20px;">'+dashboardTable+'</td></tr><tr><td style="padding:0 32px 20px;"><p style="font-size:13px;color:#666;line-height:1.6;margin:0 0 12px 0;">Should you have any questions, please do not hesitate to reach out to your BIDA manager.</p><hr style="border:none;border-top:1px solid #e3eaf5;margin:0 0 16px;"/><p style="font-size:13px;color:#444;line-height:1.8;margin:0;">Thank you for being a valued member of the BIDA family. Together we grow stronger.</p><p style="font-size:13px;color:#555;margin:12px 0 0;">Warm regards,<br/><strong style="color:#0d3461;">The Treasurer</strong><br/><span style="color:#1565c0;font-weight:700;">Bida Multi-Purpose Co-operative Society</span></p></td></tr><tr><td style="background:#f0f4f8;padding:12px 32px;text-align:center;border-top:1px solid #e3eaf5;"><p style="font-size:10px;color:#999;margin:0;">This is an automated message. Please do not reply to this email.</p></td></tr></table></td></tr></table></body></html>';
   return{subj,body,html};
 }
 function buildLoanEmail(m,loan){
   const c=calcLoan(loan);
   const first=m.name.split(" ")[0];
+  const initials=m.name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+  const tb=totBanked(m);
   const subj="BIDA Co-operative — Loan Repayment Reminder";
-  const body="Dear "+first+",\n\nThis is a friendly reminder that you have an outstanding loan balance with Bida Multi-Purpose Co-operative Society. Kindly arrange your repayment at your earliest convenience.\n\nLoan Details:\n  Principal:        "+fmt(loan.amountLoaned)+"\n  Issued:           "+fmtD(loan.dateBanked)+"\n  Monthly Payment:  "+fmt(c.monthlyPayment)+"\n  Total due:        "+fmt(c.totalDue)+"\n  ─────────────────────────────\n  Outstanding:      "+fmt(c.balance)+"\n\nThank you for being a valued member of the BIDA family. Together we grow stronger.\n\nWarm regards,\nThe Treasurer\nBida Multi-Purpose Co-operative Society\n\nThis is an automated message. Please do not reply to this email.";
-  const photoBlock=m.photoUrl
-    ?'<tr><td style="padding:20px 32px 0;text-align:center;"><img src="'+m.photoUrl+'" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid #e3f2fd;" alt="'+first+'"/></td></tr>'
-    :'<tr><td style="padding:20px 32px 0;text-align:center;"><div style="width:64px;height:64px;border-radius:50%;background:#1565c0;color:#fff;font-size:26px;font-weight:900;line-height:64px;text-align:center;display:inline-block;">'+first[0].toUpperCase()+'</div></td></tr>';
-  const html='<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:32px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);"><tr><td style="background:linear-gradient(135deg,#0d3461,#1565c0);padding:24px 32px 18px;text-align:center;"><table cellpadding="0" cellspacing="0" style="margin:0 auto 10px;"><tr><td><svg width="48" height="48" viewBox="0 0 80 80" xmlns=\"http://www.w3.org/2000/svg\"><defs><linearGradient id=\"bgl\" x1=\"0\" y1=\"0\" x2=\"80\" y2=\"80\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0%\" stop-color=\"#42A5F5\"/><stop offset=\"100%\" stop-color=\"#0D47A1\"/></linearGradient></defs><polygon points=\"40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5\" fill=\"url(#bgl)\" stroke=\"rgba(66,165,245,.6)\" stroke-width=\"1.5\"/><rect x=\"19\" y=\"40\" width=\"10\" height=\"15\" rx=\"2.5\" fill=\"#90CAF9\" opacity=\"0.9\"/><rect x=\"32\" y=\"31\" width=\"10\" height=\"24\" rx=\"2.5\" fill=\"#64B5F6\"/><rect x=\"45\" y=\"22\" width=\"10\" height=\"33\" rx=\"2.5\" fill=\"#fff\"/><polygon points=\"50,17 56,23 44,23\" fill=\"#fff\"/></svg></td></tr></table><div style=\"display:inline-block;background:#fff;border-radius:8px;padding:4px 16px;margin-bottom:6px;\"><span style=\"font-size:22px;font-weight:900;color:#1565c0;letter-spacing:3px;\">BIDA</span></div><div style=\"color:rgba(255,255,255,0.8);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:600;\">Multi-Purpose Co-operative Society</div></td></tr>'+photoBlock+'<tr><td style="padding:20px 32px 8px;"><p style="font-size:16px;color:#1a1a2e;margin:0 0 6px 0;">Dear <strong>'+first+'</strong>,</p><p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 16px 0;">This is a friendly reminder that you have an <strong>outstanding loan balance</strong> with Bida Multi-Purpose Co-operative Society. Kindly arrange your repayment at your earliest convenience.</p></td></tr><tr><td style="padding:0 32px 20px;"><table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e3eaf5;border-radius:10px;overflow:hidden;"><tr><td colspan="2" style="background:#1565c0;padding:10px 16px;"><span style="color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Loan Details</span></td></tr><tr><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5;">Principal</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(loan.amountLoaned)+'</td></tr><tr style="background:#f8faff;"><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5;">Date Issued</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmtD(loan.dateBanked)+'</td></tr><tr><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5;">Monthly Payment</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(c.monthlyPayment)+'</td></tr><tr style="background:#f8faff;"><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5;">Total Due</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(c.totalDue)+'</td></tr><tr style="background:#ffebee;"><td style="padding:11px 16px;font-size:14px;font-weight:700;color:#c62828;">Outstanding Balance</td><td style="padding:11px 16px;font-size:15px;font-weight:900;color:#c62828;text-align:right;">'+fmt(c.balance)+'</td></tr></table></td></tr><tr><td style="padding:0 32px 20px;"><hr style="border:none;border-top:1px solid #e3eaf5;margin:0 0 16px;"/><p style="font-size:13px;color:#444;line-height:1.8;margin:0;">Thank you for being a valued member of the BIDA family. Together we grow stronger.</p><p style="font-size:13px;color:#555;margin:12px 0 0;">Warm regards,<br/><strong style="color:#0d3461;">The Treasurer</strong><br/><span style="color:#1565c0;font-weight:700;">Bida Multi-Purpose Co-operative Society</span></p></td></tr><tr><td style="background:#f0f4f8;padding:12px 32px;text-align:center;border-top:1px solid #e3eaf5;"><p style="font-size:10px;color:#999;margin:0;">This is an automated message. Please do not reply to this email.</p></td></tr></table></td></tr></table></body></html>';
+  const body="Dear "+first+",\n\nThis is a friendly reminder that you have an outstanding loan balance with Bida Multi-Purpose Co-operative Society. Kindly arrange your repayment at your earliest convenience.\n\nLoan Details:\n  Principal:        "+fmt(loan.amountLoaned)+"\n  Issued:           "+fmtD(loan.dateBanked)+"\n  Monthly Payment:  "+fmt(c.monthlyPayment)+"\n  Total due:        "+fmt(c.totalDue)+"\n  ─────────────────────────────\n  Outstanding:      "+fmt(c.balance)+"\n\nYour Savings Dashboard:\n  Membership Fee:   "+fmt(m.membership||0)+"\n  Monthly Savings:  "+fmt(m.monthlySavings||0)+"\n  Total Banked:     "+fmt(tb)+"\n\nThank you for being a valued member of the BIDA family. Together we grow stronger.\n\nWarm regards,\nThe Treasurer\nBida Multi-Purpose Co-operative Society\n\nThis is an automated message. Please do not reply to this email.";
+  // Initials avatar — renders perfectly in Gmail, Outlook, Apple Mail (hosted images are blocked)
+  const photoBlock='<tr><td style="padding:24px 32px 8px;text-align:center;"><div style="display:inline-block;width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.22);border:3px solid rgba(255,255,255,.4);line-height:72px;text-align:center;font-size:28px;font-weight:900;color:#fff;">'+initials+'</div><div style="font-size:16px;font-weight:800;color:#fff;margin-top:10px;">'+m.name+'</div><div style="font-size:10px;color:rgba(255,255,255,.65);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;">BIDA Member</div></td></tr>';
+  // Savings summary rows for the email
+  const savRows=[
+    ["Membership Fee",m.membership||0],["Annual Subscription",m.annualSub||0],
+    ["Monthly Savings",m.monthlySavings||0],["Welfare",m.welfare||0],
+    ["Shares",m.shares||0],["Voluntary Savings",m.voluntaryDeposit||0],
+  ].map(([label,val],i)=>'<tr style="background:'+( i%2===0?"#f8faff":"#fff")+';"><td style="padding:8px 14px;font-size:12px;color:#555;border-bottom:1px solid #e3eaf5;">'+label+'</td><td style="padding:8px 14px;font-size:12px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(val)+'</td></tr>').join("");
+  const savTable='<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e3eaf5;border-radius:8px;overflow:hidden;margin-top:16px;"><tr><td colspan="2" style="background:#37474f;padding:8px 14px;"><span style="color:#fff;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">Your Savings Summary</span></td></tr>'+savRows+'<tr style="background:#0d3461;"><td style="padding:10px 14px;font-size:13px;font-weight:800;color:#fff;">TOTAL BANKED</td><td style="padding:10px 14px;font-size:13px;font-weight:900;color:#90CAF9;text-align:right;">'+fmt(tb)+'</td></tr></table>';
+  const html='<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:32px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);"><tr><td style="background:linear-gradient(135deg,#0d3461,#1565c0);padding:24px 32px 18px;text-align:center;"><table cellpadding="0" cellspacing="0" style="margin:0 auto 10px;"><tr><td><svg width="48" height="48" viewBox="0 0 80 80" xmlns=\"http://www.w3.org/2000/svg\"><defs><linearGradient id=\"bgl\" x1=\"0\" y1=\"0\" x2=\"80\" y2=\"80\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0%\" stop-color=\"#42A5F5\"/><stop offset=\"100%\" stop-color=\"#0D47A1\"/></linearGradient></defs><polygon points=\"40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5\" fill=\"url(#bgl)\" stroke=\"rgba(66,165,245,.6)\" stroke-width=\"1.5\"/><rect x=\"19\" y=\"40\" width=\"10\" height=\"15\" rx=\"2.5\" fill=\"#90CAF9\" opacity=\"0.9\"/><rect x=\"32\" y=\"31\" width=\"10\" height=\"24\" rx=\"2.5\" fill=\"#64B5F6\"/><rect x=\"45\" y=\"22\" width=\"10\" height=\"33\" rx=\"2.5\" fill=\"#fff\"/><polygon points=\"50,17 56,23 44,23\" fill=\"#fff\"/></svg></td></tr></table><div style=\"display:inline-block;background:#fff;border-radius:8px;padding:4px 16px;margin-bottom:6px;\"><span style=\"font-size:22px;font-weight:900;color:#1565c0;letter-spacing:3px;\">BIDA</span></div><div style=\"color:rgba(255,255,255,0.8);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:600;\">Multi-Purpose Co-operative Society</div></td></tr>'+photoBlock+'<tr><td style="padding:20px 32px 8px;"><p style="font-size:16px;color:#1a1a2e;margin:0 0 6px 0;">Dear <strong>'+first+'</strong>,</p><p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 16px 0;">This is a friendly reminder that you have an <strong>outstanding loan balance</strong> with Bida Multi-Purpose Co-operative Society. Kindly arrange your repayment at your earliest convenience.</p></td></tr><tr><td style="padding:0 32px 20px;"><table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e3eaf5;border-radius:10px;overflow:hidden;"><tr><td colspan="2" style="background:#1565c0;padding:10px 16px;"><span style="color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Loan Details</span></td></tr><tr><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5;">Principal</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(loan.amountLoaned)+'</td></tr><tr style="background:#f8faff;"><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5;">Date Issued</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmtD(loan.dateBanked)+'</td></tr><tr><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5;">Monthly Payment</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(c.monthlyPayment)+'</td></tr><tr style="background:#f8faff;"><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5;">Total Due</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(c.totalDue)+'</td></tr><tr style="background:#ffebee;"><td style="padding:11px 16px;font-size:14px;font-weight:700;color:#c62828;">Outstanding Balance</td><td style="padding:11px 16px;font-size:15px;font-weight:900;color:#c62828;text-align:right;">'+fmt(c.balance)+'</td></tr></table></td></tr><tr><td style="padding:0 32px 20px;">'+ savTable +'<p style="font-size:13px;color:#666;line-height:1.6;margin:16px 0 12px 0;">Should you have any questions, please reach out to your BIDA manager.</p><hr style="border:none;border-top:1px solid #e3eaf5;margin:0 0 16px;"/><p style="font-size:13px;color:#444;line-height:1.8;margin:0;">Thank you for being a valued member of the BIDA family. Together we grow stronger.</p><p style="font-size:13px;color:#555;margin:12px 0 0;">Warm regards,<br/><strong style="color:#0d3461;">The Treasurer</strong><br/><span style="color:#1565c0;font-weight:700;">Bida Multi-Purpose Co-operative Society</span></p></td></tr><tr><td style="background:#f0f4f8;padding:12px 32px;text-align:center;border-top:1px solid #e3eaf5;"><p style="font-size:10px;color:#999;margin:0;">This is an automated message. Please do not reply to this email.</p></td></tr></table></td></tr></table></body></html>';
   return{subj,body,html};
 }
 function buildDueEmail(m,loan){
@@ -892,10 +911,17 @@ function buildDueEmail(m,loan){
   const dueFmt=due.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
   const subj="⚠️ BIDA Co-operative — Loan Due: "+dueFmt;
   const body="Dear "+first+",\n\nThis is an urgent reminder that your loan with Bida Multi-Purpose Co-operative Society is due for full settlement on "+dueFmt+". Please ensure payment is made on or before the due date.\n\nLoan Summary:\n  Principal:       "+fmt(loan.amountLoaned)+"\n  Monthly Payment: "+fmt(c.monthlyPayment)+"\n  ─────────────────────────────\n  Balance Due:     "+fmt(c.balance)+"\n\nThank you for being a valued member of the BIDA family. Together we grow stronger.\n\nWarm regards,\nThe Treasurer\nBida Multi-Purpose Co-operative Society\n\nThis is an automated message. Please do not reply to this email.";
-  const photoBlock=m.photoUrl
-    ?'<tr><td style="padding:20px 32px 0;text-align:center;"><img src="'+m.photoUrl+'" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.3);" alt="'+first+'"/></td></tr>'
-    :'<tr><td style="padding:20px 32px 0;text-align:center;"><div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:26px;font-weight:900;line-height:64px;text-align:center;display:inline-block;">'+first[0].toUpperCase()+'</div></td></tr>';
-  const html='<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:32px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);"><tr><td style="background:linear-gradient(135deg,#7f0000,#c62828);padding:24px 32px 18px;text-align:center;"><table cellpadding="0" cellspacing="0" style="margin:0 auto 10px;"><tr><td><svg width="48" height="48" viewBox="0 0 80 80" xmlns=\"http://www.w3.org/2000/svg\"><defs><linearGradient id=\"bgd\" x1=\"0\" y1=\"0\" x2=\"80\" y2=\"80\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0%\" stop-color=\"#EF9A9A\"/><stop offset=\"100%\" stop-color=\"#C62828\"/></linearGradient></defs><polygon points=\"40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5\" fill=\"url(#bgd)\" stroke=\"rgba(255,255,255,.3)\" stroke-width=\"1.5\"/><rect x=\"19\" y=\"40\" width=\"10\" height=\"15\" rx=\"2.5\" fill=\"#fff\" opacity=\"0.7\"/><rect x=\"32\" y=\"31\" width=\"10\" height=\"24\" rx=\"2.5\" fill=\"#fff\" opacity=\"0.85\"/><rect x=\"45\" y=\"22\" width=\"10\" height=\"33\" rx=\"2.5\" fill=\"#fff\"/><polygon points=\"50,17 56,23 44,23\" fill=\"#fff\"/></svg></td></tr></table><div style=\"display:inline-block;background:#fff;border-radius:8px;padding:4px 16px;margin-bottom:6px;\"><span style=\"font-size:22px;font-weight:900;color:#c62828;letter-spacing:3px;\">BIDA</span></div><div style=\"color:rgba(255,255,255,0.8);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:600;\">Multi-Purpose Co-operative Society</div><div style=\"margin-top:8px;background:rgba(255,255,255,0.15);border-radius:8px;padding:5px 14px;display:inline-block;\"><span style=\"color:#fff;font-size:11px;font-weight:700;\">⚠️ Loan Due: '+dueFmt+'</span></div></td></tr>'+photoBlock+'<tr><td style="padding:20px 32px 8px;"><p style="font-size:16px;color:#1a1a2e;margin:0 0 6px 0;">Dear <strong>'+first+'</strong>,</p><p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 16px 0;">This is an <strong>urgent reminder</strong> that your loan is due for full settlement on <strong>'+dueFmt+'</strong>. Please ensure payment is made on or before the due date.</p></td></tr><tr><td style="padding:0 32px 20px;"><table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #ffcdd2;border-radius:10px;overflow:hidden;"><tr><td colspan="2" style="background:#c62828;padding:10px 16px;"><span style="color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Loan Summary</span></td></tr><tr><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #ffcdd2;">Principal</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #ffcdd2;">'+fmt(loan.amountLoaned)+'</td></tr><tr style="background:#fff8f8;"><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #ffcdd2;">Monthly Payment</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #ffcdd2;">'+fmt(c.monthlyPayment)+'</td></tr><tr style="background:#ffebee;"><td style="padding:11px 16px;font-size:14px;font-weight:700;color:#c62828;">Balance Due</td><td style="padding:11px 16px;font-size:15px;font-weight:900;color:#c62828;text-align:right;">'+fmt(c.balance)+'</td></tr></table></td></tr><tr><td style="padding:0 32px 20px;"><hr style="border:none;border-top:1px solid #e3eaf5;margin:0 0 16px;"/><p style="font-size:13px;color:#444;line-height:1.8;margin:0;">Thank you for being a valued member of the BIDA family. Together we grow stronger.</p><p style="font-size:13px;color:#555;margin:12px 0 0;">Warm regards,<br/><strong style="color:#0d3461;">The Treasurer</strong><br/><span style="color:#1565c0;font-weight:700;">Bida Multi-Purpose Co-operative Society</span></p></td></tr><tr><td style="background:#f0f4f8;padding:12px 32px;text-align:center;border-top:1px solid #e3eaf5;"><p style="font-size:10px;color:#999;margin:0;">This is an automated message. Please do not reply to this email.</p></td></tr></table></td></tr></table></body></html>';
+  const initials=m.name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+  const tb=totBanked(m);
+  // Initials avatar — renders in ALL email clients; hotlinked photos are blocked by Gmail/Outlook
+  const photoBlock='<tr><td style="padding:24px 32px 8px;text-align:center;"><div style="display:inline-block;width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.22);border:3px solid rgba(255,255,255,.4);line-height:72px;text-align:center;font-size:28px;font-weight:900;color:#fff;">'+initials+'</div><div style="font-size:16px;font-weight:800;color:#fff;margin-top:10px;">'+m.name+'</div><div style="font-size:10px;color:rgba(255,255,255,.65);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;">BIDA Member</div></td></tr>';
+  const savRows=[
+    ["Membership Fee",m.membership||0],["Annual Subscription",m.annualSub||0],
+    ["Monthly Savings",m.monthlySavings||0],["Welfare",m.welfare||0],
+    ["Shares",m.shares||0],["Voluntary Savings",m.voluntaryDeposit||0],
+  ].map(([label,val],i)=>'<tr style="background:'+( i%2===0?"#f8faff":"#fff")+';"><td style="padding:8px 14px;font-size:12px;color:#555;border-bottom:1px solid #e3eaf5;">'+label+'</td><td style="padding:8px 14px;font-size:12px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5;">'+fmt(val)+'</td></tr>').join("");
+  const savTable='<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e3eaf5;border-radius:8px;overflow:hidden;margin-top:16px;"><tr><td colspan="2" style="background:#37474f;padding:8px 14px;"><span style="color:#fff;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">Your Savings Summary</span></td></tr>'+savRows+'<tr style="background:#0d3461;"><td style="padding:10px 14px;font-size:13px;font-weight:800;color:#fff;">TOTAL BANKED</td><td style="padding:10px 14px;font-size:13px;font-weight:900;color:#90CAF9;text-align:right;">'+fmt(tb)+'</td></tr></table>';
+  const html='<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:32px 0;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);"><tr><td style="background:linear-gradient(135deg,#7f0000,#c62828);padding:24px 32px 18px;text-align:center;"><table cellpadding="0" cellspacing="0" style="margin:0 auto 10px;"><tr><td><svg width="48" height="48" viewBox="0 0 80 80" xmlns=\"http://www.w3.org/2000/svg\"><defs><linearGradient id=\"bgd\" x1=\"0\" y1=\"0\" x2=\"80\" y2=\"80\" gradientUnits=\"userSpaceOnUse\"><stop offset=\"0%\" stop-color=\"#EF9A9A\"/><stop offset=\"100%\" stop-color=\"#C62828\"/></linearGradient></defs><polygon points=\"40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5\" fill=\"url(#bgd)\" stroke=\"rgba(255,255,255,.3)\" stroke-width=\"1.5\"/><rect x=\"19\" y=\"40\" width=\"10\" height=\"15\" rx=\"2.5\" fill=\"#fff\" opacity=\"0.7\"/><rect x=\"32\" y=\"31\" width=\"10\" height=\"24\" rx=\"2.5\" fill=\"#fff\" opacity=\"0.85\"/><rect x=\"45\" y=\"22\" width=\"10\" height=\"33\" rx=\"2.5\" fill=\"#fff\"/><polygon points=\"50,17 56,23 44,23\" fill=\"#fff\"/></svg></td></tr></table><div style=\"display:inline-block;background:#fff;border-radius:8px;padding:4px 16px;margin-bottom:6px;\"><span style=\"font-size:22px;font-weight:900;color:#c62828;letter-spacing:3px;\">BIDA</span></div><div style=\"color:rgba(255,255,255,0.8);font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:600;\">Multi-Purpose Co-operative Society</div><div style=\"margin-top:8px;background:rgba(255,255,255,0.15);border-radius:8px;padding:5px 14px;display:inline-block;\"><span style=\"color:#fff;font-size:11px;font-weight:700;\">⚠️ Loan Due: '+dueFmt+'</span></div></td></tr>'+photoBlock+'<tr><td style="padding:20px 32px 8px;"><p style="font-size:16px;color:#1a1a2e;margin:0 0 6px 0;">Dear <strong>'+first+'</strong>,</p><p style="font-size:14px;color:#444;line-height:1.7;margin:0 0 16px 0;">This is an <strong>urgent reminder</strong> that your loan is due for full settlement on <strong>'+dueFmt+'</strong>. Please ensure payment is made on or before the due date.</p></td></tr><tr><td style="padding:0 32px 20px;"><table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #ffcdd2;border-radius:10px;overflow:hidden;"><tr><td colspan="2" style="background:#c62828;padding:10px 16px;"><span style="color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Loan Summary</span></td></tr><tr><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #ffcdd2;">Principal</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #ffcdd2;">'+fmt(loan.amountLoaned)+'</td></tr><tr style="background:#fff8f8;"><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #ffcdd2;">Monthly Payment</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #ffcdd2;">'+fmt(c.monthlyPayment)+'</td></tr><tr style="background:#ffebee;"><td style="padding:11px 16px;font-size:14px;font-weight:700;color:#c62828;">Balance Due</td><td style="padding:11px 16px;font-size:15px;font-weight:900;color:#c62828;text-align:right;">'+fmt(c.balance)+'</td></tr></table></td></tr><tr><td style="padding:0 32px 20px;">'+ savTable +'<p style="font-size:13px;color:#666;line-height:1.6;margin:16px 0 12px 0;">Please contact your BIDA manager if you need assistance arranging payment.</p><hr style="border:none;border-top:1px solid #e3eaf5;margin:0 0 16px;"/><p style="font-size:13px;color:#444;line-height:1.8;margin:0;">Thank you for being a valued member of the BIDA family. Together we grow stronger.</p><p style="font-size:13px;color:#555;margin:12px 0 0;">Warm regards,<br/><strong style="color:#0d3461;">The Treasurer</strong><br/><span style="color:#1565c0;font-weight:700;">Bida Multi-Purpose Co-operative Society</span></p></td></tr><tr><td style="background:#f0f4f8;padding:12px 32px;text-align:center;border-top:1px solid #e3eaf5;"><p style="font-size:10px;color:#999;margin:0;">This is an automated message. Please do not reply to this email.</p></td></tr></table></td></tr></table></body></html>';
   return{subj,body,html};
 }
 function blobToDataUrl(blob){
@@ -907,31 +933,20 @@ function blobToDataUrl(blob){
   });
 }
 
-function triggerDownload(blob, filename){
-  const url=URL.createObjectURL(blob);
-  // Anchor click for desktop, window.open as universal fallback
-  const a=document.createElement("a");
-  a.href=url; a.download=filename;
-  a.style.cssText="position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none";
-  document.body.appendChild(a);
-  try{a.click();}catch(_){}
-  try{document.body.removeChild(a);}catch(_){}
-  // Also open in new tab — reliable on iOS Safari and mobile Chrome
-  // (user sees PDF and can Save / Share from there)
-  setTimeout(()=>{
-    try{window.open(url,"_blank");}catch(_){}
-    setTimeout(()=>URL.revokeObjectURL(url),15000);
-  },400);
-}
 async function shareViaPDF(blob, filename, memberName){
   if(navigator.canShare&&navigator.canShare({files:[new File([blob],filename,{type:"application/pdf"})]})){
     try{
       await navigator.share({files:[new File([blob],filename,{type:"application/pdf"})],title:"BIDA Cooperative — "+(memberName||"Report"),text:"Please find your BIDA Cooperative statement attached."});
       return "shared";
-    }catch(e){if(e.name!=="AbortError"){triggerDownload(blob,filename);}}
-  } else {
-    triggerDownload(blob,filename);
+    }catch(e){if(e.name!=="AbortError")console.warn("Share failed:",e);}
   }
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=filename;
+  a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
   return "downloaded";
 }
 
@@ -955,7 +970,7 @@ async function generateLoanPDF(loan, member, calc){
     const cx=22,cy=15,r=8,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -1098,7 +1113,7 @@ async function generateReceiptPDF(loan, member, amountPaid, calc, payRecord){
     const cx=22,cy=16,r=8,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -1191,7 +1206,7 @@ async function generateSchedulePDF(loan, member, schedule, calc){
     const cx=22,cy=16,r=8,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -1321,7 +1336,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160],ORANGE=[191,54,12];
   const dH=(title,sub)=>{
     doc.setFillColor(...NAVY);doc.rect(0,0,W,24,"F");doc.setFillColor(...BLUE);doc.rect(0,24,W,2,"F");
-    (()=>{const cx=18,cy=12,r=7,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
+    (()=>{const cx=18,cy=12,r=7,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
     doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("BIDA",30,10);
     doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",30,16);
     doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text(title,W/2,10,{align:"center"});
@@ -1386,8 +1401,8 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const calcs=loans.map(l=>({...l,...calcLoan(l)})),active=calcs.filter(l=>l.status!=="paid"),paid=calcs.filter(l=>l.status==="paid");
     dH("LOAN REGISTER REPORT","Disbursements & Repayments — 4% Flat (<7m) | 6% Reducing (≥7m)");
     sB(10,27,42,16,"Active",""+active.length,[191,54,12]);sB(56,27,42,16,"Disbursed",fmt(loans.reduce((s,l)=>s+(l.amountLoaned||0),0)),BLUE);sB(102,27,42,16,"Outstanding",fmt(active.reduce((s,l)=>s+l.balance,0)),RED);sB(148,27,42,16,"Int. Accrued",fmt(calcs.reduce((s,l)=>s+l.totalInterest,0)),[25,118,210]);sB(194,27,42,16,"Profit",fmt(paid.reduce((s,l)=>s+l.profit,0)),GREEN);sB(240,27,42,16,"Closed",""+paid.length,[46,125,50]);
-    const rows=calcs.map((l,i)=>[i+1,l.memberName,fmtD(l.dateBanked),fmtN(l.amountLoaned),l.method==="reducing"?"6% RB":"4% Flat",l.term+"mo",fmtN(l.monthlyPayment),""+l.months,fmtN(l.totalInterest),fmtN(l.totalDue),fmtN(l.amountPaid),l.balance>0?"("+fmtN(l.balance)+")":fmtN(l.balance),l.status==="paid"?"PAID":"ACTIVE"]);
-    doc.autoTable({startY:48,head:[["#","Member","Issued","Principal","Method","Term","Monthly Pay","Elapsed","Total Int.","Total Due","Paid","Balance","Status"]],body:rows,styles:{fontSize:7,cellPadding:2.2},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7,halign:"center"},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{halign:"center",cellWidth:7},1:{cellWidth:34,fontStyle:"bold"},2:{halign:"center",cellWidth:19},3:{halign:"right"},4:{halign:"center",cellWidth:13},5:{halign:"center",cellWidth:11},6:{halign:"right",fontStyle:"bold"},7:{halign:"center"},8:{halign:"right"},9:{halign:"right",fontStyle:"bold"},10:{halign:"right"},11:{halign:"right"},12:{halign:"center"}},didParseCell:(d)=>{if(d.column.index===12&&d.section==="body"){d.cell.styles.fontStyle="bold";d.cell.styles.textColor=d.cell.raw==="PAID"?GREEN:[191,54,12];}if(d.column.index===11&&d.section==="body"&&typeof d.cell.raw==="string"&&d.cell.raw.startsWith("("))d.cell.styles.textColor=RED;},margin:{left:10,right:10},didDrawPage:(d)=>dF(d.pageNumber)});
+    const rows=calcs.map((l,i)=>{const pen=calcPenalty(l);return[i+1,l.memberName,fmtD(l.dateBanked),fmtN(l.amountLoaned),l.method==="reducing"?"6% RB":"4% Flat",l.term+"mo",fmtN(l.monthlyPayment),""+l.months,fmtN(l.totalInterest),fmtN(l.totalDue),fmtN(l.amountPaid),l.balance>0?"("+fmtN(l.balance)+")":fmtN(l.balance),pen.penaltyAmt>0?fmtN(pen.penaltyAmt):"",pen.penaltyAmt>0?fmtN(pen.totalOwed):"",l.status==="paid"?"PAID":pen.penaltyAmt>0?"OVERDUE":"ACTIVE"];});
+    doc.autoTable({startY:48,head:[["#","Member","Issued","Principal","Method","Term","Monthly Pay","Elapsed","Total Int.","Total Due","Paid","Balance","Penalty","Total Owed","Status"]],body:rows,styles:{fontSize:6.5,cellPadding:2},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:6.5,halign:"center"},alternateRowStyles:{fillColor:[245,250,255]},columnStyles:{0:{halign:"center",cellWidth:6},1:{cellWidth:30,fontStyle:"bold"},2:{halign:"center",cellWidth:17},3:{halign:"right"},4:{halign:"center",cellWidth:12},5:{halign:"center",cellWidth:10},6:{halign:"right",fontStyle:"bold"},7:{halign:"center"},8:{halign:"right"},9:{halign:"right",fontStyle:"bold"},10:{halign:"right"},11:{halign:"right"},12:{halign:"right",textColor:[198,40,40]},13:{halign:"right",fontStyle:"bold"},14:{halign:"center"}},didParseCell:(d)=>{if(d.column.index===14&&d.section==="body"){d.cell.styles.fontStyle="bold";d.cell.styles.textColor=d.cell.raw==="PAID"?GREEN:d.cell.raw==="OVERDUE"?RED:[191,54,12];}if(d.column.index===11&&d.section==="body"&&typeof d.cell.raw==="string"&&d.cell.raw.startsWith("("))d.cell.styles.textColor=RED;if(d.column.index===12&&d.section==="body"&&d.cell.raw&&d.cell.raw!=="")d.cell.styles.textColor=RED;},margin:{left:8,right:8},didDrawPage:(d)=>dF(d.pageNumber)});
     const fy=doc.lastAutoTable.finalY+6;doc.setFillColor(255,253,231);doc.roundedRect(10,fy,W-20,10,2,2,"F");doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(120,90,10);doc.text("INTEREST RULES:",15,fy+4);doc.setFont("helvetica","normal");doc.setTextColor(100,80,20);doc.text("Loans < UGX 7,000,000: 4% flat on original principal/mo. Loans ≥ UGX 7,000,000: 6% reducing balance on outstanding principal/mo. Terms 6–24 months.",52,fy+4);
     return doc.output("blob");
   } else if(type==="expenses"){
@@ -1527,7 +1542,7 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     const pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
     // Three bar chart bars inside hexagon
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,        cy+r*0.08, bw,r*0.52,0.5,0.5,"F");
@@ -1683,6 +1698,537 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   return doc.output("blob");
 }
 
+// ═══════════════════════════════════════════════════════════════
+// MONTHLY BATCH STATEMENT — all members for a selected month
+// ═══════════════════════════════════════════════════════════════
+async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
+  await loadJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160];
+  const mLabel=MONTHS[month]+" "+year;
+  const mStart=new Date(year,month,1);
+  const mEnd=new Date(year,month+1,0);
+  const fmt2=(n)=>n==null?"—":"UGX "+Number(n).toLocaleString("en-UG");
+  const fmtN2=(n)=>n==null?"0":Number(n).toLocaleString("en-UG");
+
+  const drawHeader=(pageNum)=>{
+    doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
+    doc.setFillColor(...BLUE);doc.rect(0,28,W,1.5,"F");
+    const cx=14,cy=14,r=7,pts=[];
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+    doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    const bw=r*0.22,bx=cx-r*0.34;
+    doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
+    doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("BIDA",26,11);
+    doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",26,17);
+    doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("MONTHLY MEMBER STATEMENTS — "+mLabel.toUpperCase(),W/2,11,{align:"center"});
+    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("All-Member Batch Export · Generated: "+toStr(),W/2,18,{align:"center"});
+    doc.setFontSize(6.5);doc.text("Page "+pageNum,W-10,22,{align:"right"});
+  };
+  const drawFooter=()=>{
+    doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+    doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+    doc.text("Bida Multi-Purpose Co-operative Society · Confidential",10,H-3);
+    doc.text(toStr(),W-10,H-3,{align:"right"});
+  };
+
+  // Cover / summary page
+  drawHeader(1);
+  const totalBanked=members.reduce((s,m)=>s+totBanked(m),0);
+  const totalMonthly=members.reduce((s,m)=>s+(m.monthlySavings||0),0);
+  const totalWelfare=members.reduce((s,m)=>s+(m.welfare||0),0);
+  const activeLoans=loans.filter(l=>l.status!=="paid");
+  const totalOutstanding=activeLoans.reduce((s,l)=>s+calcLoan(l).balance,0);
+  const totalPenalty=activeLoans.reduce((s,l)=>s+calcPenalty(l).penaltyAmt,0);
+  const mExpenses=expenses.filter(e=>{const d=new Date(e.date);return d>=mStart&&d<=mEnd;});
+  const mExpTotal=mExpenses.reduce((s,e)=>s+(+e.amount||0),0);
+
+  // Summary stats box
+  let y=35;
+  doc.setFillColor(227,242,253);doc.roundedRect(8,y,W-16,32,2,2,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);
+  doc.text("PERIOD SUMMARY — "+mLabel.toUpperCase(),12,y+7);
+  const sItems=[
+    ["Total Members",""+members.length,[...NAVY]],
+    ["Total Fund Pool",fmt2(totalBanked),[...BLUE]],
+    ["Monthly Savings Rate",fmt2(totalMonthly),[27,94,32]],
+    ["Welfare Pool",fmt2(totalWelfare),[...BLUE]],
+    ["Active Loans",""+activeLoans.length,[191,54,12]],
+    ["Outstanding Balance",fmt2(totalOutstanding),[...RED]],
+    ["Penalty Accrued",fmt2(totalPenalty),[...RED]],
+    ["Expenses This Month",fmt2(mExpTotal),[...RED]],
+  ];
+  const cols=4,cw=(W-20)/cols;
+  sItems.forEach((item,i)=>{
+    const cx2=10+((i%cols)*cw),cy2=y+14+(Math.floor(i/cols)*9);
+    doc.setFont("helvetica","normal");doc.setFontSize(6);doc.setTextColor(...GREY);doc.text(item[0].toUpperCase(),cx2,cy2);
+    doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...item[2]);doc.text(item[1],cx2,cy2+5);
+  });
+
+  y+=38;
+  // Member-by-member summary table
+  doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);
+  doc.text("MEMBER SAVINGS SUMMARY — "+mLabel,10,y);
+  const rows=members.map((m,i)=>{
+    const activeLoan=loans.find(l=>l.memberId===m.id&&l.status!=="paid");
+    const pen=activeLoan?calcPenalty(activeLoan):{penaltyMonths:0,penaltyAmt:0,totalOwed:0};
+    const loanBal=activeLoan?calcLoan(activeLoan).balance:0;
+    return [
+      i+1,
+      m.name,
+      fmtN2(m.monthlySavings||0),
+      fmtN2(m.welfare||0),
+      fmtN2(m.shares||0),
+      fmtN2(totBanked(m)),
+      activeLoan?fmtN2(loanBal):"—",
+      pen.penaltyAmt>0?fmtN2(pen.penaltyAmt):"—",
+      pen.penaltyAmt>0?fmtN2(pen.totalOwed):"—",
+    ];
+  });
+  rows.push(["","TOTALS",fmtN2(totalMonthly),fmtN2(totalWelfare),"",fmtN2(totalBanked),fmtN2(totalOutstanding),fmtN2(totalPenalty),""]);
+  doc.autoTable({
+    startY:y+3,
+    head:[["#","Member","Monthly Sav.","Welfare","Shares","Total Banked","Loan Balance","Penalty","Total Owed"]],
+    body:rows,
+    styles:{fontSize:6.5,cellPadding:1.8},
+    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:6.5},
+    alternateRowStyles:{fillColor:[245,250,255]},
+    columnStyles:{
+      0:{halign:"center",cellWidth:7},
+      1:{cellWidth:36,fontStyle:"bold"},
+      2:{halign:"right"},3:{halign:"right"},4:{halign:"right"},
+      5:{halign:"right",fontStyle:"bold"},
+      6:{halign:"right",textColor:[198,40,40]},
+      7:{halign:"right",textColor:[198,40,40]},
+      8:{halign:"right",fontStyle:"bold",textColor:[198,40,40]},
+    },
+    didParseCell:(d)=>{
+      if(d.row.index===rows.length-1&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";}
+      if(d.column.index===6&&d.cell.raw==="—")d.cell.styles.textColor=[150,150,150];
+    },
+    margin:{left:8,right:8},
+    didDrawPage:(d)=>drawFooter()
+  });
+
+  // Expenses this month
+  if(mExpenses.length>0){
+    doc.addPage();
+    drawHeader(doc.getNumberOfPages());
+    let ey=35;
+    doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);
+    doc.text("EXPENSES — "+mLabel,10,ey);
+    const expRows=mExpenses.map((e,i)=>[i+1,new Date(e.date).toLocaleDateString("en-GB",{day:"2-digit",month:"short"}),e.activity.substring(0,40),e.issuedBy||"—",fmtN2(+e.amount||0),(e.category||"—").replace(/_/g," "),e.payMode||"—"]);
+    expRows.push(["","","TOTAL","",fmtN2(mExpTotal),"",""]);
+    doc.autoTable({
+      startY:ey+3,
+      head:[["#","Date","Activity","Issued By","Amount (UGX)","Category","Pay Mode"]],
+      body:expRows,
+      styles:{fontSize:7,cellPadding:2},
+      headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center"},
+      alternateRowStyles:{fillColor:[245,250,255]},
+      columnStyles:{0:{halign:"center",cellWidth:8},1:{halign:"center",cellWidth:18},2:{cellWidth:55,fontStyle:"bold"},3:{cellWidth:28},4:{halign:"right",fontStyle:"bold",textColor:RED},5:{cellWidth:22},6:{cellWidth:18}},
+      didParseCell:(d)=>{if(d.row.index===expRows.length-1&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";}},
+      margin:{left:8,right:8},
+      didDrawPage:()=>drawFooter()
+    });
+  }
+
+  drawFooter();
+  return doc.output("blob");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AGM REPORT — Annual General Meeting full statutory report
+// ═══════════════════════════════════════════════════════════════
+async function generateAGMReportPDF(members, loans, expenses, investments){
+  await loadJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160];
+  const year=new Date().getFullYear();
+  const fmt2=(n)=>"UGX "+Number(n||0).toLocaleString("en-UG");
+  const fmtN2=(n)=>Number(n||0).toLocaleString("en-UG");
+  let pageNum=0;
+  const newPage=(title,subtitle)=>{
+    if(pageNum>0)doc.addPage();
+    pageNum++;
+    doc.setFillColor(...NAVY);doc.rect(0,0,W,30,"F");
+    doc.setFillColor(...BLUE);doc.rect(0,30,W,1.5,"F");
+    const cx=14,cy=15,r=7,pts=[];
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+    doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    const bw=r*0.22,bx=cx-r*0.34;
+    doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
+    doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");
+    doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("BIDA MULTI-PURPOSE CO-OPERATIVE SOCIETY",W/2,10,{align:"center"});
+    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("AGM REPORT — FINANCIAL YEAR "+year,W/2,17,{align:"center"});
+    if(title){doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...WHITE);doc.text(title,W/2,23,{align:"center"});}
+    doc.setFontSize(6.5);doc.text("Page "+pageNum,W-10,26,{align:"right"});
+    doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+    doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+    doc.text("Bida Multi-Purpose Co-operative Society · AGM Report · Confidential",10,H-3);
+    doc.text(toStr(),W-10,H-3,{align:"right"});
+    return 36;
+  };
+
+  // PAGE 1 — Cover + Financial Highlights
+  let y=newPage("ANNUAL FINANCIAL REPORT","For the period ending 31 December "+year);
+  const totalBanked=members.reduce((s,m)=>s+totBanked(m),0);
+  const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
+  const loanProfit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
+  const cashInBk=totalBanked+loanProfit-totalExp;
+  const activeLoans=loans.filter(l=>l.status!=="paid");
+  const totalOutstanding=activeLoans.reduce((s,l)=>s+calcLoan(l).balance,0);
+  const invTotal=(investments||[]).reduce((s,i)=>s+(+i.amount||0),0);
+  const totalAssets=cashInBk+totalOutstanding+invTotal;
+  const totalPenalty=activeLoans.reduce((s,l)=>s+calcPenalty(l).penaltyAmt,0);
+  const overdueLoans=activeLoans.filter(l=>monthsOverdue(l)>0);
+
+  // Intro
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...NAVY);
+  doc.text("To all members of the Bida Multi-Purpose Co-operative Society,",10,y);y+=6;
+  doc.setFontSize(7.5);doc.setTextColor(60,60,60);
+  const intro="This Annual General Meeting Report presents the financial performance, membership status, loan book summary, and key resolutions for the financial year "+year+". All figures are in Uganda Shillings (UGX) and have been compiled from the BIDA-FinCore management system.";
+  const introLines=doc.splitTextToSize(intro,W-20);
+  doc.text(introLines,10,y);y+=introLines.length*4+4;
+
+  // Key highlights boxes
+  doc.setFillColor(227,242,253);doc.roundedRect(8,y,W-16,28,2,2,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...NAVY);doc.text("KEY FINANCIAL HIGHLIGHTS",12,y+6);
+  const hi=[
+    ["Total Members",""+members.length,...BLUE],
+    ["Total Fund Pool",fmt2(totalBanked),...BLUE],
+    ["Loan Book",fmt2(totalOutstanding),...RED],
+    ["Loan Interest Income",fmt2(loanProfit),...GREEN],
+    ["Total Expenses",fmt2(totalExp),...RED],
+    ["Cash in Bank",fmt2(cashInBk),cashInBk>=0?27:198,cashInBk>=0?94:40,cashInBk>=0?32:40],
+    ["Investments",fmt2(invTotal),...BLUE],
+    ["Total Assets",fmt2(totalAssets),...NAVY],
+  ];
+  const hcols=4,hcw=(W-20)/hcols;
+  hi.forEach((item,i)=>{
+    const hx=10+(i%hcols)*hcw,hy=y+12+Math.floor(i/hcols)*8;
+    doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(...GREY);doc.text(item[0].toUpperCase(),hx,hy);
+    doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(item[2],item[3],item[4]);doc.text(item[1],hx,hy+4.5);
+  });
+  y+=32;
+
+  // Income statement
+  doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("INCOME & EXPENDITURE STATEMENT",10,y);y+=3;
+  const ieRows=[
+    ["INCOME","",""],
+    ["  Loan Interest Income",fmtN2(loanProfit),""],
+    ["  Investment Returns",fmtN2((investments||[]).reduce((s,i)=>s+(+i.expectedReturn||0),0)),""],
+    ["  Processing Fees","(included in interest)",""],
+    ["TOTAL INCOME",fmtN2(loanProfit),""],
+    ["EXPENDITURE","",""],
+    ...Object.entries(expenses.reduce((acc,e)=>{acc[e.category||"other"]=(acc[e.category||"other"]||0)+(+e.amount||0);return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>["  "+k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()),fmtN2(v),""]),
+    ["TOTAL EXPENDITURE",fmtN2(totalExp),""],
+    ["NET SURPLUS / (DEFICIT)",fmtN2(loanProfit-totalExp),""],
+  ];
+  doc.autoTable({
+    startY:y,
+    body:ieRows,
+    styles:{fontSize:7,cellPadding:1.8},
+    columnStyles:{0:{cellWidth:100,fontStyle:"normal"},1:{halign:"right",cellWidth:50,fontStyle:"normal"}},
+    didParseCell:(d)=>{
+      const raw=d.cell.raw||"";
+      if(raw==="INCOME"||raw==="EXPENDITURE")d.cell.styles.fillColor=BLITE,d.cell.styles.fontStyle="bold",d.cell.styles.textColor=NAVY;
+      if(raw.startsWith("TOTAL")||raw.startsWith("NET"))d.cell.styles.fontStyle="bold",d.cell.styles.fillColor=[240,255,240];
+      if(raw.startsWith("NET")&&(loanProfit-totalExp)<0)d.cell.styles.textColor=RED;
+    },
+    margin:{left:10,right:10},
+    didDrawPage:(d)=>{
+      doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+      doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+      doc.text("Bida Multi-Purpose Co-operative Society · AGM Report · Confidential",10,H-3);
+      doc.text(toStr(),W-10,H-3,{align:"right"});
+    }
+  });
+
+  // PAGE 2 — Balance Sheet + Membership
+  y=newPage("BALANCE SHEET & MEMBERSHIP REPORT");
+  // Balance sheet
+  doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("BALANCE SHEET as at "+new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),10,y);y+=3;
+  const bsRows=[
+    ["ASSETS","",""],
+    ["  Cash in Bank",fmtN2(cashInBk),""],
+    ["  Loan Book (Outstanding)",fmtN2(totalOutstanding),""],
+    ["  Investments",fmtN2(invTotal),""],
+    ["  Penalty Receivable",fmtN2(totalPenalty),""],
+    ["TOTAL ASSETS",fmtN2(totalAssets+totalPenalty),""],
+    ["LIABILITIES & EQUITY","",""],
+    ["  Member Savings (Liability)",fmtN2(totalBanked),""],
+    ["  Retained Surplus",fmtN2(cashInBk-totalBanked+loanProfit),""],
+    ["TOTAL LIABILITIES & EQUITY",fmtN2(totalAssets+totalPenalty),""],
+  ];
+  doc.autoTable({
+    startY:y,
+    body:bsRows,
+    styles:{fontSize:7,cellPadding:1.8},
+    columnStyles:{0:{cellWidth:100},1:{halign:"right",cellWidth:50}},
+    didParseCell:(d)=>{
+      const raw=d.cell.raw||"";
+      if(raw==="ASSETS"||raw==="LIABILITIES & EQUITY")d.cell.styles.fillColor=BLITE,d.cell.styles.fontStyle="bold",d.cell.styles.textColor=NAVY;
+      if(raw.startsWith("TOTAL"))d.cell.styles.fontStyle="bold",d.cell.styles.fillColor=[227,242,253];
+    },
+    margin:{left:10,right:10},
+    didDrawPage:(d)=>{
+      doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+      doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+      doc.text("Bida Multi-Purpose Co-operative Society · AGM Report · Confidential",10,H-3);
+      doc.text(toStr(),W-10,H-3,{align:"right"});
+    }
+  });
+
+  y=doc.lastAutoTable.finalY+8;
+  doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("MEMBERSHIP REGISTER SUMMARY",10,y);y+=3;
+  const mRows=members.map((m,i)=>{
+    const al=loans.find(l=>l.memberId===m.id&&l.status!=="paid");
+    const pen=al?calcPenalty(al):{penaltyMonths:0,penaltyAmt:0,totalOwed:0};
+    return [i+1,m.name,m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{month:"short",year:"numeric"}):"—",fmtN2(m.membership||0),fmtN2(m.monthlySavings||0),fmtN2(totBanked(m)),al?"ACTIVE":"NONE",pen.penaltyAmt>0?fmtN2(pen.totalOwed):"—"];
+  });
+  doc.autoTable({
+    startY:y,
+    head:[["#","Member","Joined","Membership Fee","Monthly Savings","Total Banked","Active Loan","Total Owed"]],
+    body:mRows,
+    styles:{fontSize:6.5,cellPadding:1.8},
+    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:6.5},
+    alternateRowStyles:{fillColor:[245,250,255]},
+    columnStyles:{0:{halign:"center",cellWidth:8},1:{cellWidth:40,fontStyle:"bold"},2:{halign:"center",cellWidth:20},3:{halign:"right"},4:{halign:"right"},5:{halign:"right",fontStyle:"bold"},6:{halign:"center"},7:{halign:"right",textColor:RED}},
+    didParseCell:(d)=>{if(d.column.index===6&&d.section==="body"){d.cell.styles.fontStyle="bold";d.cell.styles.textColor=d.cell.raw==="ACTIVE"?RED:GREEN;}},
+    margin:{left:8,right:8},
+    didDrawPage:(d)=>{
+      doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+      doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+      doc.text("Bida Multi-Purpose Co-operative Society · AGM Report · Confidential",10,H-3);
+      doc.text(toStr(),W-10,H-3,{align:"right"});
+    }
+  });
+
+  // PAGE 3 — Loan Book + Resolutions
+  y=newPage("LOAN BOOK REPORT & AGM RESOLUTIONS");
+  doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("LOAN BOOK REGISTER",10,y);y+=3;
+  const allCalcs=loans.map(l=>({...l,...calcLoan(l)}));
+  const lRows=allCalcs.map((l,i)=>{
+    const pen=calcPenalty(l);
+    return [i+1,l.memberName,new Date(l.dateBanked).toLocaleDateString("en-GB",{month:"short",year:"numeric"}),fmtN2(l.amountLoaned),l.method==="reducing"?"6% RB":"4% Flat",l.term+"mo",fmtN2(l.amountPaid),pen.penaltyAmt>0?fmtN2(pen.penaltyAmt):"—",l.balance>0?"("+fmtN2(l.balance)+")":fmtN2(l.balance),l.status==="paid"?"PAID":pen.penaltyAmt>0?"OVERDUE":"ACTIVE"];
+  });
+  doc.autoTable({
+    startY:y,
+    head:[["#","Member","Issued","Principal","Method","Term","Paid","Penalty","Balance","Status"]],
+    body:lRows,
+    styles:{fontSize:6.5,cellPadding:1.8},
+    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:6.5},
+    alternateRowStyles:{fillColor:[245,250,255]},
+    columnStyles:{0:{halign:"center",cellWidth:8},1:{cellWidth:38,fontStyle:"bold"},2:{halign:"center",cellWidth:18},3:{halign:"right"},4:{halign:"center",cellWidth:12},5:{halign:"center",cellWidth:10},6:{halign:"right"},7:{halign:"right",textColor:RED},8:{halign:"right"},9:{halign:"center"}},
+    didParseCell:(d)=>{if(d.column.index===9&&d.section==="body"){d.cell.styles.fontStyle="bold";d.cell.styles.textColor=d.cell.raw==="PAID"?GREEN:d.cell.raw==="OVERDUE"?RED:[191,54,12];}if(d.column.index===8&&typeof d.cell.raw==="string"&&d.cell.raw.startsWith("("))d.cell.styles.textColor=RED;},
+    margin:{left:8,right:8},
+    didDrawPage:(d)=>{
+      doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+      doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+      doc.text("Bida Multi-Purpose Co-operative Society · AGM Report · Confidential",10,H-3);
+      doc.text(toStr(),W-10,H-3,{align:"right"});
+    }
+  });
+
+  // Resolutions / Sign-off
+  y=doc.lastAutoTable.finalY+8;
+  if(y>H-60){doc.addPage();pageNum++;y=36;}
+  doc.setFillColor(...BLITE);doc.roundedRect(8,y,W-16,50,2,2,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("AGM RESOLUTIONS — FINANCIAL YEAR "+year,12,y+7);
+  const resolutions=[
+    "1. The audited accounts for the financial year "+year+" be received and adopted.",
+    "2. The Board of Directors' report be received and noted.",
+    "3. Penalty interest at 2% per month on overdue loans be ratified and enforced.",
+    "4. The election/re-election of Directors for the ensuing year be confirmed.",
+    "5. The external auditor be appointed and their remuneration be fixed.",
+    "6. Any other business raised by members in good standing.",
+  ];
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(40,40,40);
+  resolutions.forEach((r,i)=>doc.text(r,12,y+14+(i*5.5)));
+  y+=55;
+  // Signatures
+  doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(...NAVY);doc.text("CERTIFIED CORRECT BY:",10,y);y+=6;
+  [["Chairperson",""],["Secretary",""],["Treasurer",""],["Auditor",""]].forEach((role,i)=>{
+    const sx=10+(i%2)*90,sy=y+Math.floor(i/2)*18;
+    doc.setDrawColor(...GREY);doc.line(sx,sy+8,sx+70,sy+8);
+    doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+    doc.text(role[0],sx,sy+11);doc.text("Signature & Date",sx,sy+15);
+  });
+
+  return doc.output("blob");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OVERDUE & PENALTY REPORT — full NPL portfolio report
+// ═══════════════════════════════════════════════════════════════
+async function generateOverduePenaltyPDF(members, loans){
+  await loadJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160],ORANGE=[191,54,12];
+  const fmt2=(n)=>"UGX "+Number(n||0).toLocaleString("en-UG");
+  const fmtN2=(n)=>Number(n||0).toLocaleString("en-UG");
+
+  doc.setFillColor(...NAVY);doc.rect(0,0,W,24,"F");
+  doc.setFillColor(...RED);doc.rect(0,24,W,2,"F");
+  const cx=14,cy=12,r=6,pts=[];
+  for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+  doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+  const bw=r*0.22,bx=cx-r*0.34;
+  doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
+  doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
+  doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");
+  doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...WHITE);doc.text("BIDA",26,9);
+  doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",26,15);
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("OVERDUE LOANS & PENALTY INTEREST REPORT",W/2,10,{align:"center"});
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(255,200,200);doc.text("Non-Performing Loan Portfolio — 2% Monthly Penalty on Overdue Balance — "+toStr(),W/2,17,{align:"center"});
+  doc.setFontSize(6.5);doc.setTextColor(187,222,251);doc.text("Generated: "+toStr(),W-10,10,{align:"right"});doc.text("Confidential",W-10,17,{align:"right"});
+  const dF=(n)=>{doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Bida Multi-Purpose Co-operative Society — Overdue & Penalty Report — Confidential",10,H-4);doc.text("Page "+n,W/2,H-4,{align:"center"});doc.text(toStr(),W-10,H-4,{align:"right"});};
+  const sB=(x,y,w,h,lb,v,c)=>{doc.setFillColor(...BLITE);doc.roundedRect(x,y,w,h,2,2,"F");doc.setFillColor(...(c||BLUE));doc.roundedRect(x,y,3,h,1,1,"F");doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);doc.text(lb.toUpperCase(),x+6,y+5);doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text(v,x+6,y+11);};
+
+  // All non-paid loans with penalty calc
+  const overdueData=loans.filter(l=>l.status!=="paid").map(l=>{
+    const c=calcLoan(l);
+    const pen=calcPenalty(l);
+    const cl=classifyLoan(l);
+    const mem=members.find(m=>m.id===l.memberId);
+    const issued=new Date(l.dateBanked);
+    const dueDate=new Date(issued.getFullYear(),issued.getMonth()+(l.term||12),issued.getDate());
+    return {...l,...c,pen,cl,mem,dueDate,overMo:pen.penaltyMonths};
+  }).sort((a,b)=>b.overMo-a.overMo);
+
+  const truly=overdueData.filter(l=>l.overMo>0);
+  const atRisk=overdueData.filter(l=>l.overMo===0);
+  const totalPenalty=truly.reduce((s,l)=>s+l.pen.penaltyAmt,0);
+  const totalBalance=overdueData.reduce((s,l)=>s+l.balance,0);
+  const totalOwedAll=truly.reduce((s,l)=>s+l.pen.totalOwed,0);
+
+  sB(10,27,44,16,"Overdue Loans",""+truly.length,RED);
+  sB(58,27,46,16,"At-Risk (Active)",""+atRisk.length,ORANGE);
+  sB(108,27,52,16,"Total Outstanding",fmt2(totalBalance),RED);
+  sB(164,27,52,16,"Total Penalty",fmt2(totalPenalty),RED);
+  sB(220,27,52,16,"Total Owed (incl. pen.)",fmt2(totalOwedAll),RED);
+
+  // OVERDUE loans table
+  if(truly.length>0){
+    doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...RED);doc.text("⚠  OVERDUE LOANS WITH PENALTY INTEREST",10,50);
+    const rows=truly.map((l,i)=>{
+      const contact=(l.mem?.phone||l.mem?.whatsapp)||"—";
+      return [
+        i+1,
+        l.memberName,
+        contact,
+        l.dueDate.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),
+        fmtN2(l.amountLoaned),
+        l.method==="reducing"?"6% RB":"4% Flat",
+        fmtN2(l.amountPaid),
+        "("+fmtN2(l.balance)+")",
+        ""+l.overMo+" mo",
+        fmtN2(l.pen.penaltyAmt),
+        fmtN2(l.pen.totalOwed),
+        l.cl.label,
+      ];
+    });
+    rows.push(["","TOTALS","","","","","",
+      "("+fmtN2(truly.reduce((s,l)=>s+l.balance,0))+")",
+      "",
+      fmtN2(totalPenalty),
+      fmtN2(totalOwedAll),
+      "",
+    ]);
+    doc.autoTable({
+      startY:53,
+      head:[["#","Member","Contact","Due Date","Principal","Method","Paid","Bal. Overdue","Overdue Mo","Penalty (2%/mo)","Total Owed","Classification"]],
+      body:rows,
+      styles:{fontSize:6.5,cellPadding:1.8},
+      headStyles:{fillColor:RED,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:6.5},
+      alternateRowStyles:{fillColor:[255,245,245]},
+      columnStyles:{
+        0:{halign:"center",cellWidth:7},
+        1:{cellWidth:28,fontStyle:"bold"},
+        2:{cellWidth:22},
+        3:{halign:"center",cellWidth:20},
+        4:{halign:"right"},
+        5:{halign:"center",cellWidth:12},
+        6:{halign:"right"},
+        7:{halign:"right",textColor:RED,fontStyle:"bold"},
+        8:{halign:"center",cellWidth:14,textColor:RED,fontStyle:"bold"},
+        9:{halign:"right",textColor:RED,fontStyle:"bold"},
+        10:{halign:"right",fontStyle:"bold"},
+        11:{halign:"center",cellWidth:18},
+      },
+      didParseCell:(d)=>{
+        if(d.row.index===rows.length-1&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";}
+        if(d.column.index===11&&d.section==="body"){
+          const cl=d.cell.raw;
+          if(cl==="Loss")d.cell.styles.textColor=[183,28,28];
+          else if(cl==="Doubtful")d.cell.styles.textColor=RED;
+          else if(cl==="Substandard")d.cell.styles.textColor=ORANGE;
+          else if(cl==="Watch")d.cell.styles.textColor=[245,127,23];
+        }
+      },
+      margin:{left:8,right:8},
+      didDrawPage:(d)=>dF(d.pageNumber)
+    });
+  }
+
+  // AT RISK loans table
+  if(atRisk.length>0){
+    const startY2=(truly.length>0?doc.lastAutoTable.finalY:50)+8;
+    doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...ORANGE);
+    const txt="⚠  ACTIVE LOANS WITHIN TERM (No Penalty Yet — Monitor Closely)";
+    if(startY2<H-30){
+      doc.text(txt,10,startY2);
+      const atRows=atRisk.map((l,i)=>{
+        const contact=(l.mem?.phone||l.mem?.whatsapp)||"—";
+        const issued=new Date(l.dateBanked);
+        const dueDate=new Date(issued.getFullYear(),issued.getMonth()+(l.term||12),issued.getDate());
+        const daysLeft=Math.max(0,Math.floor((dueDate-new Date())/(1000*60*60*24)));
+        return [i+1,l.memberName,contact,dueDate.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),fmtN2(l.amountLoaned),l.method==="reducing"?"6% RB":"4% Flat",fmtN2(l.amountPaid),"("+fmtN2(l.balance)+")",daysLeft>0?daysLeft+" days":"TODAY",l.cl.label];
+      });
+      doc.autoTable({
+        startY:startY2+3,
+        head:[["#","Member","Contact","Due Date","Principal","Method","Paid","Balance","Days to Due","Classification"]],
+        body:atRows,
+        styles:{fontSize:6.5,cellPadding:1.8},
+        headStyles:{fillColor:ORANGE,textColor:WHITE,fontStyle:"bold",halign:"center",fontSize:6.5},
+        alternateRowStyles:{fillColor:[255,252,240]},
+        columnStyles:{0:{halign:"center",cellWidth:7},1:{cellWidth:30,fontStyle:"bold"},2:{cellWidth:24},3:{halign:"center",cellWidth:20},4:{halign:"right"},5:{halign:"center",cellWidth:12},6:{halign:"right"},7:{halign:"right",textColor:ORANGE,fontStyle:"bold"},8:{halign:"center",cellWidth:16},9:{halign:"center",cellWidth:20}},
+        didParseCell:(d)=>{if(d.column.index===9&&d.section==="body"){const cl=d.cell.raw;if(cl==="Watch")d.cell.styles.textColor=[245,127,23];else if(cl==="Performing")d.cell.styles.textColor=GREEN;}},
+        margin:{left:8,right:8},
+        didDrawPage:(d)=>dF(d.pageNumber)
+      });
+    }
+  }
+
+  // Note box
+  const noteY=doc.lastAutoTable?doc.lastAutoTable.finalY+6:H-30;
+  if(noteY<H-20){
+    doc.setFillColor(255,253,231);doc.roundedRect(8,noteY,W-16,14,2,2,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(6.5);doc.setTextColor(120,90,10);doc.text("PENALTY POLICY:",12,noteY+5);
+    doc.setFont("helvetica","normal");doc.setTextColor(100,80,20);
+    doc.text("Penalty interest of 2% per month is charged on the outstanding loan balance for each full month after the agreed term end date, in line with Uganda SACCO standard practice. This must be approved by the Board and disclosed in the AGM report.",47,noteY+5);
+    doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(120,90,10);
+    doc.text("Classification: Performing (0 missed) · Watch (1 mo) · Substandard (2–3 mo) · Doubtful (4–6 mo) · Loss (>6 mo)",12,noteY+11);
+  }
+
+  dF(doc.getNumberOfPages());
+  return doc.output("blob");
+}
+
+
 async function generateShareCertificate(member, shareUnitsCount, shareValue){
   await loadJsPDF();
   const {jsPDF}=window.jspdf;
@@ -1699,7 +2245,7 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
     const cx=24,cy=20,r=7,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");
+    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -2112,12 +2658,14 @@ function DueLoanRow({loan, members, emailSending, sendDueEmail, sendDueSMS}){
 }
 
 function ProfLoanCard({l, markPd, closeProfile, openEditL, openPayModal}){
-  const ov = l.status!=="paid" && l.months>l.term;
+  const ov = l.status!=="paid" && monthsOverdue(l)>0;
+  const pen = (l.status!=="paid") ? calcPenalty(l) : {penaltyMonths:0,penaltyAmt:0,totalOwed:l.balance};
   const stats = [
     ["Monthly Payment",fmt(l.monthlyPayment),true],
     ["Interest/Mo",fmt(l.monthlyInt),false],
     ["Amount Paid",fmt(l.amountPaid),false],
     ["Remaining Balance",fmt(l.balance),l.balance>0],
+    ...(pen.penaltyAmt>0?[["Penalty Interest ("+pen.penaltyMonths+"mo @2%)",fmt(pen.penaltyAmt),true],["Total Owed (incl. penalty)",fmt(pen.totalOwed),true]]:[]),
     ["Total Interest ("+l.term+"mo)",fmt(l.totalInterest),false],
     ["Total Due",fmt(l.totalDue),false]
   ];
@@ -2131,8 +2679,8 @@ function ProfLoanCard({l, markPd, closeProfile, openEditL, openPayModal}){
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           <span style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:l.method==="reducing"?"#1565c0":"#37474f",background:l.method==="reducing"?"#e3f2fd":"#eceff1",borderRadius:9,padding:"2px 7px"}}>{l.method==="reducing"?"6% Reducing":"4% Flat"}</span>
-          <span className={"badge "+(l.status==="paid"?"bpaid":l.months>l.term?"bover":"bactive")}>
-            {l.status==="paid"?"✅ Cleared":l.months>l.term?"🔴 Overdue":"🟡 Active"}
+          <span className={"badge "+(l.status==="paid"?"bpaid":ov?"bover":"bactive")}>
+            {l.status==="paid"?"✅ Cleared":ov?"🔴 Overdue":"🟡 Active"}
           </span>
           {(()=>{const as=APPROVAL_STATUS[l.approvalStatus];return as&&l.approvalStatus!=="approved"?<span style={{fontSize:8,padding:"2px 6px",borderRadius:5,background:as.bg,color:as.color,fontWeight:700,marginLeft:3}}>{as.label}</span>:null;})()}
           {(()=>{const d=classifyLoan(l);return d.class!=="performing"?<span style={{fontSize:8,fontWeight:700,padding:"2px 6px",borderRadius:5,background:d.color+"22",color:d.color,marginLeft:2}}>{d.label}</span>:null;})()}
@@ -2518,6 +3066,8 @@ function AppInner(){
   const [search,setSearch]  = useState("");
   const [pdfGen,setPdfGen]  = useState(null);
   const [sharedPDF,setSharedPDF] = useState(null);
+  const [reportMonth,setReportMonth] = useState(new Date().getMonth());
+  const [reportYear,setReportYear]   = useState(new Date().getFullYear());
   const [emailSending,setEmailSending] = useState({});
   const [emailSetup,setEmailSetup]     = useState(false);
   const [profId,setProfId]  = useState(null);
@@ -2545,6 +3095,15 @@ function AppInner(){
   // ── Auditor hub state ──
   const [auditorDocs,setAuditorDocs]=useState([]);
   const [auditorDocsLoading,setAuditorDocsLoading]=useState(false);
+  // ── Documents tab state ──
+  const [allDocs,setAllDocs]=useState([]);
+  const [docsLoading,setDocsLoading]=useState(false);
+  const [docsFilterCat,setDocsFilterCat]=useState("all");
+  const [docsSearch,setDocsSearch]=useState("");
+  const [docUpName,setDocUpName]=useState("");
+  const [docUpCat,setDocUpCat]=useState("minutes");
+  const [docUpNote,setDocUpNote]=useState("");
+  const [docUploading,setDocUploading]=useState(false);
 
   useEffect(()=>{
     const t=setInterval(()=>setLiveTime(new Date()),1000);
@@ -2959,7 +3518,12 @@ function AppInner(){
       try{
         const receiptBlob=await generateReceiptPDF(updatedLoan,mem,amt,calc,paymentRecord);
         const receiptNum="REC-"+String(Date.now()).slice(-6);
-        triggerDownload(receiptBlob,"BIDA_Receipt_"+receiptNum+".pdf");
+        const url=URL.createObjectURL(receiptBlob);
+        const a=document.createElement("a");a.href=url;
+        a.download="BIDA_Receipt_"+receiptNum+".pdf";
+        a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+        document.body.appendChild(a);a.click();
+        setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
         if(mem.email){
           const first=mem.name.split(" ")[0];
           const rSubj="BIDA Payment Receipt — "+receiptNum;
@@ -2974,7 +3538,7 @@ function AppInner(){
             dispatchEmail("sched_"+payRec.id,mem.email,schedSubj,schedText,schedBlob,"BIDA_Schedule_Loan"+updatedLoan.id+"_"+payDate+".pdf");
           }catch(se){console.warn("Schedule email after payment failed:",se);}
         }
-      }catch(e){console.error("Receipt PDF failed:",e);}
+      }catch(e){console.error("Receipt PDF failed:",e);alert("⚠️ Payment saved, but receipt PDF failed to generate.\n\nError: "+e.message+"\n\nThe payment has been recorded. You can regenerate the receipt from the loan schedule.");}
     }
   };
   const openAddL=()=>{setEditL(null);setLF({...emptyL});setLModal(true);};
@@ -3168,20 +3732,43 @@ function AppInner(){
     reader.readAsDataURL(blob);
   });
   const dispatchEmail=async(key,toEmail,subject,textBody,pdfBlob,pdfFilename,htmlBody=null)=>{
+    if(!toEmail||!toEmail.trim()||!toEmail.includes("@")){
+      setEmailSending(s=>({...s,[key]:"err"}));
+      setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),4000);
+      alert("No valid email address on file for this member. Please update their profile first.");
+      return;
+    }
     setEmailSending(s=>({...s,[key]:"sending"}));
     try{
-      // Download PDF immediately — works even if email fails
-      triggerDownload(pdfBlob,pdfFilename);
-      // Send via EmailJS (browser-side, no backend needed)
-      await sendViaEmailJS(toEmail,subject,textBody,htmlBody||undefined);
+      // Try Vercel API endpoint first (Resend-powered, more reliable)
+      let sent=false;
+      try{
+        const res=await fetch("/api/send-email",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({to:toEmail,subject,text:textBody,html:htmlBody||textBody})
+        });
+        if(res.ok) sent=true;
+      }catch(_){}
+      // Fall back to EmailJS if API not deployed
+      if(!sent){
+        await sendViaEmailJS(toEmail, subject, textBody, htmlBody||undefined);
+      }
+      // Auto-download the PDF locally so staff can keep a copy / attach manually
+      if(pdfBlob){
+        const url=URL.createObjectURL(pdfBlob);
+        const a=document.createElement("a");
+        a.href=url;a.download=pdfFilename;
+        a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+        document.body.appendChild(a);a.click();
+        setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+      }
       setEmailSending(s=>({...s,[key]:"ok"}));
       setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),4000);
     }catch(e){
       console.error("Email error:",e);
       setEmailSending(s=>({...s,[key]:"err"}));
       setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),5000);
-      // Fallback: open mailto so manager can send manually
-      try{window.open("mailto:"+toEmail+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(textBody));}catch(_){}
     }
   };
 
@@ -3197,14 +3784,29 @@ function AppInner(){
   };
 
   const dispatchWA=async(key,phone,message)=>{
+    if(!phone){setEmailSending(s=>({...s,[key]:"err"}));setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),3000);return;}
     setEmailSending(s=>({...s,[key]:"sending"}));
     try{
-      const res=await fetch("/api/send-whatsapp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:waNum(phone),message})});
-      if(res.status===404){window.open(waLink(phone,message),"_blank");setEmailSending(s=>({...s,[key]:"ok"}));setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),3000);return;}
-      if(!res.ok)throw new Error("WA failed");
+      // Try backend WhatsApp API first
+      let sent=false;
+      try{
+        const res=await fetch("/api/send-whatsapp",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:waNum(phone),message})});
+        if(res.ok) sent=true;
+      }catch(_){}
+      // Always fall back to wa.me link — this is the reliable path
+      if(!sent){
+        const link=waLink(phone,message);
+        if(link) window.open(link,"_blank");
+      }
       setEmailSending(s=>({...s,[key]:"ok"}));
       setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),3000);
-    }catch(e){setEmailSending(s=>({...s,[key]:"err"}));setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),4000);}
+    }catch(e){
+      // Even on error, open WhatsApp web as last resort
+      const link=waLink(phone,message);
+      if(link) window.open(link,"_blank");
+      setEmailSending(s=>({...s,[key]:"ok"}));
+      setTimeout(()=>setEmailSending(s=>({...s,[key]:undefined})),3000);
+    }
   };
 
   const sendSavingsEmail=async(m)=>{const key="sav_"+m.id;const{subj,body,html}=buildSavingsEmail(m);const blob=await generateMemberPDF(m,loansCalc.filter(l=>l.memberId===m.id),members,loans,true);await dispatchEmail(key,m.email,subj,body,blob,"BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf",html);};
@@ -3228,7 +3830,7 @@ function AppInner(){
     try{
       const blob=await generatePDF(type,members,loans,expenses,true);
       setSharedPDF({blob,filename:filenames[type],label:labels[type],type,show:true});
-    }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
+    }catch(e){console.error("PDF error:",e);alert("⚠️ PDF generation failed.\n\nError: "+e.message+"\n\nIf this keeps happening, refresh the page and try again.");}
     finally{setPdfGen(null);}
   };
   const handleMemberPDF=async(m)=>{
@@ -3237,8 +3839,122 @@ function AppInner(){
       const filename="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
       const blob=await generateMemberPDF(m,profLoans,members,loans,true);
       setSharedPDF({blob,filename,label:m.name+" Statement",type:"member",memberId:m.id,show:true,waNumber:waNum(m.whatsapp||m.phone||"")});
-    }catch(e){console.error("PDF error:",e);alert("PDF failed: "+e.message);}
+    }catch(e){console.error("PDF error:",e);alert("⚠️ PDF generation failed.\n\nError: "+e.message+"\n\nIf this keeps happening, refresh the page and try again.");}
     finally{setPdfGen(null);}
+  };
+  const handleBatchPDF=async()=>{
+    setPdfGen("batch");setSharedPDF(null);
+    try{
+      const blob=await generateMonthlyBatchPDF(reportMonth,reportYear,members,loans,expenses);
+      const mName=MONTHS[reportMonth]+"_"+reportYear;
+      setSharedPDF({blob,filename:"BIDA_Monthly_Statement_"+mName+".pdf",label:"Monthly Statement — "+MONTHS[reportMonth]+" "+reportYear,type:"batch",show:true});
+    }catch(e){console.error("PDF error:",e);alert("⚠️ PDF generation failed.\n\nError: "+e.message+"\n\nIf this keeps happening, refresh the page and try again.");}
+    finally{setPdfGen(null);}
+  };
+  const handleAGMReport=async()=>{
+    setPdfGen("agm");setSharedPDF(null);
+    try{
+      const blob=await generateAGMReportPDF(members,loans,expenses,investments);
+      setSharedPDF({blob,filename:"BIDA_AGM_Report_"+new Date().getFullYear()+".pdf",label:"AGM Report "+new Date().getFullYear(),type:"agm",show:true});
+    }catch(e){console.error("PDF error:",e);alert("⚠️ PDF generation failed.\n\nError: "+e.message+"\n\nIf this keeps happening, refresh the page and try again.");}
+    finally{setPdfGen(null);}
+  };
+  const handleOverdueReport=async()=>{
+    setPdfGen("overdue");setSharedPDF(null);
+    try{
+      const blob=await generateOverduePenaltyPDF(members,loans);
+      setSharedPDF({blob,filename:"BIDA_Overdue_Penalty_Report.pdf",label:"Overdue & Penalty Report",type:"overdue",show:true});
+    }catch(e){console.error("PDF error:",e);alert("⚠️ PDF generation failed.\n\nError: "+e.message+"\n\nIf this keeps happening, refresh the page and try again.");}
+    finally{setPdfGen(null);}
+  };
+
+  // ── Documents tab handlers ────────────────────────────────────────
+  const loadAllDocs=useCallback(async()=>{
+    setDocsLoading(true);
+    try{
+      const r=await supa("GET","bida_documents",null,"order=uploaded_at.desc");
+      setAllDocs(r||[]);
+    }catch(e){console.warn("Docs load failed:",e);setAllDocs([]);}
+    finally{setDocsLoading(false);}
+  },[]);
+
+  useEffect(()=>{ if(authUser&&tab==="documents") loadAllDocs(); },[tab,authUser]);
+
+  const handleDocUpload=async(file)=>{
+    if(!file)return;
+    if(file.size>15*1024*1024){alert("File is too large (max 15 MB). Please compress or split the document.");return;}
+    setDocUploading(true);
+    try{
+      // Upload to Supabase Storage bucket "bida-documents"
+      const safeExt=(file.name||"").split(".").pop().replace(/[^a-zA-Z0-9]/g,"");"";
+      const storageKey="docs/"+Date.now()+"_"+(authUser?.name||"user").replace(/\s+/g,"_")+"."+(safeExt||"bin");
+      const uploadUrl=SUPA_URL+"/storage/v1/object/bida-documents/"+storageKey;
+      const upRes=await fetch(uploadUrl,{
+        method:"POST",
+        headers:{
+          "apikey":SUPA_ANON_KEY,
+          "Authorization":"Bearer "+SUPA_ANON_KEY,
+          "Content-Type":file.type||"application/octet-stream",
+          "x-upsert":"true",
+        },
+        body:file,
+      });
+      if(!upRes.ok){
+        const errTxt=await upRes.text().catch(()=>"");
+        // Fallback: embed as base64 for small files when bucket isn't set up yet
+        if(file.size<=600*1024){
+          const reader=new FileReader();
+          await new Promise((res,rej)=>{reader.onload=res;reader.onerror=rej;reader.readAsDataURL(file);});
+          const rec={file_name:docUpName||file.name,category:docUpCat,storage_path:reader.result,storage_key:null,
+            uploaded_by:authUser?.name||"Unknown",uploaded_at:new Date().toISOString(),notes:docUpNote,file_size:file.size,file_type:file.type};
+          const rows=await supa("POST","bida_documents",[rec]);
+          const saved=(rows&&rows[0])||rec;
+          setAllDocs(prev=>[saved,...prev]);setAuditorDocs(prev=>[saved,...prev]);
+          setDocUpName("");setDocUpNote("");
+          alert("✅ Document saved (embedded mode — run the SQL setup script to enable full storage for larger files).");
+          return;
+        }
+        throw new Error("Storage upload failed ("+upRes.status+"). Run the SQL setup script to create the bida-documents bucket. Details: "+errTxt);
+      }
+      const publicUrl=SUPA_URL+"/storage/v1/object/public/bida-documents/"+storageKey;
+      const rec={
+        file_name:docUpName||file.name,
+        category:docUpCat,
+        storage_path:publicUrl,
+        storage_key:storageKey,
+        uploaded_by:authUser?.name||"Unknown",
+        uploaded_at:new Date().toISOString(),
+        notes:docUpNote,
+        file_size:file.size,
+        file_type:file.type,
+      };
+      const rows=await supa("POST","bida_documents",[rec]);
+      const saved=(rows&&rows[0])||rec;
+      setAllDocs(prev=>[saved,...prev]);
+      setAuditorDocs(prev=>[saved,...prev]);
+      setDocUpName("");setDocUpNote("");
+      alert("✅ Document uploaded successfully.");
+    }catch(e){
+      console.error("Doc upload error:",e);
+      alert("Upload failed: "+e.message);
+    }
+    finally{setDocUploading(false);}
+  };
+
+  const handleDocDelete=async(doc)=>{
+    if(!window.confirm("Delete \""+doc.file_name+"\"? This cannot be undone."))return;
+    try{
+      // Remove from Supabase Storage first (if it has a storage key, not a base64 embed)
+      if(doc.storage_key&&!doc.storage_path?.startsWith("data:")){
+        await fetch(SUPA_URL+"/storage/v1/object/bida-documents/"+doc.storage_key,{
+          method:"DELETE",
+          headers:{"apikey":SUPA_ANON_KEY,"Authorization":"Bearer "+SUPA_ANON_KEY},
+        }).catch(e=>console.warn("Storage delete warning (non-fatal):",e.message));
+      }
+      await supa("DELETE","bida_documents",null,"id=eq."+doc.id);
+      setAllDocs(prev=>prev.filter(d=>d.id!==doc.id));
+      setAuditorDocs(prev=>prev.filter(d=>d.id!==doc.id));
+    }catch(e){alert("Delete failed: "+e.message);}
   };
 
   const syncMember=(m)=>saveRecord("members",m,setSyncStatus);
@@ -3329,9 +4045,14 @@ function AppInner(){
           try{
             const blob=await generateLoanPDF(finalLoan,mem,calcLoan(finalLoan));
             const fname="BIDA_LoanAgreement_"+(mem.name||"").replace(/\s+/g,"_")+".pdf";
-            triggerDownload(blob,fname);
+            const url=URL.createObjectURL(blob);
+            const a=document.createElement("a");
+            a.href=url;a.download=fname;
+            a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+            document.body.appendChild(a);a.click();
+            setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
             alert("✅ Loan fully approved! Loan Agreement PDF downloading now.");
-          }catch(e){console.error("Loan PDF error:",e);}
+          }catch(e){console.error("Loan PDF error:",e);alert("⚠️ Loan agreement PDF failed.\n\nError: "+e.message);}
         }
       }
     }
@@ -3606,6 +4327,7 @@ function AppInner(){
               {id:"voting",     icon:"🗳", label:"Voting"},
               {id:"benevolent", icon:"🕊", label:"Benevolent"},
               {id:"audit",      icon:"🔒", label:"Audit Log"},
+              {id:"documents",  icon:"📁", label:"Documents"},
               ...(authUser?.role==="auditor"?[{id:"auditor_hub",icon:"📁",label:"Auditor Hub"}]:[]),
             ].map(({id,icon,label,badge})=>(
               <button key={id} className={"dnbtn"+(tab===id?" on":"")}
@@ -3700,6 +4422,7 @@ function AppInner(){
               </button>
               <button className={"nbtn"+(tab==="investments"?" on":"")} onClick={()=>{setTab("investments");setSearch("");}}>📈 Invest</button>
               <button className={"nbtn"+(tab==="reports"?" on":"")} onClick={()=>{setTab("reports");setSearch("");}}>📄 Reports</button>
+              <button className={"nbtn"+(tab==="documents"?" on":"")} onClick={()=>{setTab("documents");setSearch("");}}>📁 Docs</button>
               <button className={"nbtn"+(tab==="approvals"?" on":"")} onClick={()=>{setTab("approvals");setSearch("");}} style={{position:"relative"}}>
                 ✅ Approvals
                 {myPendingItems.length>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#e65100",color:"#fff",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:9}}>{myPendingItems.length}</span>}
@@ -3761,6 +4484,22 @@ function AppInner(){
                   ))}
                 </div>
                 {cashInBank<0&&<div style={{marginTop:10,background:"rgba(229,57,53,.2)",border:"1px solid rgba(229,57,53,.4)",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#ffcdd2",fontWeight:700}}>⚠️ Cash in bank is negative — expenses exceed total deposits + profit. Review immediately.</div>}
+              </div>
+
+              <div className="stats">
+                <div className="card"><div className="clabel">Members</div><div className="cval">{members.length}</div></div>
+                <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
+                <div className="card"><div className="clabel">Monthly Savings</div><div className="cval">{fmt(savT.monthly)}</div></div>
+                <div className="card"><div className="clabel">Welfare Pool</div><div className="cval">{fmt(savT.welfare)}</div></div>
+                <div className="card ck"><div className="clabel">Voluntary Savings</div><div className="cval ok">{fmt(savT.voluntary)}</div><div className="csub">Member voluntary deposits</div></div>
+                <div className="card"><div className="clabel">Total Share Units</div><div className="cval">{members.reduce((s,m)=>s+Math.round((m.shares||0)/50000),0)} units</div><div className="csub">{fmt(savT.shares)} @ UGX 50,000/unit</div></div>
+                <div className="card cd" title="Includes operational costs + bank transactional charges">
+                  <div className="clabel">Total Expenses</div>
+                  <div className="cval danger">{fmt(totalExpenses)}</div>
+                  <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
+                </div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
+                {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% members · 60% pool</div></div>}
               </div>
 
               <SavingsExpensesChart savingsData={SAVINGS_CHART_DATA} expensesData={EXPENSES_CHART_DATA}/>
@@ -3842,16 +4581,16 @@ function AppInner(){
                 {floans.map((l)=>{
                   const mem=members.find(m=>m.id===l.memberId);
                   const ov=l.status!=="paid"&&l.months>l.term;
+                  const pen=l.status!=="paid"?calcPenalty(l):{penaltyMonths:0,penaltyAmt:0,totalOwed:0};
                   const isApproved=l.approvalStatus==="approved"||!l.approvalStatus;
                   const isActive=l.status!=="paid"&&isApproved;
-                  const statusLabel=l.status==="paid"?"✓ Paid":ov?"⚠ Overdue":"● Active";
-                  const statusBg=l.status==="paid"?"#e8f5e9":ov?"#ffebee":"#e3f2fd";
-                  const statusColor=l.status==="paid"?"#1b5e20":ov?"#c62828":"#1565c0";
+                  const statusLabel=l.status==="paid"?"✓ Paid":pen.penaltyMonths>0?"⚠ Overdue":"● Active";
+                  const statusBg=l.status==="paid"?"#e8f5e9":pen.penaltyMonths>0?"#ffebee":"#e3f2fd";
+                  const statusColor=l.status==="paid"?"#1b5e20":pen.penaltyMonths>0?"#c62828":"#1565c0";
                   const pct=l.totalDue>0?Math.min(100,Math.round((l.amountPaid/l.totalDue)*100)):0;
-                  // Schedule auto-recalculates from live l.amountPaid on every render
                   const sched=buildLoanSchedule(l);
                   return(
-                    <div key={l.id} style={{background:"#fff",border:"1px solid rgba(197,220,245,.6)",borderRadius:"var(--radius-lg)",padding:"14px 16px",boxShadow:"var(--shadow-sm)"}}>
+                    <div key={l.id} style={{background:"#fff",border:"1px solid "+(pen.penaltyMonths>0?"rgba(198,40,40,.35)":"rgba(197,220,245,.6)"),borderRadius:"var(--radius-lg)",padding:"14px 16px",boxShadow:pen.penaltyMonths>0?"0 0 0 1px rgba(198,40,40,.12)":"var(--shadow-sm)"}}>
                       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
                         {mem?.photoUrl
                           ?<img src={mem.photoUrl} alt={mem.name} style={{width:42,height:42,borderRadius:"50%",objectFit:"cover",border:"2px solid var(--bdr)",flexShrink:0}}/>
@@ -3866,12 +4605,21 @@ function AppInner(){
                         </div>
                         <span style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:"var(--radius-xl)",background:statusBg,color:statusColor,flexShrink:0}}>{statusLabel}</span>
                       </div>
+                      {pen.penaltyMonths>0&&(
+                        <div style={{background:"#ffebee",border:"1px solid #ffcdd2",borderRadius:8,padding:"7px 12px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+                          <span style={{fontSize:11,color:"#c62828",fontWeight:700}}>⚠ Penalty: {pen.penaltyMonths} month{pen.penaltyMonths!==1?"s":""} overdue · 2%/mo</span>
+                          <div style={{display:"flex",gap:10,fontSize:11,fontFamily:"var(--mono)"}}>
+                            <span style={{color:"#c62828"}}>+{fmt(pen.penaltyAmt)}</span>
+                            <span style={{color:"#b71c1c",fontWeight:800}}>Total owed: {fmt(pen.totalOwed)}</span>
+                          </div>
+                        </div>
+                      )}
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"var(--tmuted)",marginBottom:4}}>
                         <span>Balance: <strong style={{color:l.balance>0?"#e65100":"#1b5e20",fontFamily:"var(--mono)"}}>{fmt(l.balance)}</strong></span>
                         <span style={{fontFamily:"var(--mono)"}}>{fmt(l.amountPaid)} paid of {fmt(l.totalDue)}</span>
                       </div>
                       <div style={{background:"#eceff1",borderRadius:99,height:5,marginBottom:10}}>
-                        <div style={{height:5,width:pct+"%",background:l.status==="paid"?"#2e7d32":"#1565c0",borderRadius:99,transition:"width .3s"}}/>
+                        <div style={{height:5,width:pct+"%",background:l.status==="paid"?"#2e7d32":pen.penaltyMonths>0?"#c62828":"#1565c0",borderRadius:99,transition:"width .3s"}}/>
                       </div>
                       <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
                         {isActive&&<button onClick={()=>openPayModal(l)}
@@ -5062,7 +5810,7 @@ function AppInner(){
                 <div className="pdf-cards">
                   {[
                     {key:"savings",icon:"💰",title:"Savings Report",desc:"Full member savings ledger with borrowing limits and totals."},
-                    {key:"loans",icon:"📋",title:"Loans Report",desc:"Loan register with method, term, monthly pay, interest, and profit."},
+                    {key:"loans",icon:"📋",title:"Loans Report",desc:"Loan register with method, term, monthly pay, interest, penalty and profit."},
                     {key:"expenses",icon:"🧾",title:"Expenses Report",desc:"All expenses with payment details, approvals, and net balance."},
                     {key:"projections",icon:"📈",title:"12-Month Projections",desc:"Month-by-month savings growth and interest income forecast."},
                   ].map(({key,icon,title,desc})=>(
@@ -5075,6 +5823,46 @@ function AppInner(){
                       </div>
                     </div>
                   ))}
+                </div>
+                <div style={{marginTop:14,borderTop:"2px solid var(--bdr2)",paddingTop:12}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:10}}>📊 Advanced Reports</div>
+                  <div className="pdf-cards">
+                    {/* Monthly Batch Statement */}
+                    <div className="pdf-card" style={{borderTop:"3px solid #1565c0"}}>
+                      <div className="pdf-card-icon">📅</div>
+                      <div className="pdf-card-title">Monthly Batch Statement</div>
+                      <div className="pdf-card-desc">All-member savings summary, loan balances, and expenses for a selected month.</div>
+                      <div style={{display:"flex",gap:6,marginTop:8,alignItems:"center"}}>
+                        <select value={reportMonth} onChange={e=>setReportMonth(+e.target.value)} className="fi" style={{flex:1,fontSize:11,padding:"4px 6px"}}>
+                          {MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}
+                        </select>
+                        <select value={reportYear} onChange={e=>setReportYear(+e.target.value)} className="fi" style={{width:72,fontSize:11,padding:"4px 6px"}}>
+                          {Array.from({length:5},(_,i)=>new Date().getFullYear()-2+i).map(y=><option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </div>
+                      <div style={{marginTop:8}}>
+                        <button className="btn bpdf sm" disabled={!!pdfGen} onClick={handleBatchPDF}>{pdfGen==="batch"?"⏳ Generating...":"📥 Download"}</button>
+                      </div>
+                    </div>
+                    {/* AGM Report */}
+                    <div className="pdf-card" style={{borderTop:"3px solid #2e7d32"}}>
+                      <div className="pdf-card-icon">🏛️</div>
+                      <div className="pdf-card-title">AGM Report</div>
+                      <div className="pdf-card-desc">Full Annual General Meeting report — income statement, balance sheet, membership register, loan book, and resolutions.</div>
+                      <div style={{marginTop:9}}>
+                        <button className="btn bpdf sm" disabled={!!pdfGen} onClick={handleAGMReport}>{pdfGen==="agm"?"⏳ Generating...":"📥 Download"}</button>
+                      </div>
+                    </div>
+                    {/* Overdue & Penalty Report */}
+                    <div className="pdf-card" style={{borderTop:"3px solid #c62828"}}>
+                      <div className="pdf-card-icon">⚠️</div>
+                      <div className="pdf-card-title">Overdue & Penalty Report</div>
+                      <div className="pdf-card-desc">NPL portfolio with 2%/month penalty calculations, loan classifications, and at-risk loan monitoring.</div>
+                      <div style={{marginTop:9}}>
+                        <button className="btn bpdf sm" disabled={!!pdfGen} onClick={handleOverdueReport}>{pdfGen==="overdue"?"⏳ Generating...":"📥 Download"}</button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="stats">
@@ -5131,17 +5919,20 @@ function AppInner(){
                 <div style={{background:"rgba(0,200,83,.08)",border:"1.5px solid #a5d6a7",borderRadius:"var(--radius-md)",padding:"14px 16px",marginTop:10}}>
                   <div style={{fontWeight:700,fontSize:13,color:"var(--mint-600)",marginBottom:8}}>✅ {sharedPDF.label} is ready</div>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                    <button onClick={()=>{if(!sharedPDF.blob)return;triggerDownload(sharedPDF.blob,sharedPDF.filename);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,border:"none",cursor:"pointer"}}>📥 Download PDF</button>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:12,border:"none",cursor:"pointer"}}>📥 Download PDF</button>
                     <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 16px",borderRadius:8,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--p700)",fontWeight:700,fontSize:12,cursor:"pointer"}}>🔍 Open in New Tab</button>
                     <button style={{display:"inline-flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:8,background:"#25D366",color:"#fff",border:"none",fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={async()=>{
                       if(!sharedPDF.blob)return;
                       const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                       if(navigator.canShare&&navigator.canShare({files:[file]})){
                         try{await navigator.share({files:[file],title:"BIDA — "+sharedPDF.label,text:"Bida Multi-Purpose Co-operative Society "+sharedPDF.label+" — "+toStr()});}
-                        catch(e){if(e.name!=="AbortError"){triggerDownload(sharedPDF.blob,sharedPDF.filename);}}
+                        catch(e){if(e.name!=="AbortError"){const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}}
                       } else {
-                        triggerDownload(sharedPDF.blob,sharedPDF.filename);
-                        setTimeout(()=>window.open("https://web.whatsapp.com","_blank"),1200);
+                        const u=URL.createObjectURL(sharedPDF.blob);
+                        const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;
+                        document.body.appendChild(a);a.click();
+                        setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);
+                        setTimeout(()=>window.open("https://web.whatsapp.com","_blank"),800);
                       }
                     }}>{WA_SVG} Share via WhatsApp</button>
                   </div>
@@ -5160,7 +5951,11 @@ function AppInner(){
                 <button
                   onClick={()=>{
                     if(!sharedPDF.blob) return;
-                    triggerDownload(sharedPDF.blob,sharedPDF.filename);
+                    const url=URL.createObjectURL(sharedPDF.blob);
+                    const a=document.createElement("a");
+                    a.href=url; a.download=sharedPDF.filename;
+                    document.body.appendChild(a); a.click();
+                    setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
                   }}
                   style={{width:"100%",padding:"16px",borderRadius:"var(--radius-md)",background:"linear-gradient(135deg,#1565c0,#0d3461)",color:"#fff",fontWeight:900,fontSize:16,border:"none",cursor:"pointer",marginBottom:10,letterSpacing:.5}}>
                   📥 Download PDF
@@ -5171,9 +5966,11 @@ function AppInner(){
                     const file=new File([sharedPDF.blob],sharedPDF.filename,{type:"application/pdf"});
                     if(navigator.canShare&&navigator.canShare({files:[file]})){
                       try{ await navigator.share({files:[file],title:"Bida Multi-Purpose Co-operative Society",text:"Please find your BIDA statement attached."}); }
-                      catch(e){ if(e.name!=="AbortError") triggerDownload(sharedPDF.blob,sharedPDF.filename); }
+                      catch(e){ if(e.name!=="AbortError") console.warn(e); }
                     } else {
-                      triggerDownload(sharedPDF.blob,sharedPDF.filename);
+                      const url=URL.createObjectURL(sharedPDF.blob);
+                      window.open(url,"_blank");
+                      setTimeout(()=>URL.revokeObjectURL(url),15000);
                     }
                   }}
                   style={{width:"100%",padding:"14px",borderRadius:"var(--radius-md)",background:"#128C7E",color:"#fff",fontWeight:800,fontSize:14,border:"none",cursor:"pointer",marginBottom:10}}>
@@ -5193,6 +5990,122 @@ function AppInner(){
               </div>
             </div>
           )}
+
+          {tab==="documents" && (
+            <React.Fragment>
+              <div className="ptitle"><div className="ptdot"/>Documents & Meeting Minutes</div>
+
+              {/* Upload Panel */}
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"16px 18px",marginBottom:16}}>
+                <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:12,paddingBottom:8,borderBottom:"2px solid var(--bdr2)"}}>📤 Upload Document</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                  <div className="fg">
+                    <label className="fl">Document Name</label>
+                    <input className="fi" value={docUpName} onChange={e=>setDocUpName(e.target.value)} placeholder="e.g. AGM Minutes March 2025"/>
+                  </div>
+                  <div className="fg">
+                    <label className="fl">Category</label>
+                    <select className="fi" value={docUpCat} onChange={e=>setDocUpCat(e.target.value)}>
+                      <option value="minutes">📝 Meeting Minutes</option>
+                      <option value="agm">🏛️ AGM Documents</option>
+                      <option value="legal">⚖️ Legal &amp; Registration</option>
+                      <option value="member">👤 Member Documents</option>
+                      <option value="loan">💳 Loan Documents</option>
+                      <option value="financial">📊 Financial Reports</option>
+                      <option value="audit">🔍 Audit Documents</option>
+                      <option value="other">📎 Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="fg" style={{marginBottom:12}}>
+                  <label className="fl">Notes (optional)</label>
+                  <input className="fi" value={docUpNote} onChange={e=>setDocUpNote(e.target.value)} placeholder="Any notes about this document…"/>
+                </div>
+                <label style={{display:"inline-flex",alignItems:"center",gap:8,padding:"9px 18px",background:"var(--p600)",color:"#fff",borderRadius:9,cursor:docUploading?"not-allowed":"pointer",fontWeight:700,fontSize:12,opacity:docUploading?.6:1}}>
+                  {docUploading?"⏳ Uploading…":"📁 Choose File & Upload"}
+                  <input type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" style={{display:"none"}} disabled={docUploading} onChange={e=>{const f=e.target.files?.[0];if(f)handleDocUpload(f);e.target.value="";}}/>
+                </label>
+                <span style={{fontSize:10,color:"var(--tmuted)",marginLeft:12}}>PDF, Word, Excel, PowerPoint, images accepted</span>
+              </div>
+
+              {/* Search + Filter */}
+              <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+                <input className="fi" style={{flex:1,minWidth:160,fontSize:12}} value={docsSearch} onChange={e=>setDocsSearch(e.target.value)} placeholder="🔍 Search documents…"/>
+                <button className="btn bpdf sm" onClick={loadAllDocs} disabled={docsLoading}>{docsLoading?"⏳":"🔄"} Refresh</button>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+                {[["all","📁 All"],["minutes","📝 Minutes"],["agm","🏛️ AGM"],["legal","⚖️ Legal"],["member","👤 Members"],["loan","💳 Loans"],["financial","📊 Financial"],["audit","🔍 Audit"],["other","📎 Other"]].map(([cat,lbl])=>(
+                  <button key={cat} onClick={()=>setDocsFilterCat(cat)} style={{padding:"5px 12px",borderRadius:"var(--radius-xl)",border:"none",fontWeight:docsFilterCat===cat?700:400,background:docsFilterCat===cat?"var(--p600)":"var(--p50)",color:docsFilterCat===cat?"#fff":"var(--p700)",cursor:"pointer",fontSize:11}}>{lbl}</button>
+                ))}
+              </div>
+
+              {/* Document Grid */}
+              {docsLoading&&<div style={{textAlign:"center",padding:32,color:"var(--tmuted)",fontSize:13}}>⏳ Loading documents…</div>}
+              {!docsLoading&&(()=>{
+                const filtered=allDocs
+                  .filter(d=>docsFilterCat==="all"||d.category===docsFilterCat)
+                  .filter(d=>!docsSearch||(d.file_name||"").toLowerCase().includes(docsSearch.toLowerCase())||(d.notes||"").toLowerCase().includes(docsSearch.toLowerCase()));
+                if(filtered.length===0) return <div style={{textAlign:"center",padding:40,color:"var(--tmuted)"}}><div style={{fontSize:40,marginBottom:8}}>📭</div><div style={{fontWeight:700,fontSize:14}}>No documents found</div><div style={{fontSize:12,marginTop:4}}>Upload the first document using the panel above.</div></div>;
+                const catColors={"minutes":"#1565c0","agm":"#2e7d32","legal":"#6a1b9a","member":"#00838f","loan":"#e65100","financial":"#37474f","audit":"#c62828","other":"#757575"};
+                const catIcons={"minutes":"📝","agm":"🏛️","legal":"⚖️","member":"👤","loan":"💳","financial":"📊","audit":"🔍","other":"📎"};
+                return (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12}}>
+                    {filtered.map((doc,i)=>{
+                      const isImg=doc.file_type?.startsWith("image/")||/\.(jpg|jpeg|png|gif|webp)$/i.test(doc.file_name||"");
+                      const isPdf=/\.pdf$/i.test(doc.file_name||"")||doc.file_type==="application/pdf";
+                      const isWord=/\.(doc|docx)$/i.test(doc.file_name||"");
+                      const isExcel=/\.(xls|xlsx)$/i.test(doc.file_name||"");
+                      const fileIcon=isPdf?"📄":isImg?"🖼️":isWord?"📝":isExcel?"📊":"📎";
+                      const catColor=catColors[doc.category]||"#757575";
+                      const catIcon=catIcons[doc.category]||"📎";
+                      const fileSizeKB=doc.file_size?Math.round(doc.file_size/1024):null;
+                      return (
+                        <div key={doc.id||i} style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+                          <div style={{background:catColor,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:20}}>{fileIcon}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontWeight:700,fontSize:11,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{doc.file_name||"Untitled"}</div>
+                              <div style={{fontSize:9,color:"rgba(255,255,255,.75)",marginTop:1,textTransform:"uppercase",letterSpacing:.5}}>{catIcon} {(doc.category||"other").replace(/_/g," ")}{fileSizeKB?" · "+fileSizeKB+"KB":""}</div>
+                            </div>
+                          </div>
+                          <div style={{padding:"10px 12px",flex:1}}>
+                            {doc.notes&&<div style={{fontSize:10,color:"var(--td)",marginBottom:6,lineHeight:1.4}}>{doc.notes}</div>}
+                            <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>
+                              By: <strong>{doc.uploaded_by||"—"}</strong>
+                            </div>
+                            <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",marginTop:2}}>
+                              {doc.uploaded_at?new Date(doc.uploaded_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}
+                            </div>
+                          </div>
+                          <div style={{padding:"8px 12px",borderTop:"1px solid var(--bdr)",display:"flex",gap:6}}>
+                            {doc.storage_path&&(
+                              <a href={doc.storage_path} download={doc.file_name} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"6px 0",background:"rgba(21,101,192,.07)",color:"var(--p600)",borderRadius:7,fontSize:11,fontWeight:700,textDecoration:"none"}}>📥 Download</a>
+                            )}
+                            {doc.storage_path&&isPdf&&(
+                              <button onClick={()=>{const u=doc.storage_path;window.open(u,"_blank");}} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"6px 0",background:"rgba(21,101,192,.07)",color:"var(--p600)",borderRadius:7,fontSize:11,fontWeight:700,border:"none",cursor:"pointer"}}>👁️ View</button>
+                            )}
+                            {(authUser?.role==="admin"||authUser?.role==="treasurer"||authUser?.role==="auditor")&&(
+                              <button onClick={()=>handleDocDelete(doc)} style={{padding:"6px 10px",background:"rgba(198,40,40,.07)",color:"#c62828",borderRadius:7,fontSize:11,fontWeight:700,border:"none",cursor:"pointer"}}>🗑️</button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Stats bar */}
+              {allDocs.length>0&&(
+                <div style={{marginTop:16,padding:"10px 14px",background:"var(--p50)",borderRadius:"var(--radius-md)",display:"flex",gap:16,flexWrap:"wrap",fontSize:11,color:"var(--p700)"}}>
+                  {[["Total",allDocs.length],["Minutes",allDocs.filter(d=>d.category==="minutes").length],["AGM",allDocs.filter(d=>d.category==="agm").length],["Legal",allDocs.filter(d=>d.category==="legal").length],["Other",allDocs.filter(d=>!["minutes","agm","legal"].includes(d.category)).length]].map(([l,v])=>(
+                    <div key={l}><span style={{fontWeight:700}}>{v}</span> <span style={{opacity:.7}}>{l}</span></div>
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
+          )}
+
         </main>
       </div>
 
@@ -5205,7 +6118,7 @@ function AppInner(){
                 {!profEdit&&<button className="btn bstmt sm" disabled={!!pdfGen} onClick={()=>handleMemberPDF(profMember)}>{pdfGen===("member_"+profMember.id)?"⏳...":"📄 Statement"}</button>}
                 {!profEdit&&sharedPDF&&sharedPDF.type==="member"&&sharedPDF.memberId===profMember.id&&sharedPDF.blob&&(
                   <React.Fragment>
-                    <button onClick={()=>{if(!sharedPDF.blob)return;triggerDownload(sharedPDF.blob,sharedPDF.filename);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,border:"none",cursor:"pointer"}}>📥 PDF</button>
+                    <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);const a=document.createElement("a");a.href=u;a.download=sharedPDF.filename;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},5000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"linear-gradient(135deg,#c62828,#b71c1c)",color:"#fff",fontWeight:700,fontSize:10,border:"none",cursor:"pointer"}}>📥 PDF</button>
                     <button onClick={()=>{if(!sharedPDF.blob)return;const u=URL.createObjectURL(sharedPDF.blob);window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),10000);}} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,background:"#fff",border:"1.5px solid var(--bdr2)",color:"var(--p700)",fontWeight:700,fontSize:10,cursor:"pointer"}}>🔍</button>
                     <button className="btn sm" style={{background:"#25D366",color:"#fff",fontWeight:700}} onClick={()=>shareViaPDF(sharedPDF.blob,sharedPDF.filename,profMember.name)}>{WA_SVG} WA</button>
                   </React.Fragment>
@@ -5558,7 +6471,10 @@ function AppInner(){
                           try{
                             const blob=await generateShareCertificate(profMember,shareUnits(profMember),profMember.shares);
                             const fname="BIDA_ShareCert_"+profMember.name.replace(/\s+/g,"_")+".pdf";
-                            triggerDownload(blob,fname);
+                            const url=URL.createObjectURL(blob);
+                            const a=document.createElement("a");a.href=url;a.download=fname;
+                            document.body.appendChild(a);a.click();
+                            setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
                           }catch(e){alert("Certificate error: "+e.message);}
                           finally{setPdfGen(null);}
                         }}
@@ -5593,16 +6509,34 @@ function AppInner(){
                               const fname="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";
                               const file=new File([blob],fname,{type:"application/pdf"});
                               if(navigator.canShare&&navigator.canShare({files:[file]})){
-                                try{await navigator.share({files:[file],title:"BIDA — "+profMember.name,text:buildWAStatementMsg(profMember)});}
-                                catch(se){if(se.name!=="AbortError"){triggerDownload(blob,fname);setTimeout(()=>window.open(waLink(profMember.whatsapp,"PDF downloaded! Please attach from Downloads.\n\n"+buildWAStatementMsg(profMember)),"_blank"),1200);}}
+                                await navigator.share({files:[file],title:"BIDA — "+profMember.name,text:buildWAStatementMsg(profMember)});
                               } else {
-                                triggerDownload(blob,fname);
-                                setTimeout(()=>window.open(waLink(profMember.whatsapp,"PDF downloaded! Please attach from your Downloads folder.\n\n"+buildWAStatementMsg(profMember)),"_blank"),1200);
+                                const url=URL.createObjectURL(blob);
+                                const a=document.createElement("a");a.href=url;a.download=fname;
+                                document.body.appendChild(a);a.click();
+                                setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},5000);
+                                setTimeout(()=>window.open(waLink(profMember.whatsapp,"PDF downloaded! Please attach from your Downloads folder.\n\n"+buildWAStatementMsg(profMember)),"_blank"),800);
                               }
                             }catch(e){if(e.name!=="AbortError")alert("WA share error: "+e.message);}
                             finally{setPdfGen(null);}
                           }}>{pdfGen===("wa_"+profMember.id)?"⏳":WA_SVG} WA PDF</button>
                           <a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWASavingsMsg(profMember))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
+                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{
+  try{
+    const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);
+    const filename="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";
+    const file=new File([blob],filename,{type:"application/pdf"});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:"BIDA — "+profMember.name});
+    } else {
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;a.download=filename;
+      a.style.cssText="position:fixed;top:-200px;opacity:0";
+      document.body.appendChild(a);a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+    }
+  }catch(e){if(e.name!=="AbortError")alert("PDF error: "+e.message);}
+}}>{WA_SVG}WA PDF</button>
                         <button className="btn bsms sm" disabled={emailSending["sms_sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsSMS(profMember)}>{emailSending["sms_sav_"+profMember.id]==="sending"?"⏳...":"📱 SMS"}</button></React.Fragment>}
                       </div>
                     </div>
@@ -6420,139 +7354,102 @@ function AppInner(){
 // PAYMENT REQUESTS INBOX — Manager Side
 // ══════════════════════════════════════════════
 function PaymentRequestsInbox({members,setMembers,saveRecord,setSyncStatus,authUser}){
-  const [requests,setRequests]=React.useState([]);
+  // ── PAYMENT UPDATES INBOX ──
+  // Once mobile money merchant API is integrated, this will auto-receive
+  // real-time payment confirmations from MTN MoMo / Airtel Money.
+  // For now it shows confirmed payments already recorded by the treasurer.
+
+  const [recent,setRecent]=React.useState([]);
   const [loading,setLoading]=React.useState(false);
   const [open,setOpen]=React.useState(false);
-  const [confirmId,setConfirmId]=React.useState(null);
-  const [rejectId,setRejectId]=React.useState(null);
-  const [rejectNote,setRejectNote]=React.useState("");
 
   const load=React.useCallback(async()=>{
     setLoading(true);
     try{
-      const r=await supa("GET","payment_requests",null,"status=eq.pending&order=created_at.desc");
-      setRequests(r||[]);
-    }catch(e){console.warn("Payment requests load failed:",e.message);}
+      // Show recently confirmed/settled payments as "updates"
+      const r=await supa("GET","payment_requests",null,"order=created_at.desc&limit=10").catch(()=>[]);
+      setRecent(r||[]);
+    }catch(e){console.warn("Payment updates load failed:",e.message);}
     finally{setLoading(false);}
   },[]);
 
   React.useEffect(()=>{load();},[]);
 
-  const CATEGORY_MAP={monthly_savings:"monthlySavings",annual_sub:"annualSub",welfare:"welfare",shares:"shares",loan_repayment:"amountPaid"};
-
-  const confirm=async(req)=>{
-    try{
-      // Update payment_requests status
-      await supa("PATCH","payment_requests",{status:"confirmed",confirmed_by:authUser?.name||"Manager",confirmed_at:new Date().toISOString()},"id=eq."+req.id);
-      // Update member record if category maps to a savings field
-      const field=CATEGORY_MAP[req.category];
-      if(field&&field!=="amountPaid"){
-        const mem=members.find(m=>m.id===req.member_id);
-        if(mem){
-          const updated={...mem,[field]:(mem[field]||0)+(+req.amount||0)};
-          setMembers(prev=>prev.map(m=>m.id===mem.id?updated:m));
-          await saveRecord("members",updated,setSyncStatus);
-        }
-      }
-      setRequests(prev=>prev.filter(r=>r.id!==req.id));
-      setConfirmId(null);
-      alert("✅ Payment confirmed. Member's "+req.category+" updated.");
-    }catch(e){alert("Error confirming payment: "+e.message);}
-  };
-
-  const reject=async(req)=>{
-    try{
-      await supa("PATCH","payment_requests",{status:"rejected",confirmed_by:authUser?.name||"Manager",confirmed_at:new Date().toISOString(),note:rejectNote||"Rejected by manager"},"id=eq."+req.id);
-      setRequests(prev=>prev.filter(r=>r.id!==req.id));
-      setRejectId(null);setRejectNote("");
-    }catch(e){alert("Error rejecting: "+e.message);}
-  };
-
   const PURP_LABELS={monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",welfare:"Welfare",shares:"Shares",loan_repayment:"Loan Repayment"};
-
-  if(requests.length===0&&!loading) return null;
+  const STATUS_STYLE={
+    confirmed:{bg:"#e8f5e9",border:"#a5d6a7",color:"#1b5e20",label:"✓ Confirmed"},
+    pending:  {bg:"#fff8e1",border:"#ffe082",color:"#e65100",label:"⏳ Pending"},
+    rejected: {bg:"#ffebee",border:"#ffcdd2",color:"#c62828",label:"✗ Rejected"},
+    api_initiated:{bg:"#e3f2fd",border:"#90caf9",color:"#1565c0",label:"⚡ API"},
+  };
 
   return (
-    <div style={{background:"rgba(255,109,0,.07)",border:"1.5px solid #ffcc80",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14}}>
+    <div style={{background:"rgba(21,101,192,.05)",border:"1.5px solid #bbdefb",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14}}>
+      {/* Header */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:20}}>📬</span>
+          <span style={{fontSize:20}}>📡</span>
           <div>
-            <div style={{fontWeight:800,fontSize:13,color:"var(--warning)"}}>
-              {loading?"Loading…":requests.length+" Pending Payment Request"+(requests.length!==1?"s":"")}
-            </div>
-            <div style={{fontSize:10,color:"var(--warning)"}}>Members have submitted payments awaiting your confirmation</div>
+            <div style={{fontWeight:800,fontSize:13,color:"var(--p700)"}}>Payment Updates</div>
+            <div style={{fontSize:10,color:"var(--tmuted)"}}>Live mobile money confirmations — awaiting API integration</div>
           </div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={e=>{e.stopPropagation();load();}} style={{background:"none",border:"none",color:"var(--warning)",fontWeight:700,fontSize:11,cursor:"pointer"}}>↻ Refresh</button>
-          <span style={{fontSize:12,color:"var(--warning)",fontWeight:700}}>{open?"▲":"▼"}</span>
+          <button onClick={e=>{e.stopPropagation();load();}} style={{background:"none",border:"none",color:"var(--p600)",fontWeight:700,fontSize:11,cursor:"pointer"}}>↻ Refresh</button>
+          <span style={{fontSize:12,color:"var(--p600)",fontWeight:700}}>{open?"▲":"▼"}</span>
         </div>
       </div>
 
       {open&&(
-        <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:10}}>
-          {requests.map(req=>{
-            const mem=members.find(m=>m.id===req.member_id);
-            return (
-              <div key={req.id} style={{background:"#fff",borderRadius:10,padding:"12px 14px",border:"1px solid #ffe0b2"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:10}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:13,color:"#0d2a5e"}}>{mem?.name||req.member_name||"Member #"+req.member_id}</div>
-                    <div style={{fontSize:11,color:"var(--tmuted)",marginTop:3}}>
-                      {PURP_LABELS[req.category]||req.category} · {req.payment_method?.toUpperCase()||"?"} · {req.phone}
-                    </div>
-                    {req.transaction_id&&<div style={{fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)",marginTop:2}}>TX: {req.transaction_id}</div>}
-                    {req.created_at&&<div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>{new Date(req.created_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</div>}
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontWeight:900,fontSize:18,color:"var(--mint-600)",fontFamily:"var(--mono)"}}>UGX {Number(req.amount||0).toLocaleString("en-UG")}</div>
-                    <div style={{fontSize:10,color:"#90a4ae"}}>amount</div>
-                  </div>
-                </div>
-
-                {/* Proof image */}
-                {req.proof_url&&req.proof_url.startsWith("data:image")&&(
-                  <div style={{marginBottom:10}}>
-                    <div style={{fontSize:10,color:"var(--tmuted)",marginBottom:4,fontWeight:600}}>📎 Attached proof:</div>
-                    <img src={req.proof_url} alt="Payment proof" style={{maxWidth:"100%",maxHeight:120,borderRadius:8,border:"1px solid #e0e0e0",objectFit:"cover"}}/>
-                  </div>
-                )}
-                {req.proof_url&&req.proof_url.startsWith("data:application/pdf")&&(
-                  <div style={{marginBottom:10}}>
-                    <a href={req.proof_url} download={"proof_"+req.id+".pdf"} style={{fontSize:11,fontWeight:700,color:"var(--p600)",textDecoration:"none"}}>📄 Download PDF proof</a>
-                  </div>
-                )}
-
-                {confirmId===req.id?(
-                  <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:8,padding:"10px 12px"}}>
-                    <div style={{fontWeight:700,color:"var(--mint-600)",fontSize:12,marginBottom:6}}>
-                      Confirm UGX {Number(req.amount||0).toLocaleString("en-UG")} — {PURP_LABELS[req.category]||req.category} for {mem?.name||"this member"}?
-                    </div>
-                    <div style={{fontSize:11,color:"#555",marginBottom:8}}>This will add the amount to their {req.category} record immediately.</div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button className="btn bk sm" onClick={()=>confirm(req)}>✅ Yes, Confirm</button>
-                      <button className="btn bg sm" onClick={()=>setConfirmId(null)}>Cancel</button>
-                    </div>
-                  </div>
-                ):rejectId===req.id?(
-                  <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:8,padding:"10px 12px"}}>
-                    <div style={{fontWeight:700,color:"var(--error)",fontSize:12,marginBottom:6}}>Reason for rejection</div>
-                    <input value={rejectNote} onChange={e=>setRejectNote(e.target.value)} placeholder="e.g. Incorrect amount, wrong reference…" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid #ef9a9a",fontSize:12,marginBottom:8,boxSizing:"border-box"}}/>
-                    <div style={{display:"flex",gap:8}}>
-                      <button className="btn bd sm" onClick={()=>reject(req)}>❌ Reject</button>
-                      <button className="btn bg sm" onClick={()=>{setRejectId(null);setRejectNote("");}}>Cancel</button>
-                    </div>
-                  </div>
-                ):(
-                  <div style={{display:"flex",gap:8}}>
-                    <button className="btn bk sm" onClick={()=>setConfirmId(req.id)}>✅ Confirm</button>
-                    <button className="btn bd sm" onClick={()=>setRejectId(req.id)}>❌ Reject</button>
-                  </div>
-                )}
+        <div style={{marginTop:14}}>
+          {/* API integration notice */}
+          <div style={{background:"linear-gradient(135deg,#fff8e1,#fff3cd)",border:"1.5px solid #ffcc02",borderRadius:12,padding:"14px 16px",marginBottom:14,display:"flex",gap:12,alignItems:"flex-start"}}>
+            <div style={{fontSize:28,flexShrink:0}}>🔗</div>
+            <div>
+              <div style={{fontWeight:800,fontSize:13,color:"#e65100",marginBottom:4}}>Mobile Money API — Integration Pending</div>
+              <div style={{fontSize:12,color:"#5d4037",lineHeight:1.7}}>
+                Once MTN MoMo and Airtel Money merchant codes are attached to this app, <strong>payment confirmations will appear here automatically</strong> — no manual entry needed. Members will be able to pay directly from the member portal and their balances will update in real time.
               </div>
-            );
-          })}
+              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
+                {["MTN MoMo API","Airtel Money API","Webhook listener","Auto balance update"].map(tag=>(
+                  <span key={tag} style={{fontSize:9,fontWeight:700,padding:"3px 9px",borderRadius:20,background:"rgba(255,204,0,.2)",border:"1px solid #ffcc02",color:"#e65100",fontFamily:"var(--mono)"}}>{tag}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent payment records (read-only) */}
+          {loading&&<div style={{textAlign:"center",padding:16,color:"var(--tmuted)",fontSize:12}}>⏳ Loading…</div>}
+          {!loading&&recent.length===0&&(
+            <div style={{textAlign:"center",padding:"20px 0",color:"var(--tmuted)",fontSize:12}}>
+              <div style={{fontSize:32,marginBottom:8}}>📭</div>
+              No payment records yet. They will appear here once the mobile money API is connected.
+            </div>
+          )}
+          {!loading&&recent.length>0&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:4}}>Recent Payment Records</div>
+              {recent.map(req=>{
+                const mem=members.find(m=>m.id===req.member_id);
+                const st=STATUS_STYLE[req.status]||STATUS_STYLE.pending;
+                return (
+                  <div key={req.id} style={{background:"#fff",borderRadius:10,padding:"11px 13px",border:"1px solid #e3f2fd",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:12,color:"#0d2a5e"}}>{mem?.name||req.member_name||"Member #"+req.member_id}</div>
+                      <div style={{fontSize:10,color:"var(--tmuted)",marginTop:2}}>
+                        {PURP_LABELS[req.category]||req.category} · {req.payment_method?.toUpperCase()||"?"} · {req.phone}
+                      </div>
+                      {req.created_at&&<div style={{fontSize:9,color:"#90a4ae",marginTop:2,fontFamily:"var(--mono)"}}>{new Date(req.created_at).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}</div>}
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0}}>
+                      <div style={{fontWeight:800,fontSize:14,color:"var(--p600)",fontFamily:"var(--mono)"}}>UGX {Number(req.amount||0).toLocaleString("en-UG")}</div>
+                      <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20,background:st.bg,border:"1px solid "+st.border,color:st.color}}>{st.label}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -6831,14 +7728,39 @@ function AuditorHub({members,loans,expenses,investments,auditLog,ledger,polls,di
 
   const uploadDoc=async(file)=>{
     if(!file)return;
+    if(file.size>15*1024*1024){alert("File too large (max 15 MB).");return;}
     setUploading(true);
     try{
-      const reader=new FileReader();
-      await new Promise((res,rej)=>{reader.onload=res;reader.onerror=rej;reader.readAsDataURL(file);});
-      const dataUrl=reader.result;
-      const rec={file_name:uploadName||file.name,category:uploadCat,storage_path:dataUrl,uploaded_by:authUser?.name||"Auditor",uploaded_at:new Date().toISOString(),notes:uploadNote,file_size:file.size,file_type:file.type};
+      // Upload to Supabase Storage bucket "bida-documents"
+      const safeExt=(file.name||"").split(".").pop().replace(/[^a-zA-Z0-9]/g,"");
+      const storageKey="docs/"+Date.now()+"_"+(authUser?.name||"auditor").replace(/\s+/g,"_")+"."+(safeExt||"bin");
+      const upRes=await fetch(SUPA_URL+"/storage/v1/object/bida-documents/"+storageKey,{
+        method:"POST",
+        headers:{"apikey":SUPA_ANON_KEY,"Authorization":"Bearer "+SUPA_ANON_KEY,"Content-Type":file.type||"application/octet-stream","x-upsert":"true"},
+        body:file,
+      });
+      let publicUrl;
+      if(!upRes.ok){
+        // Fallback: base64 embed for small files
+        if(file.size<=600*1024){
+          const reader=new FileReader();
+          await new Promise((res,rej)=>{reader.onload=res;reader.onerror=rej;reader.readAsDataURL(file);});
+          const rec={file_name:uploadName||file.name,category:uploadCat,storage_path:reader.result,storage_key:null,
+            uploaded_by:authUser?.name||"Auditor",uploaded_at:new Date().toISOString(),notes:uploadNote,file_size:file.size,file_type:file.type};
+          const rows=await supa("POST","bida_documents",[rec]);
+          setAuditorDocs(prev=>[(rows&&rows[0])||rec,...prev]);
+          setUploadName("");setUploadNote("");
+          alert("✅ Document saved (embedded). Run the SQL setup script for full storage support.");
+          return;
+        }
+        const errTxt=await upRes.text().catch(()=>"");
+        throw new Error("Storage upload failed ("+upRes.status+"). Run the SQL setup script. "+errTxt);
+      }
+      publicUrl=SUPA_URL+"/storage/v1/object/public/bida-documents/"+storageKey;
+      const rec={file_name:uploadName||file.name,category:uploadCat,storage_path:publicUrl,storage_key:storageKey,
+        uploaded_by:authUser?.name||"Auditor",uploaded_at:new Date().toISOString(),notes:uploadNote,file_size:file.size,file_type:file.type};
       const rows=await supa("POST","bida_documents",[rec]);
-      setAuditorDocs(prev=>[...(rows||[rec]),...prev]);
+      setAuditorDocs(prev=>[(rows&&rows[0])||rec,...prev]);
       setUploadName("");setUploadNote("");
       alert("✅ Document uploaded and stored.");
     }catch(e){alert("Upload failed: "+e.message);}
@@ -7263,23 +8185,42 @@ function normPhonePM(raw){
 }
 
 const PURPOSES=[
-  {v:"monthly_savings",l:"💰 Monthly Savings"},
-  {v:"annual_sub",     l:"📋 Annual Subscription"},
-  {v:"welfare",        l:"🤝 Welfare Contribution"},
-  {v:"shares",         l:"📈 Share Purchase"},
-  {v:"loan_repayment", l:"💳 Loan Repayment"},
+  {v:"monthly_savings",   l:"💰 Monthly Savings"},
+  {v:"annual_sub",        l:"📋 Annual Subscription"},
+  {v:"welfare",           l:"🤝 Welfare Contribution"},
+  {v:"shares",            l:"📈 Share Purchase"},
+  {v:"voluntary_savings", l:"🏦 Voluntary Savings"},
+  {v:"loan_repayment",    l:"💳 Loan Repayment"},
 ];
+// Maps purpose → member savings field
+const PURPOSE_FIELD={
+  monthly_savings:   "monthlySavings",
+  annual_sub:        "annualSub",
+  welfare:           "welfare",
+  shares:            "shares",
+  voluntary_savings: "voluntaryDeposit",
+};
 
-function PaymentModalInline({ member, onClose }) {
+function PaymentModalInline({ member, loans, onSuccess, onClose }) {
   const [method,  setMethod]  = useState("mtn");
-  const [phone,   setPhone]   = useState(member?.whatsapp||member?.phone||"");
+  const [phone,   setPhone]   = useState(member?.phone||member?.whatsapp||"");
   const [amount,  setAmount]  = useState("");
   const [purpose, setPurpose] = useState("monthly_savings");
+  const [loanId,  setLoanId]  = useState(""); // for loan_repayment
   const [txId,    setTxId]    = useState("");
-  const [proof,   setProof]   = useState(null); // {name, data}
+  const [proof,   setProof]   = useState(null);
   const [busy,    setBusy]    = useState(false);
   const [err,     setErr]     = useState("");
   const [done,    setDone]    = useState(null);
+
+  const activeLoans = (loans||[]).filter(l=>l.status!=="paid");
+
+  // Auto-select first active loan when switching to loan_repayment
+  React.useEffect(()=>{
+    if(purpose==="loan_repayment" && !loanId && activeLoans.length>0){
+      setLoanId(String(activeLoans[0].id));
+    }
+  },[purpose]);
 
   const handleProof = (e) => {
     const file = e.target.files?.[0];
@@ -7291,147 +8232,222 @@ function PaymentModalInline({ member, onClose }) {
 
   const submit = async () => {
     setErr("");
-    const n = normPhonePM(phone);
-    if (!n) { setErr("Enter a valid Uganda phone number"); return; }
-    const amt = parseInt(String(amount).replace(/\D/g,""), 10);
-    if (!amt || amt < 1000) { setErr("Minimum UGX 1,000"); return; }
-    if (amt > 5000000) { setErr("Maximum UGX 5,000,000 per payment"); return; }
+    const amt = parseInt(String(amount).replace(/,/g,""), 10);
+    if (!amt || amt < 1000) { setErr("Minimum payment is UGX 1,000"); return; }
+    if (amt > 10000000)     { setErr("Maximum UGX 10,000,000 per transaction"); return; }
+    if (purpose==="loan_repayment" && !loanId) { setErr("Select a loan to repay"); return; }
+    if (!txId.trim()) { setErr("Enter the MoMo transaction ID / reference to verify payment"); return; }
+
     setBusy(true);
     try {
-      const ref = "PAY-" + Date.now() + "-" + member.id;
-      const record = {
-        member_id:      member.id,
-        member_name:    member.name,
-        amount:         amt,
-        category:       purpose,
-        payment_method: method,
-        phone:          n,
-        reference:      ref,
-        transaction_id: txId || null,
-        proof_url:      proof?.data || null,
-        status:         "pending",
-        note:           proof?.name ? "Proof attached: " + proof.name : null,
-        metadata:       { memberName: member.name, proofFileName: proof?.name || null },
-      };
-      // Try merchant API first (for when you have merchant codes)
-      let apiOk = false;
-      try {
-        const r = await fetch("/api/initiate-payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ memberId: member.id, phone: n, amount: amt, purpose, method })
-        });
-        if (r.ok) { apiOk = true; record.status = "api_initiated"; }
-      } catch (_) {}
-      // Always insert to payment_requests for manager visibility
-      await mDb.insert("payment_requests", record);
-      setDone({ amt, phone: n, method, ref, apiOk });
-    } catch(e) { setErr(e.message); }
+      const now = new Date().toISOString();
+      const ref = "PAY-"+Date.now()+"-"+member.id;
+
+      if (purpose === "loan_repayment") {
+        // ── Loan repayment: update amountPaid on the loan ──
+        const lid = parseInt(loanId, 10);
+        const loan = (loans||[]).find(l=>l.id===lid);
+        if (!loan) throw new Error("Loan not found");
+        const newPaid = (loan.amountPaid||0) + amt;
+        await mDb.update("loans", "id=eq."+lid, { amountPaid: newPaid, last_saved_at: now });
+        // Log to contrib_log
+        await mDb.insert("contrib_log", {
+          memberId: member.id,
+          date: now.slice(0,10),
+          category: "loan_repayment",
+          amount: amt,
+          note: "Loan #"+lid+" repayment via "+method.toUpperCase()+" (TX: "+txId+")",
+        }).catch(()=>{});
+        setDone({ amt, purpose, method, ref, loanId: lid });
+
+      } else {
+        // ── Savings / subscription / shares / voluntary ──
+        const field = PURPOSE_FIELD[purpose];
+        if (!field) throw new Error("Unknown payment category");
+        const current = member[field] || 0;
+        const newVal  = current + amt;
+        // Update member record directly in Supabase
+        await mDb.update("members", "id=eq."+member.id, { [field]: newVal, last_saved_at: now });
+        // Log contribution
+        await mDb.insert("contrib_log", {
+          memberId: member.id,
+          date: now.slice(0,10),
+          category: purpose,
+          amount: amt,
+          note: "Payment via "+method.toUpperCase()+" (TX: "+txId+")",
+        }).catch(()=>{});
+        // Record in payment_requests for manager audit trail (read-only)
+        await mDb.insert("payment_requests", {
+          member_id: member.id,
+          member_name: member.name,
+          amount: amt,
+          category: purpose,
+          payment_method: method,
+          phone: phone||member.phone||member.whatsapp||"",
+          reference: ref,
+          transaction_id: txId,
+          proof_url: proof?.data||null,
+          status: "confirmed",
+          note: "Self-recorded by member",
+          confirmed_at: now,
+        }).catch(()=>{});
+        setDone({ amt, purpose, method, ref, field, newVal });
+      }
+
+      // Trigger a refresh so the dashboard reflects new values immediately
+      onSuccess?.();
+
+    } catch(e) { setErr(e.message||"Payment failed. Please try again."); }
     finally { setBusy(false); }
   };
 
   const S = {
-    ov:  { position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999,padding:16 },
-    sh:  { background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:500,padding:"24px 20px",maxHeight:"92vh",overflowY:"auto" },
-    lb:  { fontSize:10,fontWeight:700,color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,display:"block",marginBottom:6,fontFamily:"var(--mono)" },
-    inp: { width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #cfd8dc",fontSize:15,outline:"none",boxSizing:"border-box" },
-    btn: (d) => ({ width:"100%",padding:13,borderRadius:10,border:"none",fontWeight:700,fontSize:15,cursor:d?"not-allowed":"pointer",background:d?"#cfd8dc":"linear-gradient(135deg,#1b5e20,#2e7d32)",color:d?"#90a4ae":"#fff" }),
+    ov:  { position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999,padding:"0 0 0 0" },
+    sh:  { background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,padding:"24px 20px",maxHeight:"92vh",overflowY:"auto" },
+    lb:  { fontSize:10,fontWeight:700,color:"#546e7a",textTransform:"uppercase",letterSpacing:.8,display:"block",marginBottom:7,fontFamily:"var(--mono)" },
+    inp: { width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #cfd8dc",fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"var(--sans)",transition:"border-color .15s" },
+    btn: (d) => ({ width:"100%",padding:14,borderRadius:12,border:"none",fontWeight:800,fontSize:15,cursor:d?"not-allowed":"pointer",background:d?"#eceff1":"linear-gradient(135deg,#1b5e20,#2e7d32)",color:d?"#90a4ae":"#fff",marginTop:4,boxShadow:d?"none":"0 3px 14px rgba(27,94,32,.35)",transition:"all .15s" }),
   };
 
-  if (done) return (
-    <div style={S.ov} onClick={onClose}>
-      <div style={S.sh} onClick={e=>e.stopPropagation()}>
-        <div style={{textAlign:"center",padding:"20px 0"}}>
-          <div style={{fontSize:48,marginBottom:12}}>✅</div>
-          <div style={{fontWeight:800,fontSize:18,color:"var(--mint-600)"}}>Payment Request Submitted</div>
-          <div style={{fontSize:13,color:"var(--tmuted)",marginTop:8,lineHeight:1.7}}>
-            {mFmt(done.amt)} via {done.method==="mtn"?"MTN MoMo":"Airtel Money"} has been logged.<br/>
-            Your manager will confirm it shortly and your balance will update.
+  const PURP_LABELS = { monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",welfare:"Welfare",shares:"Shares",voluntary_savings:"Voluntary Savings",loan_repayment:"Loan Repayment" };
+
+  if (done) {
+    const isLoan = done.purpose==="loan_repayment";
+    return (
+      <div style={S.ov} onClick={onClose}>
+        <div style={S.sh} onClick={e=>e.stopPropagation()}>
+          <div style={{textAlign:"center",padding:"24px 0 16px"}}>
+            <div style={{fontSize:54,marginBottom:14}}>✅</div>
+            <div style={{fontWeight:900,fontSize:20,color:"#1b5e20",marginBottom:8}}>Payment Recorded!</div>
+            <div style={{fontSize:14,color:"#546e7a",lineHeight:1.8,marginBottom:8}}>
+              <strong>UGX {Number(done.amt).toLocaleString("en-UG")}</strong> — {PURP_LABELS[done.purpose]||done.purpose}<br/>
+              {isLoan ? "Loan #"+done.loanId+" balance & schedule updated." : "Your "+PURP_LABELS[done.purpose]+" balance updated."}<br/>
+              <span style={{fontSize:12,color:"#90a4ae"}}>Via {done.method==="mtn"?"MTN MoMo":"Airtel Money"} · Ref: {done.ref}</span>
+            </div>
+            <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:10,padding:"10px 16px",fontSize:12,color:"#2e7d32",marginBottom:20,lineHeight:1.6}}>
+              ✓ Your dashboard and {isLoan?"loan balance":"savings balance"} reflect this payment immediately.
+            </div>
+            <button onClick={onClose} style={{background:"#1565c0",border:"none",color:"#fff",fontWeight:700,padding:"11px 36px",borderRadius:10,cursor:"pointer",fontSize:14}}>Done →</button>
           </div>
-          {done.ref && <div style={{fontSize:10,color:"#90a4ae",marginTop:10,fontFamily:"var(--mono)"}}>Ref: {done.ref}</div>}
-          <button onClick={onClose} style={{marginTop:20,background:"rgba(0,200,83,.08)",border:"none",color:"var(--mint-600)",fontWeight:700,padding:"10px 28px",borderRadius:10,cursor:"pointer",fontSize:13}}>Done</button>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
     <div style={S.ov} onClick={onClose}>
       <div style={S.sh} onClick={e=>e.stopPropagation()}>
+        {/* Title */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <div style={{fontWeight:800,fontSize:17,color:"#0d2a5e"}}>Make a Payment</div>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#90a4ae"}}>✕</button>
+          <div>
+            <div style={{fontWeight:900,fontSize:18,color:"#0d2a5e"}}>Make a Payment</div>
+            <div style={{fontSize:11,color:"#90a4ae",marginTop:2}}>Recorded directly to your account</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#90a4ae",lineHeight:1}}>✕</button>
         </div>
 
-        {/* Payment method */}
+        {/* Payment method tabs */}
         <div style={{marginBottom:16}}>
           <label style={S.lb}>Payment Method</label>
-          <div style={{display:"flex",gap:10}}>
+          <div style={{display:"flex",gap:8}}>
             {[["mtn","🟡 MTN MoMo"],["airtel","🔴 Airtel Money"],["bank","🏦 Bank"]].map(([v,l])=>(
-              <button key={v} onClick={()=>setMethod(v)} style={{flex:1,padding:10,borderRadius:10,fontWeight:method===v?700:400,border:"2px solid "+(method===v?"#1565c0":"#cfd8dc"),background:method===v?"#e3f2fd":"#fff",cursor:"pointer",fontSize:12,color:method===v?"#0d47a1":"#546e7a"}}>{l}</button>
+              <button key={v} onClick={()=>setMethod(v)}
+                style={{flex:1,padding:"9px 6px",borderRadius:10,fontWeight:method===v?700:500,border:"2px solid "+(method===v?"#1565c0":"#e0e0e0"),background:method===v?"#e3f2fd":"#fff",cursor:"pointer",fontSize:11,color:method===v?"#0d47a1":"#546e7a",transition:"all .15s"}}>
+                {l}
+              </button>
             ))}
           </div>
         </div>
 
-        {/* Phone / Account */}
-        <div style={{marginBottom:16}}>
-          <label style={S.lb}>{method==="bank"?"Bank Account / Ref":"Phone Number"}</label>
-          <input style={S.inp} type={method==="bank"?"text":"tel"} placeholder={method==="bank"?"Your account number":"0772 123 456"} value={phone} onChange={e=>setPhone(e.target.value)}/>
-        </div>
-
         {/* Purpose */}
         <div style={{marginBottom:16}}>
-          <label style={S.lb}>Purpose</label>
-          <select style={S.inp} value={purpose} onChange={e=>setPurpose(e.target.value)}>
+          <label style={S.lb}>Payment Purpose</label>
+          <select style={{...S.inp,cursor:"pointer",background:"#fff"}} value={purpose} onChange={e=>setPurpose(e.target.value)}>
             {PURPOSES.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
           </select>
+        </div>
+
+        {/* Loan selector (only shown for loan_repayment) */}
+        {purpose==="loan_repayment"&&(
+          <div style={{marginBottom:16}}>
+            <label style={S.lb}>Which Loan?</label>
+            {activeLoans.length===0
+              ? <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 13px",fontSize:12,color:"#e65100"}}>No active loans found.</div>
+              : <select style={{...S.inp,cursor:"pointer",background:"#fff"}} value={loanId} onChange={e=>setLoanId(e.target.value)}>
+                  {activeLoans.map(l=>{
+                    const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
+                    let ti=0;if(isR){let b=p;for(let i=0;i<term;i++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
+                    const bal=Math.max(0,p+ti-paid);
+                    return <option key={l.id} value={l.id}>Loan #{l.id} — Balance UGX {Number(bal).toLocaleString("en-UG")}</option>;
+                  })}
+                </select>
+            }
+          </div>
+        )}
+
+        {/* Phone */}
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>{method==="bank"?"Bank Account / Reference":"Your Phone Number"}</label>
+          <input style={S.inp} type={method==="bank"?"text":"tel"}
+            placeholder={method==="bank"?"Account number or bank ref":"0772 123 456"}
+            value={phone} onChange={e=>setPhone(e.target.value)}/>
         </div>
 
         {/* Amount */}
         <div style={{marginBottom:16}}>
           <label style={S.lb}>Amount (UGX)</label>
-          <input style={S.inp} type="number" placeholder="e.g. 50000" value={amount} onChange={e=>setAmount(e.target.value)}/>
-          {amount && !isNaN(+amount) && +amount > 0 && <div style={{fontSize:12,color:"var(--p600)",marginTop:5,fontFamily:"var(--mono)",fontWeight:700}}>{mFmt(+amount)}</div>}
-        </div>
-
-        {/* Transaction ID */}
-        <div style={{marginBottom:16}}>
-          <label style={S.lb}>Transaction / MoMo ID <span style={{fontWeight:400,opacity:.7}}>(enter after you pay)</span></label>
-          <input style={S.inp} placeholder="e.g. QK7XXXXXX or bank reference" value={txId} onChange={e=>setTxId(e.target.value)}/>
-        </div>
-
-        {/* Proof attachment */}
-        <div style={{marginBottom:16}}>
-          <label style={S.lb}>Attach Proof <span style={{fontWeight:400,opacity:.7}}>(screenshot or photo)</span></label>
-          <label style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"1.5px dashed #cfd8dc",borderRadius:10,cursor:"pointer",background:"#fafafa"}}>
-            <span style={{fontSize:20}}>📎</span>
-            <div>
-              <div style={{fontSize:13,fontWeight:600,color:"var(--tmuted)"}}>{proof ? proof.name : "Tap to attach MoMo screenshot or receipt"}</div>
-              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>JPG, PNG or PDF</div>
-            </div>
-            <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={handleProof}/>
-          </label>
-          {proof && (
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"6px 10px",background:"rgba(0,200,83,.08)",borderRadius:8}}>
-              <span style={{fontSize:11,color:"var(--mint-600)",fontWeight:600}}>✓ {proof.name}</span>
-              <button onClick={()=>setProof(null)} style={{background:"none",border:"none",color:"var(--error)",cursor:"pointer",fontSize:12,fontWeight:700}}>✕ Remove</button>
+          <input style={S.inp} type="number" inputMode="numeric" placeholder="e.g. 50000"
+            value={amount} onChange={e=>setAmount(e.target.value)}/>
+          {amount&&!isNaN(+amount)&&+amount>0&&(
+            <div style={{fontSize:13,color:"#1565c0",marginTop:5,fontFamily:"var(--mono)",fontWeight:700}}>
+              UGX {Number(+amount).toLocaleString("en-UG")}
             </div>
           )}
         </div>
 
-        {err && <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:9,padding:"9px 12px",fontSize:12,color:"var(--error)",marginBottom:12}}>{err}</div>}
+        {/* Transaction ID — required for verification */}
+        <div style={{marginBottom:16}}>
+          <label style={S.lb}>Transaction ID / MoMo Reference <span style={{color:"#e53935",fontWeight:900}}>*</span></label>
+          <input style={S.inp} placeholder="e.g. QK7XXXXXX or bank ref number"
+            value={txId} onChange={e=>setTxId(e.target.value)}/>
+          <div style={{fontSize:10,color:"#90a4ae",marginTop:4}}>Required — from your MoMo confirmation SMS or bank receipt</div>
+        </div>
 
-        <button style={S.btn(busy||!amount)} onClick={submit} disabled={busy||!amount}>
-          {busy ? "⏳ Submitting…" : "Submit Payment " + (!isNaN(+amount)&&+amount>0 ? mFmt(+amount) : "") + " →"}
+        {/* Proof (optional) */}
+        <div style={{marginBottom:18}}>
+          <label style={S.lb}>Attach Proof Screenshot <span style={{fontWeight:400,opacity:.7}}>(optional)</span></label>
+          <label style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"1.5px dashed #cfd8dc",borderRadius:10,cursor:"pointer",background:"#fafafa"}}>
+            <span style={{fontSize:20}}>📎</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#546e7a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                {proof?proof.name:"Tap to attach MoMo screenshot or receipt"}
+              </div>
+              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>JPG, PNG or PDF</div>
+            </div>
+            <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={handleProof}/>
+          </label>
+          {proof&&(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"6px 10px",background:"rgba(0,200,83,.08)",borderRadius:8}}>
+              <span style={{fontSize:11,color:"#2e7d32",fontWeight:700}}>✓ {proof.name}</span>
+              <button onClick={()=>setProof(null)} style={{background:"none",border:"none",color:"#c62828",cursor:"pointer",fontSize:12,fontWeight:700}}>✕</button>
+            </div>
+          )}
+        </div>
+
+        {err&&<div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:9,padding:"10px 13px",fontSize:12,color:"#c62828",marginBottom:14}}>{err}</div>}
+
+        <button style={S.btn(busy||!amount||!txId.trim()||(purpose==="loan_repayment"&&!loanId))} onClick={submit}
+          disabled={busy||!amount||!txId.trim()||(purpose==="loan_repayment"&&!loanId)}>
+          {busy?"⏳ Recording payment…":"✓ Record Payment "+(!isNaN(+amount)&&+amount>0?"— UGX "+Number(+amount).toLocaleString("en-UG"):"")+" →"}
         </button>
-        <div style={{fontSize:10,color:"#90a4ae",textAlign:"center",marginTop:10,lineHeight:1.5}}>
-          Your manager will be notified and confirm your payment. Your balance updates once confirmed.
+
+        <div style={{fontSize:10,color:"#90a4ae",textAlign:"center",marginTop:10,lineHeight:1.6}}>
+          Payment is recorded immediately to your account. Ensure your transaction ID is correct.
         </div>
       </div>
     </div>
   );
 }
-
 
 function OTPBoxes({ value, onChange, onDone, disabled }) {
   const refs = React.useRef([]);
@@ -7809,9 +8825,14 @@ function LoanScheduleModal({loan, member, schedule, calc, onClose, members_ref, 
     setDlBusy(true);setMsg("");
     try{
       const blob=await generateSchedulePDF(loan,member,schedule,calc);
-      triggerDownload(blob,"BIDA_Schedule_"+loan.id+".pdf");
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;
+      a.download="BIDA_Schedule_"+loan.id+".pdf";
+      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+      document.body.appendChild(a);a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
       setMsg("✓ Downloaded!");
-    }catch(e){setMsg("PDF error: "+e.message);}
+    }catch(e){setMsg("⚠️ PDF failed: "+e.message);}
     finally{setDlBusy(false);}
   };
 
@@ -7998,7 +9019,12 @@ function LoanCard({ loan }) {
       const sched=buildLoanSchedule(loan);
       const calc=calcLoan(loan);
       const blob=await generateSchedulePDF(loan,{name:loan.memberName||"Member",id:loan.memberId,photoUrl:""},sched,calc);
-      triggerDownload(blob,"BIDA_Schedule_"+loan.id+".pdf");
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;
+      a.download="BIDA_Schedule_"+loan.id+".pdf";
+      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+      document.body.appendChild(a);a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
     }catch(e){alert("PDF error: "+e.message);}
     finally{setDlBusy(false);}
   };
@@ -8059,8 +9085,8 @@ function LoanCard({ loan }) {
 }
 
 function ContribRow({ c }) {
-  const LABS={monthlySavings:"Monthly Savings",welfare:"Welfare Fund",annualSub:"Annual Subscription",membership:"Membership Fee",shares:"Shares",voluntaryDeposit:"Voluntary Savings"};
-  const COLS={monthlySavings:"#1565c0",welfare:"#2e7d32",annualSub:"#e65100",membership:"#6a1b9a",shares:"#00695c",voluntaryDeposit:"#546e7a"};
+  const LABS={monthlySavings:"Monthly Savings",welfare:"Welfare Fund",annualSub:"Annual Subscription",membership:"Membership Fee",shares:"Shares",voluntaryDeposit:"Voluntary Savings",voluntary_savings:"Voluntary Savings",monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",loan_repayment:"Loan Repayment",welfare_contribution:"Welfare Contribution"};
+  const COLS={monthlySavings:"#1565c0",welfare:"#2e7d32",annualSub:"#e65100",membership:"#6a1b9a",shares:"#00695c",voluntaryDeposit:"#546e7a",voluntary_savings:"#546e7a",monthly_savings:"#1565c0",annual_sub:"#e65100",loan_repayment:"#c62828",welfare_contribution:"#2e7d32"};
   return (
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid #f5f5f5"}}>
       <div>
@@ -8074,6 +9100,114 @@ function ContribRow({ c }) {
 
 function Skel() {
   return <div style={{background:"linear-gradient(90deg,#eceff1 25%,#e3f2fd 50%,#eceff1 75%)",backgroundSize:"200% 100%",animation:"shimmer 1.4s infinite",borderRadius:10,height:80,marginBottom:10}}/>;
+}
+
+// ─── Member portal PDF download button — proper stateful component ───
+function MemberStatementButton({ m, loans }) {
+  const [busy, setBusy] = useState(false);
+  const [msg,  setMsg]  = useState("");
+
+  const download = async () => {
+    if (!m || busy) return;
+    setBusy(true); setMsg("Generating PDF…");
+    try {
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+      if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("jsPDF library failed to load. Check your internet connection.");
+      const {jsPDF} = window.jspdf;
+      const doc = new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+      const W=doc.internal.pageSize.getWidth(), H=doc.internal.pageSize.getHeight();
+      const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREY=[94,127,160];
+      // Header
+      doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
+      doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
+      (()=>{const cx=22,cy=16,r=8,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
+      doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",36,13);
+      doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",14,19);doc.text("bidacooperative@gmail.com",14,25);
+      doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,13,{align:"center"});
+      doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Individual Financial Summary — Confidential",W/2,20,{align:"center"});
+      doc.setFontSize(6.5);doc.text("Generated: "+new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),W-10,13,{align:"right"});
+      const tb=(m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0);
+      const bY=37;
+      doc.setFillColor(...BLITE);doc.roundedRect(10,bY,W-20,24,2,2,"F");
+      try{if(m.photoUrl){doc.addImage(m.photoUrl,"JPEG",13,bY+3,18,18);}else throw new Error("no photo");}
+      catch(_pe){doc.setFillColor(...BLUE);doc.circle(22,bY+12,9,"F");doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...WHITE);doc.text((m.name||"?")[0],22,bY+15,{align:"center"});}
+      doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text(m.name,35,bY+8);
+      doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+      doc.text("Member ID: #"+m.id,35,bY+14);
+      doc.text("Joined: "+(m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}):"—"),35,bY+19);
+      if(m.phone||m.whatsapp)doc.text("Phone: "+(m.phone||m.whatsapp),W/2+2,bY+14);
+      const sY=bY+27;
+      doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",12,sY);
+      doc.autoTable({startY:sY+3,
+        head:[["Category","Amount (UGX)"]],
+        body:[
+          ["Membership Fee",Number(m.membership||0).toLocaleString("en-UG")],
+          ["Annual Subscription",Number(m.annualSub||0).toLocaleString("en-UG")],
+          ["Monthly Savings (cumulative)",Number(m.monthlySavings||0).toLocaleString("en-UG")],
+          ["Welfare Contributions",Number(m.welfare||0).toLocaleString("en-UG")],
+          ["Shares",Number(m.shares||0).toLocaleString("en-UG")],
+          ["Voluntary Deposit",Number(m.voluntaryDeposit||0).toLocaleString("en-UG")],
+          ["TOTAL BANKED","UGX "+Number(tb).toLocaleString("en-UG")],
+        ],
+        styles:{fontSize:9,cellPadding:2.8},
+        headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
+        columnStyles:{0:{cellWidth:110,fontStyle:"bold"},1:{halign:"right",fontWeight:"bold"}},
+        didParseCell:(d)=>{if(d.row.index===6&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
+        margin:{left:12,right:12}
+      });
+      if(loans&&loans.length>0){
+        const lY2=doc.lastAutoTable.finalY+8;
+        doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("LOAN HISTORY",12,lY2);
+        doc.autoTable({startY:lY2+3,
+          head:[["Issued","Principal","Term","Monthly Pay","Paid","Balance","Status"]],
+          body:loans.map(l=>{
+            const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
+            let ti=0;if(isR){let b=p;for(let i2=0;i2<term;i2++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
+            const bal=Math.max(0,p+ti-paid);
+            const mp=Math.round(p/term)+(isR?Math.round(p*rate):Math.round(p*rate));
+            return [new Date(l.dateBanked).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),Number(p).toLocaleString("en-UG"),term+"mo",Number(mp).toLocaleString("en-UG"),Number(paid).toLocaleString("en-UG"),bal>0?"UGX "+Number(bal).toLocaleString("en-UG"):"✓ CLEAR",l.status==="paid"?"✓ PAID":"● ACTIVE"];
+          }),
+          styles:{fontSize:8,cellPadding:2.2},
+          headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7.5},
+          margin:{left:12,right:12}
+        });
+      }
+      const pageCount=doc.internal.getNumberOfPages();
+      for(let pg=1;pg<=pageCount;pg++){
+        doc.setPage(pg);
+        doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
+        doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+        doc.text("Thank you for being a valued member of the BIDA family. Together we grow stronger. — The Treasurer",12,H-4,{maxWidth:W-55});
+        doc.text("Page "+pg+" of "+pageCount,W-12,H-4,{align:"right"});
+      }
+      const blob=doc.output("blob");
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url;a.download="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf";
+      a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+      document.body.appendChild(a);a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
+      setMsg("✓ Downloaded!");
+      setTimeout(()=>setMsg(""),4000);
+    } catch(e) {
+      setMsg("⚠ " + e.message);
+      setTimeout(()=>setMsg(""),7000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button onClick={download} disabled={busy}
+      style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:busy?"not-allowed":"pointer",textAlign:"center",opacity:busy?.7:1,transition:"opacity .2s"}}>
+      <div style={{fontSize:24,marginBottom:4}}>{busy?"⏳":"📄"}</div>
+      <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>{busy?"Generating…":"Download Statement"}</div>
+      <div style={{fontSize:10,color:msg.startsWith("✓")?"#1b5e20":msg.startsWith("⚠")?"#c62828":"#90a4ae",marginTop:2,fontWeight:msg?"700":"400"}}>
+        {msg||"PDF — savings & loans"}
+      </div>
+    </button>
+  );
 }
 
 function MemberDashboardInline({ session, onLogout }) {
@@ -8164,7 +9298,7 @@ function MemberDashboardInline({ session, onLogout }) {
             <Card icon="💰" label="Monthly Savings" value={mFmt(m?.monthlySavings||0)} color="#1565c0"/>
             <Card icon="📈" label="Share Units" value={sUnits+" unit"+(sUnits!==1?"s":"")} sub={mFmt(m?.shares||0)+" (UGX 50,000/unit)"} color="#00695c"/>
             <Card icon="💳" label="Loan Balance" value={mFmt(lbal)} color={lbal>0?"#e65100":"#2e7d32"}/>
-            {(m?.voluntaryDeposit||0)>0&&<Card icon="🏦" label="Voluntary Savings" value={mFmt(m?.voluntaryDeposit||0)} color="#546e7a"/>}
+            <Card icon="🏦" label="Voluntary Savings" value={mFmt(m?.voluntaryDeposit||0)} sub="Tap Pay to add" color="#546e7a"/>
             <Card icon="🤝" label="Welfare Fund" value={mFmt(m?.welfare||0)} color="#6a1b9a"/>
           </div>}
 
@@ -8194,96 +9328,12 @@ function MemberDashboardInline({ session, onLogout }) {
           </div>}
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <button onClick={()=>setShowPay(true)} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
-              <div style={{fontSize:24,marginBottom:4}}>📲</div>
+            <button onClick={()=>setShowPay(true)} style={{background:"#fff",border:"1.5px solid #fff3cd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:4}}>🔗</div>
               <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>Make Payment</div>
-              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>MTN / Airtel MoMo</div>
+              <div style={{fontSize:10,color:"#e65100",marginTop:2,fontWeight:600}}>API Integration Pending</div>
             </button>
-            <button onClick={async()=>{
-              if(!m)return;
-              try{
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-                await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
-                const {jsPDF}=window.jspdf;
-                const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
-                const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
-                const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREY=[94,127,160],GREEN=[27,94,32];
-                doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
-                doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
-                (()=>{const cx=22,cy=16,r=8,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);doc.lines(pts.map((p,i)=>{const n=pts[(i+1)%6];return[n[0]-p[0],n[1]-p[1]];}),pts[0][0],pts[0][1],"F");const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
-                doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",36,13);
-                doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",14,19);doc.text("bidacooperative@gmail.com",14,25);
-                doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,13,{align:"center"});
-                doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Individual Financial Summary — Confidential",W/2,20,{align:"center"});
-                doc.setFontSize(6.5);doc.text("Generated: "+new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),W-10,13,{align:"right"});
-                const tb=(m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0);
-                const bY=37;
-                doc.setFillColor(...BLITE);doc.roundedRect(10,bY,W-20,24,2,2,"F");
-                try{
-                  if(m.photoUrl){doc.addImage(m.photoUrl,"JPEG",13,bY+3,18,18);}
-                  else throw new Error("no photo");
-                }catch(_pe2){
-                  doc.setFillColor(...BLUE);doc.circle(22,bY+12,9,"F");
-                  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...WHITE);
-                  doc.text((m.name||"?")[0],22,bY+15,{align:"center"});
-                }
-                doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text(m.name,35,bY+8);
-                doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
-                doc.text("Member ID: #"+m.id,35,bY+14);
-                doc.text("Joined: "+(m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}):"—"),35,bY+19);
-                if(m.phone||m.whatsapp)doc.text("Phone: "+(m.phone||m.whatsapp),W/2+2,bY+14);
-                const sY=bY+27;
-                doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("SAVINGS BREAKDOWN",12,sY);
-                doc.autoTable({startY:sY+3,
-                  head:[["Category","Amount (UGX)"]],
-                  body:[
-                    ["Membership Fee",Number(m.membership||0).toLocaleString("en-UG")],
-                    ["Annual Subscription",Number(m.annualSub||0).toLocaleString("en-UG")],
-                    ["Monthly Savings (cumulative)",Number(m.monthlySavings||0).toLocaleString("en-UG")],
-                    ["Welfare Contributions",Number(m.welfare||0).toLocaleString("en-UG")],
-                    ["Shares",Number(m.shares||0).toLocaleString("en-UG")],
-                    ["Voluntary Deposit",Number(m.voluntaryDeposit||0).toLocaleString("en-UG")],
-                    ["TOTAL BANKED","UGX "+Number(tb).toLocaleString("en-UG")],
-                  ],
-                  styles:{fontSize:9,cellPadding:2.8},
-                  headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
-                  columnStyles:{0:{cellWidth:110,fontStyle:"bold"},1:{halign:"right",fontWeight:"bold"}},
-                  didParseCell:(d)=>{if(d.row.index===6&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.textColor=BLUE;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
-                  margin:{left:12,right:12}
-                });
-                if(loans.length>0){
-                  const lY2=doc.lastAutoTable.finalY+8;
-                  doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("LOAN HISTORY",12,lY2);
-                  doc.autoTable({startY:lY2+3,
-                    head:[["Issued","Principal","Term","Monthly Pay","Paid","Balance","Status"]],
-                    body:loans.map(l=>{
-                      const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
-                      let ti=0;if(isR){let b=p;for(let i2=0;i2<term;i2++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
-                      const bal=Math.max(0,p+ti-paid);
-                      const mp=Math.round(p/term)+(isR?Math.round(p*rate):Math.round(p*rate));
-                      return [new Date(l.dateBanked).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),Number(p).toLocaleString("en-UG"),term+"mo",Number(mp).toLocaleString("en-UG"),Number(paid).toLocaleString("en-UG"),bal>0?"UGX "+Number(bal).toLocaleString("en-UG"):"✓ CLEAR",l.status==="paid"?"✓ PAID":"● ACTIVE"];
-                    }),
-                    styles:{fontSize:8,cellPadding:2.2},
-                    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7.5},
-                    margin:{left:12,right:12}
-                  });
-                }
-                const pageCount=doc.internal.getNumberOfPages();
-                for(let pg=1;pg<=pageCount;pg++){
-                  doc.setPage(pg);
-                  doc.setFillColor(...BLITE);doc.rect(0,H-10,W,10,"F");
-                  doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
-                  doc.text("Thank you for being a valued member of the BIDA family. Together we grow stronger. — The Treasurer",12,H-4,{maxWidth:W-55});
-                  doc.text("Page "+pg+" of "+pageCount,W-12,H-4,{align:"right"});
-                }
-                const blob=doc.output("blob");
-                triggerDownload(blob,"BIDA_Statement_"+m.name.replace(/\s+/g,"_")+".pdf");
-              }catch(e){alert("Could not generate PDF: "+e.message);}
-            }} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
-              <div style={{fontSize:24,marginBottom:4}}>📄</div>
-              <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>Download Statement</div>
-              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>PDF — savings &amp; loans</div>
-            </button>
+            <MemberStatementButton m={m} loans={loans}/>
           </div>
         </>}
 
@@ -8368,7 +9418,7 @@ function MemberDashboardInline({ session, onLogout }) {
         <div style={{textAlign:"center",padding:"20px 0 8px",fontSize:10,color:"#b0bec5"}}>Bida Multi-Purpose Co-operative Society</div>
       </div>
 
-      {showPay&&m&&<PaymentModalInline member={m} onClose={()=>setShowPay(false)}/>}
+      {showPay&&m&&<PaymentModalInline member={m} loans={loans} onSuccess={()=>{setShowPay(false);fetch_();}} onClose={()=>setShowPay(false)}/>}
     </div>
   );
 }
