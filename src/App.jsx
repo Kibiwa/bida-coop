@@ -697,7 +697,40 @@ const INIT_LOANS = [
 ];
 
 const INIT_INVESTMENTS = [];
-const SAVINGS_CHART_DATA = [{"month": "2022 Q1", "total": 2850000, "label": "Q1 2022"}, {"month": "2022 Q2", "total": 5200000, "label": "Q2 2022"}, {"month": "2022 Q3", "total": 7100000, "label": "Q3 2022"}, {"month": "2022 Q4", "total": 9800000, "label": "Q4 2022"}, {"month": "2023 Q1", "total": 12400000, "label": "Q1 2023"}, {"month": "2023 Q2", "total": 15600000, "label": "Q2 2023"}, {"month": "2023 Q3", "total": 18200000, "label": "Q3 2023"}, {"month": "2023 Q4", "total": 20500000, "label": "Q4 2023"}, {"month": "2024 Q1", "total": 22800000, "label": "Q1 2024"}, {"month": "2024 Q2", "total": 24500000, "label": "Q2 2024"}, {"month": "2024 Q3", "total": 26100000, "label": "Q3 2024"}, {"month": "2024 Q4", "total": 27400000, "label": "Q4 2024"}, {"month": "2025 Q1", "total": 28100000, "label": "Q1 2025"}, {"month": "2025 Q2", "total": 28500000, "label": "Q2 2025"}, {"month": "2025 Q3", "total": 28760000, "label": "Q3 2025 (Current)"}];
+// ── Dynamic savings chart data — auto-extends every quarter ──────────────────
+// Historical seed points. The function appends current quarter automatically.
+const SAVINGS_HISTORY_SEED = [
+  {q:"2022 Q1",total:2850000},{q:"2022 Q2",total:5200000},{q:"2022 Q3",total:7100000},
+  {q:"2022 Q4",total:9800000},{q:"2023 Q1",total:12400000},{q:"2023 Q2",total:15600000},
+  {q:"2023 Q3",total:18200000},{q:"2023 Q4",total:20500000},{q:"2024 Q1",total:22800000},
+  {q:"2024 Q2",total:24500000},{q:"2024 Q3",total:26100000},{q:"2024 Q4",total:27400000},
+  {q:"2025 Q1",total:28100000},{q:"2025 Q2",total:28500000},{q:"2025 Q3",total:28760000},
+  {q:"2025 Q4",total:29100000},{q:"2026 Q1",total:null}, // null = replaced by live total
+];
+function buildSavingsChartData(liveTotalBanked) {
+  var now = new Date();
+  var curYear = now.getFullYear();
+  var curQ = Math.floor(now.getMonth() / 3) + 1;
+  var curLabel = curYear + " Q" + curQ;
+  var result = [];
+  var year = 2022; var q = 1;
+  while (year < curYear || (year === curYear && q <= curQ)) {
+    var key = year + " Q" + q;
+    var seed = SAVINGS_HISTORY_SEED.find(function(s){ return s.q === key; });
+    var isCurrent = key === curLabel;
+    var seedTotal = seed ? seed.total : 0;
+    result.push({
+      month: key,
+      label: isCurrent ? ("Q" + q + " " + year + " (Now)") : ("Q" + q + " " + year),
+      total: isCurrent ? (liveTotalBanked || seedTotal || 0) : (seedTotal || 0),
+      isCurrent: isCurrent,
+    });
+    q++; if (q > 4) { q = 1; year++; }
+  }
+  return result.filter(function(r){ return r.total > 0; });
+}
+// Static fallback used before live data arrives
+const SAVINGS_CHART_DATA = buildSavingsChartData(29100000);
 const EXPENSES_CHART_DATA = [{"month": "2022-02", "total": 20000, "meetings": 0, "transport": 20000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-03", "total": 200000, "meetings": 200000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-04", "total": 585000, "meetings": 60000, "transport": 125000, "printing": 0, "legal_registration": 400000, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2022-05", "total": 847000, "meetings": 420000, "transport": 0, "printing": 62000, "legal_registration": 150000, "banking": 0, "operations": 122000, "communications": 0, "refunds": 93000}, {"month": "2023-02", "total": 100000, "meetings": 0, "transport": 0, "printing": 100000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-03", "total": 285000, "meetings": 0, "transport": 285000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-04", "total": 390000, "meetings": 120000, "transport": 270000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-06", "total": 320000, "meetings": 0, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 100000, "communications": 20000, "refunds": 200000}, {"month": "2023-07", "total": 895000, "meetings": 105000, "transport": 220000, "printing": 0, "legal_registration": 0, "banking": 270000, "operations": 300000, "communications": 0, "refunds": 0}, {"month": "2023-09", "total": 40000, "meetings": 40000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-11", "total": 150000, "meetings": 150000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2023-12", "total": 100000, "meetings": 0, "transport": 0, "printing": 100000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-01", "total": 280000, "meetings": 60000, "transport": 100000, "printing": 120000, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-02", "total": 1110000, "meetings": 170000, "transport": 125000, "printing": 670000, "legal_registration": 135000, "banking": 0, "operations": 10000, "communications": 0, "refunds": 0}, {"month": "2024-04", "total": 120000, "meetings": 120000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-08", "total": 100000, "meetings": 0, "transport": 100000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2024-09", "total": 100000, "meetings": 0, "transport": 100000, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-03", "total": 2103000, "meetings": 1403000, "transport": 200000, "printing": 0, "legal_registration": 500000, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-04", "total": 250000, "meetings": 250000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-08", "total": 25000, "meetings": 25000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}, {"month": "2025-09", "total": 80000, "meetings": 80000, "transport": 0, "printing": 0, "legal_registration": 0, "banking": 0, "operations": 0, "communications": 0, "refunds": 0}];
 const INIT_EXPENSES    = [
   {id:1,date:"2022-02-15",activity:"Transport to pick cashflow book",amount:20000,issuedBy:"WANYANA JULIET",category:"transport",payMode:"cash",purpose:"Operations",bankName:"",bankAccount:"",mobileNumber:"",transactionId:"",issuedByPhone:"",issuedByNIN:"",issuedById:"",approvedBy:"",approverPhone:"",approverNIN:"",approverMemberId:"",categoryCustom:"",depositorName:""},
@@ -970,7 +1003,7 @@ async function generateLoanPDF(loan, member, calc){
     const cx=22,cy=15,r=8,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    (()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -1113,7 +1146,7 @@ async function generateReceiptPDF(loan, member, amountPaid, calc, payRecord){
     const cx=22,cy=16,r=8,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    (()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -1206,7 +1239,7 @@ async function generateSchedulePDF(loan, member, schedule, calc){
     const cx=22,cy=16,r=8,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    (()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -1336,7 +1369,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
   const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160],ORANGE=[191,54,12];
   const dH=(title,sub)=>{
     doc.setFillColor(...NAVY);doc.rect(0,0,W,24,"F");doc.setFillColor(...BLUE);doc.rect(0,24,W,2,"F");
-    (()=>{const cx=18,cy=12,r=7,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
+    (()=>{const cx=18,cy=12,r=7,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);(()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
     doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("BIDA",30,10);
     doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",30,16);
     doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text(title,W/2,10,{align:"center"});
@@ -1350,8 +1383,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const tM=members.reduce((s,m)=>s+(m.membership||0),0),tA=members.reduce((s,m)=>s+(m.annualSub||0),0),tS=members.reduce((s,m)=>s+(m.monthlySavings||0),0),tW=members.reduce((s,m)=>s+(m.welfare||0),0),tSh=members.reduce((s,m)=>s+(m.shares||0),0),grand=members.reduce((s,m)=>s+totBanked(m),0);
     const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
     const profit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-    const activeDisb=loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
-    const cashInBk=grand+profit-totalExp-activeDisb;
+    const cashInBk=grand+profit-totalExp;
     dH("BIDA CO-OPERATIVE — MEMBER SAVINGS LEDGER","Financial Statement as at "+toStr());
     sB(10,27,38,16,"Members",""+members.length,BLUE);
     sB(52,27,46,16,"Total Banked",fmt(grand),BLUE);
@@ -1410,8 +1442,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
     const pool=members.reduce((s,m)=>s+totBanked(m),0);
     const profit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-    const activeDisb=loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
-    const cashInBk=pool+profit-totalExp-activeDisb;
+    const cashInBk=pool+profit-totalExp;
     const catTotals={};expenses.forEach(e=>{catTotals[e.category]=(catTotals[e.category]||0)+(+e.amount||0);});
     dH("BIDA CO-OPERATIVE — EXPENSES REGISTER","Full Expenditure Ledger with Running Balance — "+toStr());
     sB(10,27,42,16,"Fund Pool",fmt(pool),BLUE);
@@ -1425,7 +1456,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("CATEGORY SUMMARY",10,50);
     doc.autoTable({startY:53,head:[["Category","Amount (UGX)","%"]],body:catRows,styles:{fontSize:7.5,cellPadding:2},headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},columnStyles:{0:{cellWidth:60,fontStyle:"bold"},1:{halign:"right",cellWidth:40},2:{halign:"center",cellWidth:20}},didParseCell:(d)=>{if(d.row.index===catRows.length-1&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";}},tableWidth:120,margin:{left:10}});
     const sortedExp=[...expenses].sort((a,b)=>new Date(a.date)-new Date(b.date));
-    let running=pool+profit-activeDisb;
+    let running=pool+profit;
     const rows=sortedExp.map((e,i)=>{
       running-=(+e.amount||0);
       const payDetail=e.payMode==="cash"?"💵 Cash":e.payMode==="bank"?"🏦 "+(e.bankName||"Bank"):e.payMode==="mtn"?"📱 MTN "+(e.mobileNumber||""):e.payMode==="airtel"?"📱 Airtel "+(e.mobileNumber||""):e.payMode||"—";
@@ -1465,8 +1496,7 @@ async function generatePDF(type, members, loans, expenses, returnBlob=false){
     const aL=loans.filter(l=>l.status!=="paid");
     const aI=aL.reduce((s,l)=>s+calcLoan(l).monthlyInt,0);
     const tP=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-    const activeDisb_proj=loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
-    const cashInBk=gT+tP-totalExp-activeDisb_proj;
+    const cashInBk=gT+tP-totalExp;
     const now=new Date();const sixAgo=new Date(now);sixAgo.setMonth(sixAgo.getMonth()-6);
     const recentNewMembers=members.filter(m=>m.joinDate&&new Date(m.joinDate)>=sixAgo).length;
     const avgMbrSavings=members.length>0?Math.round(tM/members.length):50000;
@@ -1545,7 +1575,7 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
     const pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    (()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
     // Three bar chart bars inside hexagon
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,        cy+r*0.08, bw,r*0.52,0.5,0.5,"F");
@@ -1721,7 +1751,8 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
     doc.setFillColor(...BLUE);doc.rect(0,28,W,1.5,"F");
     const cx=14,cy=14,r=7,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
-    doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    doc.setFillColor(21,101,192);
+    (()=>{const steps=pts.slice(1).map((p,i2)=>[p[0]-pts[i2][0],p[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -1742,32 +1773,14 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
 
   // Cover / summary page
   drawHeader(1);
-  // Snapshot figures: everything up to and including the selected month end
   const totalBanked=members.reduce((s,m)=>s+totBanked(m),0);
   const totalMonthly=members.reduce((s,m)=>s+(m.monthlySavings||0),0);
   const totalWelfare=members.reduce((s,m)=>s+(m.welfare||0),0);
-  // Loans active as at month end: issued on or before mEnd and not paid, OR paid after mEnd
-  const activeLoans=loans.filter(l=>{
-    const issued=l.dateBanked?new Date(l.dateBanked):null;
-    if(!issued||issued>mEnd) return false;
-    if(l.status==="paid"){
-      const paidDate=l.datePaid?new Date(l.datePaid):null;
-      return paidDate&&paidDate>mEnd;
-    }
-    return true;
-  });
+  const activeLoans=loans.filter(l=>l.status!=="paid");
   const totalOutstanding=activeLoans.reduce((s,l)=>s+calcLoan(l).balance,0);
   const totalPenalty=activeLoans.reduce((s,l)=>s+calcPenalty(l).penaltyAmt,0);
-  // Profit from loans fully closed on or before month end
-  const mLoanProfit=loans.filter(l=>l.status==="paid"&&l.datePaid&&new Date(l.datePaid)<=mEnd).reduce((s,l)=>s+calcLoan(l).profit,0);
-  // Active loan disbursements as at month end
-  const mActiveDisb=activeLoans.reduce((s,l)=>s+(+l.amountLoaned||0),0);
-  // Expenses: this month and cumulative to month end
   const mExpenses=expenses.filter(e=>{const d=new Date(e.date);return d>=mStart&&d<=mEnd;});
   const mExpTotal=mExpenses.reduce((s,e)=>s+(+e.amount||0),0);
-  const allExpToDateTotal=expenses.filter(e=>e.date&&new Date(e.date)<=mEnd).reduce((s,e)=>s+(+e.amount||0),0);
-  // Cash in bank as at month end (correct formula)
-  const mCashInBank=totalBanked+mLoanProfit-allExpToDateTotal-mActiveDisb;
 
   // Summary stats box
   let y=35;
@@ -1776,13 +1789,13 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
   doc.text("PERIOD SUMMARY — "+mLabel.toUpperCase(),12,y+7);
   const sItems=[
     ["Total Members",""+members.length,[...NAVY]],
-    ["Fund Pool (Cumulative)",fmt2(totalBanked),[...BLUE]],
+    ["Total Fund Pool",fmt2(totalBanked),[...BLUE]],
     ["Monthly Savings Rate",fmt2(totalMonthly),[27,94,32]],
     ["Welfare Pool",fmt2(totalWelfare),[...BLUE]],
-    ["Active Loans (at "+mLabel+")",""+activeLoans.length,[191,54,12]],
+    ["Active Loans",""+activeLoans.length,[191,54,12]],
     ["Outstanding Balance",fmt2(totalOutstanding),[...RED]],
+    ["Penalty Accrued",fmt2(totalPenalty),[...RED]],
     ["Expenses This Month",fmt2(mExpTotal),[...RED]],
-    ["Cash in Bank (at "+mLabel+")",fmt2(mCashInBank),mCashInBank>=0?27:198,mCashInBank>=0?94:40,mCashInBank>=0?32:40],
   ];
   const cols=4,cw=(W-20)/cols;
   sItems.forEach((item,i)=>{
@@ -1794,7 +1807,7 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
   y+=38;
   // Member-by-member summary table
   doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);
-  doc.text("MEMBER SAVINGS SUMMARY — Cumulative Position as at "+mLabel,10,y);
+  doc.text("MEMBER SAVINGS SUMMARY — "+mLabel,10,y);
   const rows=members.map((m,i)=>{
     const activeLoan=loans.find(l=>l.memberId===m.id&&l.status!=="paid");
     const pen=activeLoan?calcPenalty(activeLoan):{penaltyMonths:0,penaltyAmt:0,totalOwed:0};
@@ -1842,9 +1855,9 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
     drawHeader(doc.getNumberOfPages());
     let ey=35;
     doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);
-    doc.text("EXPENSES — "+mLabel+" ("+mExpenses.length+" transaction"+(mExpenses.length===1?"":"s")+")",10,ey);
+    doc.text("EXPENSES — "+mLabel,10,ey);
     const expRows=mExpenses.map((e,i)=>[i+1,new Date(e.date).toLocaleDateString("en-GB",{day:"2-digit",month:"short"}),e.activity.substring(0,40),e.issuedBy||"—",fmtN2(+e.amount||0),(e.category||"—").replace(/_/g," "),e.payMode||"—"]);
-    expRows.push(["","","TOTAL THIS MONTH","",fmtN2(mExpTotal),"",""]);
+    expRows.push(["","","TOTAL","",fmtN2(mExpTotal),"",""]);
     doc.autoTable({
       startY:ey+3,
       head:[["#","Date","Activity","Issued By","Amount (UGX)","Category","Pay Mode"]],
@@ -1857,20 +1870,6 @@ async function generateMonthlyBatchPDF(month, year, members, loans, expenses){
       margin:{left:8,right:8},
       didDrawPage:()=>drawFooter()
     });
-    // Cash in bank summary box after expenses table
-    const summaryY=doc.lastAutoTable.finalY+6;
-    if(summaryY<H-30){
-      doc.setFillColor(mCashInBank>=0?232:255,mCashInBank>=0?245:235,mCashInBank>=0?233:238);
-      doc.roundedRect(8,summaryY,W-16,18,2,2,"F");
-      doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(...NAVY);
-      doc.text("FINANCIAL POSITION AS AT END OF "+mLabel.toUpperCase(),12,summaryY+6);
-      const posItems=[["Fund Pool",fmt2(totalBanked)],["Loan Profit (realised)",fmt2(mLoanProfit)],["Expenses to Date","("+fmt2(allExpToDateTotal)+")"],["Loans Outstanding","("+fmt2(mActiveDisb)+")"],["Cash in Bank",fmt2(mCashInBank)]];
-      posItems.forEach((item,i)=>{
-        const px=10+(i*38);
-        doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(...GREY);doc.text(item[0].toUpperCase(),px,summaryY+10);
-        doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(mCashInBank<0&&i===4?198:13,mCashInBank<0&&i===4?40:52,mCashInBank<0&&i===4?40:97);doc.text(item[1],px,summaryY+15);
-      });
-    }
   }
 
   drawFooter();
@@ -1897,7 +1896,7 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
     doc.setFillColor(...BLUE);doc.rect(0,30,W,1.5,"F");
     const cx=14,cy=15,r=7,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
-    doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    doc.setFillColor(21,101,192);(()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -1919,13 +1918,11 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
   const totalBanked=members.reduce((s,m)=>s+totBanked(m),0);
   const totalExp=expenses.reduce((s,e)=>s+(+e.amount||0),0);
   const loanProfit=loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
-  const invReturns_agm=(investments||[]).reduce((s,i)=>s+(+i.interestEarned||0),0);
-  const activeOutstanding_agm=loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
-  const invMade_agm=(investments||[]).filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0);
-  const cashInBk=totalBanked+loanProfit+invReturns_agm-totalExp-activeOutstanding_agm-invMade_agm;
+  const cashInBk=totalBanked+loanProfit-totalExp;
   const activeLoans=loans.filter(l=>l.status!=="paid");
   const totalOutstanding=activeLoans.reduce((s,l)=>s+calcLoan(l).balance,0);
-  const totalAssets=cashInBk+totalOutstanding+invMade_agm;
+  const invTotal=(investments||[]).reduce((s,i)=>s+(+i.amount||0),0);
+  const totalAssets=cashInBk+totalOutstanding+invTotal;
   const totalPenalty=activeLoans.reduce((s,l)=>s+calcPenalty(l).penaltyAmt,0);
   const overdueLoans=activeLoans.filter(l=>monthsOverdue(l)>0);
 
@@ -1947,7 +1944,7 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
     ["Loan Interest Income",fmt2(loanProfit),...GREEN],
     ["Total Expenses",fmt2(totalExp),...RED],
     ["Cash in Bank",fmt2(cashInBk),cashInBk>=0?27:198,cashInBk>=0?94:40,cashInBk>=0?32:40],
-    ["Investments",fmt2(invMade_agm),...BLUE],
+    ["Investments",fmt2(invTotal),...BLUE],
     ["Total Assets",fmt2(totalAssets),...NAVY],
   ];
   const hcols=4,hcw=(W-20)/hcols;
@@ -1962,13 +1959,14 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
   doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("INCOME & EXPENDITURE STATEMENT",10,y);y+=3;
   const ieRows=[
     ["INCOME","",""],
-    ["  Loan Interest & Processing Fees",fmtN2(loanProfit),""],
-    ["  Investment Interest Earned",fmtN2(invReturns_agm),""],
-    ["TOTAL INCOME",fmtN2(loanProfit+invReturns_agm),""],
+    ["  Loan Interest Income",fmtN2(loanProfit),""],
+    ["  Investment Returns",fmtN2((investments||[]).reduce((s,i)=>s+(+i.expectedReturn||0),0)),""],
+    ["  Processing Fees","(included in interest)",""],
+    ["TOTAL INCOME",fmtN2(loanProfit),""],
     ["EXPENDITURE","",""],
     ...Object.entries(expenses.reduce((acc,e)=>{acc[e.category||"other"]=(acc[e.category||"other"]||0)+(+e.amount||0);return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,v])=>["  "+k.replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()),fmtN2(v),""]),
     ["TOTAL EXPENDITURE",fmtN2(totalExp),""],
-    ["NET SURPLUS / (DEFICIT)",fmtN2(loanProfit+invReturns_agm-totalExp),""],
+    ["NET SURPLUS / (DEFICIT)",fmtN2(loanProfit-totalExp),""],
   ];
   doc.autoTable({
     startY:y,
@@ -1979,7 +1977,7 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
       const raw=d.cell.raw||"";
       if(raw==="INCOME"||raw==="EXPENDITURE")d.cell.styles.fillColor=BLITE,d.cell.styles.fontStyle="bold",d.cell.styles.textColor=NAVY;
       if(raw.startsWith("TOTAL")||raw.startsWith("NET"))d.cell.styles.fontStyle="bold",d.cell.styles.fillColor=[240,255,240];
-      if(raw.startsWith("NET")&&(loanProfit+invReturns_agm-totalExp)<0)d.cell.styles.textColor=RED;
+      if(raw.startsWith("NET")&&(loanProfit-totalExp)<0)d.cell.styles.textColor=RED;
     },
     margin:{left:10,right:10},
     didDrawPage:(d)=>{
@@ -1997,14 +1995,14 @@ async function generateAGMReportPDF(members, loans, expenses, investments){
   const bsRows=[
     ["ASSETS","",""],
     ["  Cash in Bank",fmtN2(cashInBk),""],
-    ["  Loan Book (Outstanding — Principal)",fmtN2(totalOutstanding),""],
-    ["  Investments (Active Positions)",fmtN2(invMade_agm),""],
-    ["  Penalty Interest Receivable",fmtN2(totalPenalty),""],
-    ["TOTAL ASSETS",fmtN2(cashInBk+totalOutstanding+invMade_agm+totalPenalty),""],
+    ["  Loan Book (Outstanding)",fmtN2(totalOutstanding),""],
+    ["  Investments",fmtN2(invTotal),""],
+    ["  Penalty Receivable",fmtN2(totalPenalty),""],
+    ["TOTAL ASSETS",fmtN2(totalAssets+totalPenalty),""],
     ["LIABILITIES & EQUITY","",""],
-    ["  Member Savings (Capital Pool)",fmtN2(totalBanked),""],
-    ["  Retained Surplus / (Deficit)",fmtN2(loanProfit+invReturns_agm-totalExp),""],
-    ["TOTAL LIABILITIES & EQUITY",fmtN2(cashInBk+totalOutstanding+invMade_agm+totalPenalty),""],
+    ["  Member Savings (Liability)",fmtN2(totalBanked),""],
+    ["  Retained Surplus",fmtN2(cashInBk-totalBanked+loanProfit),""],
+    ["TOTAL LIABILITIES & EQUITY",fmtN2(totalAssets+totalPenalty),""],
   ];
   doc.autoTable({
     startY:y,
@@ -2120,7 +2118,7 @@ async function generateOverduePenaltyPDF(members, loans){
   doc.setFillColor(...RED);doc.rect(0,24,W,2,"F");
   const cx=14,cy=12,r=6,pts=[];
   for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
-  doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+  doc.setFillColor(21,101,192);(()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
   const bw=r*0.22,bx=cx-r*0.34;
   doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
   doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -2281,7 +2279,7 @@ async function generateShareCertificate(member, shareUnitsCount, shareValue){
     const cx=24,cy=20,r=7,pts=[];
     for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
     doc.setFillColor(21,101,192);
-    try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}
+    (()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
     const bw=r*0.22,bx=cx-r*0.34;
     doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
     doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
@@ -2997,11 +2995,16 @@ function PayModal({loan, mem, payF, setPayF, savePay, setPayModal}){
   );
 }
 
-function SavingsExpensesChart({savingsData, expensesData}){
+function SavingsExpensesChart({totalBanked, expensesData}){
   const canvasRef = React.useRef(null);
   const chartRef  = React.useRef(null);
   const [mode, setMode] = React.useState("savings");
   const [loaded, setLoaded] = React.useState(false);
+  // Stable reference — only recomputes when totalBanked changes, not on every render
+  const savingsData = React.useMemo(()=>buildSavingsChartData(totalBanked),[totalBanked]);
+  // Stable key to use as dep instead of object reference
+  const savingsKey  = React.useMemo(()=>savingsData.map(d=>d.total).join(","),[savingsData]);
+  const expensesKey = React.useMemo(()=>expensesData.map(d=>d.month+d.total).join(","),[expensesData]);
   useEffect(()=>{
     loadScript("https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js")
       .then(()=>setLoaded(true)).catch(()=>{});
@@ -3011,15 +3014,43 @@ function SavingsExpensesChart({savingsData, expensesData}){
     if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}
     const ctx=canvasRef.current.getContext("2d");
     if(mode==="savings"){
-      chartRef.current=new window.Chart(ctx,{type:"bar",data:{labels:savingsData.map(d=>d.label),datasets:[{label:"Pool (UGX)",data:savingsData.map(d=>d.total),backgroundColor:"rgba(21,101,192,0.75)",borderColor:"#1565c0",borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>" UGX "+Number(c.raw).toLocaleString("en-UG")}}},scales:{y:{ticks:{callback:v=>"UGX "+Number(v/1000000).toFixed(1)+"m"},grid:{color:"#eef5ff"}},x:{grid:{display:false}}}}});
+      const bgColors = savingsData.map(d=>d.isCurrent?"rgba(0,200,83,0.85)":"rgba(21,101,192,0.72)");
+      const borderColors = savingsData.map(d=>d.isCurrent?"#00c853":"#1565c0");
+      chartRef.current=new window.Chart(ctx,{
+        type:"bar",
+        data:{
+          labels:savingsData.map(d=>d.label||d.month),
+          datasets:[{
+            label:"Pool (UGX)",
+            data:savingsData.map(d=>d.total),
+            backgroundColor:bgColors,
+            borderColor:borderColors,
+            borderWidth:1,borderRadius:4
+          }]
+        },
+        options:{
+          responsive:true,maintainAspectRatio:false,
+          animation:{duration:0},
+          plugins:{
+            legend:{display:false},
+            tooltip:{callbacks:{label:c=>" UGX "+Number(c.raw).toLocaleString("en-UG")}},
+            annotation:{}
+          },
+          scales:{
+            y:{ticks:{callback:v=>"UGX "+Number(v/1000000).toFixed(1)+"m"},grid:{color:"#eef5ff"}},
+            x:{grid:{display:false},ticks:{font:{size:9},maxRotation:45}}
+          }
+        }
+      });
     } else {
       const cats=["meetings","transport","printing","legal_registration","banking","operations","refunds","communications"];
       const colors=["#1565c0","#e65100","#6a1b9a","#00695c","#c62828","#37474f","#2e7d32","#0277bd"];
       const labels=["Meetings","Transport","Printing","Legal/Reg","Banking","Operations","Refunds","Comms"];
-      chartRef.current=new window.Chart(ctx,{type:"bar",data:{labels:expensesData.map(d=>d.month),datasets:cats.map((cat,i)=>({label:labels[i],data:expensesData.map(d=>d[cat]||0),backgroundColor:colors[i]+"cc",borderColor:colors[i],borderWidth:1,borderRadius:2}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{font:{size:9},padding:6,boxWidth:10}},tooltip:{callbacks:{label:c=>c.dataset.label+": UGX "+Number(c.raw).toLocaleString("en-UG")}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:8}}},y:{stacked:true,ticks:{callback:v=>"UGX "+Number(v).toLocaleString("en-UG"),font:{size:8}},grid:{color:"#eef5ff"}}}}});
+      chartRef.current=new window.Chart(ctx,{type:"bar",data:{labels:expensesData.map(d=>d.month),datasets:cats.map((cat,i)=>({label:labels[i],data:expensesData.map(d=>d[cat]||0),backgroundColor:colors[i]+"cc",borderColor:colors[i],borderWidth:1,borderRadius:2}))},options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},plugins:{legend:{position:"bottom",labels:{font:{size:9},padding:6,boxWidth:10}},tooltip:{callbacks:{label:c=>c.dataset.label+": UGX "+Number(c.raw).toLocaleString("en-UG")}}},scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:8}}},y:{stacked:true,ticks:{callback:v=>"UGX "+Number(v).toLocaleString("en-UG"),font:{size:8}},grid:{color:"#eef5ff"}}}}});
     }
     return ()=>{if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}};
-  },[loaded,mode,savingsData,expensesData]);
+  // Use stable string keys as deps — NOT the array objects themselves
+  },[loaded,mode,savingsKey,expensesKey]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
@@ -3037,6 +3068,53 @@ function SavingsExpensesChart({savingsData, expensesData}){
         {!loaded&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",color:"var(--tmuted)",fontSize:11}}>⏳ Loading chart…</div>}
         <canvas ref={canvasRef} style={{display:loaded?"block":"none"}}/>
       </div>
+    </div>
+  );
+}
+
+function BenevolentAccordion({members}){
+  const [open,setOpen]=useState(false);
+  return(
+    <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",overflow:"hidden"}}>
+      <button onClick={()=>setOpen(v=>!v)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+        <div style={{fontWeight:800,fontSize:13,color:"var(--p800)"}}>👥 All Members — Benevolent Status <span style={{fontWeight:400,color:"var(--tmuted)",fontSize:11}}>({members.length} members)</span></div>
+        <span style={{fontSize:18,color:"var(--tmuted)",transition:"transform .2s",transform:open?"rotate(180deg)":"none"}}>⌄</span>
+      </button>
+      {open&&(
+        <div style={{overflowX:"auto",borderTop:"1px solid var(--bdr)"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr style={{background:"var(--p50)"}}>
+              {["#","Member","Total Banked","Min Payout (70%)","NOK Name","Relationship","NOK Phone","Status"].map(h=>(
+                <th key={h} style={{padding:"8px 10px",textAlign:h==="Total Banked"||h==="Min Payout (70%)"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {members.map((m,i)=>{
+                const nok=m.nextOfKin||null;
+                const hasNOK=nok&&(nok.name||"").trim();
+                const tb=totBanked(m);
+                const minPayout=Math.round(((m.monthlySavings||0)+(m.welfare||0))*0.70);
+                return(
+                  <tr key={m.id} style={{borderBottom:"1px solid #eef5ff"}} onMouseOver={e=>e.currentTarget.style.background="#f0f7ff"} onMouseOut={e=>e.currentTarget.style.background=""}>
+                    <td style={{padding:"8px 10px",fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>{i+1}</td>
+                    <td style={{padding:"8px 10px"}}><div style={{fontWeight:700,fontSize:12,color:"var(--p800)"}}>{m.name}</div></td>
+                    <td style={{padding:"8px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#1565c0"}}>{fmt(tb)}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:"#1b5e20"}}>{fmt(minPayout)}</td>
+                    <td style={{padding:"8px 10px",fontWeight:600,color:hasNOK?"var(--td)":"var(--error)"}}>{hasNOK?nok.name:"— Not Set"}</td>
+                    <td style={{padding:"8px 10px",color:"var(--tmuted)"}}>{nok?.relationship||"—"}</td>
+                    <td style={{padding:"8px 10px",fontFamily:"var(--mono)",fontSize:10}}>{nok?.phone||"—"}</td>
+                    <td style={{padding:"8px 10px"}}>
+                      <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:10,background:hasNOK?"rgba(0,200,83,.1)":"rgba(229,57,53,.07)",color:hasNOK?"var(--mint-600)":"var(--error)",border:"1px solid "+(hasNOK?"#a5d6a7":"#ffcdd2")}}>
+                        {hasNOK?"✅ Ready":"⚠ No NOK"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -3100,6 +3178,7 @@ function AppInner(){
   const [editInv,setEditInv]   = useState(null);
   const [invF,setInvF]         = useState({...emptyInv});
   const [search,setSearch]  = useState("");
+  const [showAllMembers,setShowAllMembers] = useState(false);
   const [pdfGen,setPdfGen]  = useState(null);
   const [sharedPDF,setSharedPDF] = useState(null);
   const [reportMonth,setReportMonth] = useState(new Date().getMonth());
@@ -3179,15 +3258,9 @@ function AppInner(){
             return [...data.loans,...localOnly];
           });
         }
-        if(data.expenses&&data.expenses.length>=0){
-          const hasValid=data.expenses.length===0||data.expenses.some(e=>(e.amount||0)>0);
-          if(hasValid){
-            setExpenses(prev=>{
-              const dbIds=new Set(data.expenses.map(e=>e.id));
-              const localOnly=prev.filter(e=>!dbIds.has(e.id));
-              return [...data.expenses,...localOnly];
-            });
-          }
+        if(data.expenses&&data.expenses.length>0&&data.expenses.some(e=>(e.amount||0)>0)){
+          // Only replace seed data if DB has real expenses — never wipe with empty array
+          setExpenses(data.expenses.map(sanitiseExpense));
         }
         if(data.investments&&data.investments.length>=0) setInvestments(data.investments);
         if(data.serviceProviders&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
@@ -3227,14 +3300,9 @@ function AppInner(){
             return [...data.loans,...prev.filter(l=>!dbIds.has(l.id))];
           });
         }
-        if(data.expenses&&data.expenses.length>=0){
-          setExpenses(prev=>{
-            const dbIds=new Set(data.expenses.map(e=>e.id));
-            return [...data.expenses,...prev.filter(e=>!dbIds.has(e.id))];
-          });
+        if(data.expenses&&data.expenses.length>0&&data.expenses.some(e=>(e.amount||0)>0)){
+          setExpenses(data.expenses.map(sanitiseExpense));
         }
-        if(data.investments&&data.investments.length>=0) setInvestments(data.investments);
-        if(data.contribLog&&data.contribLog.length>=0) setContribLog(data.contribLog);
         if(data.dividendPayouts&&data.dividendPayouts.length>=0) setDividendPayouts(data.dividendPayouts);
         setSyncStatus("synced");
       }catch(e){ console.warn("Post-reconnect pull failed:",e.message); }
@@ -3278,13 +3346,10 @@ function AppInner(){
             return [...sanitised,...localOnly];
           });
         }
-        if(freshExpenses&&freshExpenses.length>=0&&(freshExpenses.length===0||freshExpenses.some(e=>(e.amount||0)>0))){
+        if(freshExpenses&&freshExpenses.length>0&&freshExpenses.some(e=>(e.amount||0)>0)){
           const sanitised=freshExpenses.map(sanitiseExpense);
-          setExpenses(prev=>{
-            const dbIds=new Set(sanitised.map(e=>e.id));
-            const localOnly=prev.filter(e=>!dbIds.has(e.id));
-            return [...sanitised,...localOnly];
-          });
+          // Only replace seed data if DB has real expenses — never wipe with empty array
+          setExpenses(sanitised);
         }
         if(freshInvestments&&freshInvestments.length>=0){
           const sanitised=freshInvestments.map(sanitiseInvestment);
@@ -3361,30 +3426,71 @@ function AppInner(){
   },[loansCalc,loans]);
 
   const totalExpenses  = useMemo(()=>expenses.reduce((s,e)=>s+(+e.amount||0),0),[expenses]);
-  const cashInBank     = useMemo(()=>{
-    // CORRECT formula:
-    // All member deposits (totalBanked)
-    // + realised loan profit (processing fees + interest on paid loans)
-    // + investment interest earned
-    // - total expenses paid out
-    // - active loan principal disbursed (money out of vault, not yet returned)
-    // - active investments (money deployed, not liquid)
-    const loanProfit    = loans
-      .filter(l=>l.status==="paid")
-      .reduce((s,l)=>s+calcLoan(l).profit,0);
-    const invReturns    = investments.reduce((s,i)=>s+(+i.interestEarned||0),0);
-    const activeOutstanding = loans
-      .filter(l=>l.status!=="paid")
-      .reduce((s,l)=>s+(+l.amountLoaned||0),0);
-    const invMade       = investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0);
-    return savT.total + loanProfit + invReturns - totalExpenses - activeOutstanding - invMade;
-  },[savT.total,totalExpenses,loans,investments]);
-  const netCash        = cashInBank;
-  const totalInvested  = useMemo(()=>investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0),[investments]);
+
+  // ── BIDA Financial Engine v2.6 — flat useMemos, single source of truth ──────
+  const finLoanPrincipalOut     = useMemo(()=>loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0),[loans]);
+  const finLoanPrincipalRepaid  = useMemo(()=>loans.filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountPaid||0),0),[loans]);
+  const finLoanInterestEarned   = useMemo(()=>loans.filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0),[loans]);
+  const finInvestmentProfit     = useMemo(()=>investments.reduce((s,i)=>s+(+i.interestEarned||0),0),[investments]);
+  const finActiveInvestments    = useMemo(()=>investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0),[investments]);
+  const finBenevolentPayouts    = useMemo(()=>dividendPayouts.filter(d=>d.type==="benevolent"||d.payout_type==="benevolent").reduce((s,d)=>s+(+d.amount||0),0),[dividendPayouts]);
+  const finCapitalGainsPool     = useMemo(()=>finLoanInterestEarned+finInvestmentProfit,[finLoanInterestEarned,finInvestmentProfit]);
+  const finDistributable        = useMemo(()=>Math.round(finCapitalGainsPool*0.40),[finCapitalGainsPool]);
+  const finRetained             = useMemo(()=>Math.round(finCapitalGainsPool*0.60),[finCapitalGainsPool]);
+  const finTotalShares          = useMemo(()=>savT.shares||1,[savT]);
+  const finOverdueBalance       = useMemo(()=>loansCalc.filter(l=>l.status!=="paid"&&calcPenalty(l).penaltyMonths>0).reduce((s,l)=>s+l.balance,0),[loansCalc]);
+  const finPendingAudit         = useMemo(()=>loans.filter(l=>l.approvalStatus==="step3_done").length+members.filter(m=>m.approvalStatus==="step3_done").length,[loans,members]);
+  const cashInBank              = useMemo(()=>savT.total+finLoanInterestEarned+finInvestmentProfit-totalExpenses-finLoanPrincipalOut+finLoanPrincipalRepaid-finActiveInvestments-finBenevolentPayouts,[savT.total,finLoanInterestEarned,finInvestmentProfit,totalExpenses,finLoanPrincipalOut,finLoanPrincipalRepaid,finActiveInvestments,finBenevolentPayouts]);
+  const netCash                 = cashInBank;
+  const finLiquidityRatio       = useMemo(()=>savT.total>0?Math.round((cashInBank/savT.total)*1000)/10:0,[cashInBank,savT.total]);
+  const finArrearsRatio         = useMemo(()=>finLoanPrincipalOut>0?Math.round((finOverdueBalance/finLoanPrincipalOut)*1000)/10:0,[finOverdueBalance,finLoanPrincipalOut]);
+  const finRiskAlerts           = useMemo(()=>{
+    var alerts = [];
+    if(finLiquidityRatio < 15) alerts.push({level:"critical",icon:"\uD83D\uDD34",msg:"Liquidity at "+finLiquidityRatio+"% — below 15% minimum threshold."});
+    else if(finLiquidityRatio < 25) alerts.push({level:"warn",icon:"\uD83D\uDFE1",msg:"Liquidity at "+finLiquidityRatio+"% — approaching minimum threshold."});
+    if(finArrearsRatio > 20) alerts.push({level:"critical",icon:"\uD83D\uDD34",msg:"High arrears: "+finArrearsRatio+"% of loan book is overdue."});
+    else if(finArrearsRatio > 10) alerts.push({level:"warn",icon:"\uD83D\uDFE1",msg:"Arrears at "+finArrearsRatio+"% — monitor closely."});
+    if(finPendingAudit > 0) alerts.push({level:"info",icon:"\uD83D\uDD35",msg:finPendingAudit+" item"+(finPendingAudit!==1?"s":"")+" awaiting final Auditor approval."});
+    return alerts;
+  },[finLiquidityRatio,finArrearsRatio,finPendingAudit]);
+
+  // Backwards-compat finance object — used by JSX that references finance.xxx
+  const finance = useMemo(()=>({
+    cashInBank:             cashInBank,
+    loanInterestEarned:     finLoanInterestEarned,
+    investmentProfit:       finInvestmentProfit,
+    activeInvestments:      finActiveInvestments,
+    capitalGainsPool:       finCapitalGainsPool,
+    distributableCapitalGains: finDistributable,
+    retainedCapitalGains:   finRetained,
+    totalShares:            finTotalShares,
+    riskAlerts:             finRiskAlerts,
+    liquidityRatio:         finLiquidityRatio,
+    arrearsRatio:           finArrearsRatio,
+    benevolentPayoutsTotal: finBenevolentPayouts,
+    loanPrincipalOut:       finLoanPrincipalOut,
+    loanPrincipalRepaid:    finLoanPrincipalRepaid,
+    overdueBalance:         finOverdueBalance,
+    pendingAuditCount:      finPendingAudit,
+    mandatorySavings:       savT.total,
+  }),[cashInBank,finLoanInterestEarned,finInvestmentProfit,finActiveInvestments,finCapitalGainsPool,finDistributable,finRetained,finTotalShares,finRiskAlerts,finLiquidityRatio,finArrearsRatio,finBenevolentPayouts,finLoanPrincipalOut,finLoanPrincipalRepaid,finOverdueBalance,finPendingAudit,savT.total]);
+
+  const totalInvested    = useMemo(()=>investments.filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0),[investments]);
   const totalInvInterest = useMemo(()=>investments.reduce((s,i)=>s+(+i.interestEarned||0),0),[investments]);
   const distributableInterest = useMemo(()=>Math.round(totalInvInterest*0.4),[totalInvInterest]);
   const retainedInterest      = useMemo(()=>Math.round(totalInvInterest*0.6),[totalInvInterest]);
-  const memberInvShare = (m) => savT.total>0 ? Math.round((totBanked(m)/savT.total)*distributableInterest) : 0;
+
+  // Per-member capital gains: share-weighted portion of distributable gains
+  // Uses share capital as weight (not total banked) — fairer and doesn't deplete fund
+  // Paid annually at AGM. Accrues throughout year, zero-reset after AGM payout.
+  const memberCapitalGains = function(m) {
+    var memberShares = m.shares || 0;
+    if(!memberShares || !finance.totalShares) return 0;
+    var shareWeight = memberShares / finance.totalShares;
+    return Math.round(shareWeight * finance.distributableCapitalGains);
+  };
+  // Legacy: investment share for backward compat
+  const memberInvShare = memberCapitalGains;
 
   const profMember = useMemo(()=>profId?members.find(m=>m.id===profId):null,[profId,members]);
   const profLoans  = useMemo(()=>profId?loansCalc.filter(l=>l.memberId===profId):[],[profId,loansCalc]);
@@ -4505,91 +4611,201 @@ function AppInner(){
               </div>
               <div className="ptitle"><div className="ptdot"/>Dashboard — Member Savings Ledger</div>
 
+              {/* ── BIDA Fund Summary — 13-field grid ── */}
               <div style={{background:"linear-gradient(145deg,#0d3461 0%,#1565c0 100%)",borderRadius:"var(--radius-lg)",padding:"16px 18px",marginBottom:14,color:"#fff",border:"1px solid rgba(255,255,255,.08)",boxShadow:"var(--shadow-md)"}}>
-                <div style={{fontWeight:800,fontSize:13,marginBottom:10,opacity:.9,letterSpacing:.5,textTransform:"uppercase",fontFamily:"var(--mono)"}}>💳 BIDA Fund Summary</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
-                  {[
-                    ["Total Banked",fmt(savT.total),"#90caf9","All member deposits combined"],
-                    ["Monthly Savings",fmt(savT.monthly),"#64b5f6","Cumulative monthly savings"],
-                    ["Voluntary Savings",fmt(savT.voluntary),"#80cbc4","Member voluntary deposits"],
-                    ["Shares Capital",fmt(savT.shares)+" ("+members.reduce((s,m)=>s+Math.round((m.shares||0)/50000),0)+" units)","#a5d6a7","@UGX 50,000/unit"],
-                    ["Welfare Pool",fmt(savT.welfare),"#ce93d8","Welfare fund total"],
-                    ["Cash in Bank",fmt(cashInBank),cashInBank<0?"#ef5350":"#69f0ae","Net position"],
-                    ["Outstanding Loans",fmt(lStat.outstanding),"#ffcc80","Active loan balances"],
-                    ["Loan Profit",fmt(lStat.profit),"#a5d6a7","Realised returns"],
-                  ].map(([l,v,c,sub])=>(
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+                  <div style={{fontWeight:800,fontSize:13,opacity:.9,letterSpacing:.5,textTransform:"uppercase",fontFamily:"var(--mono)"}}>💳 BIDA Fund Summary</div>
+                  <span style={{fontSize:9,fontWeight:700,padding:"3px 10px",borderRadius:20,background:"rgba(255,204,0,.18)",border:"1px solid rgba(255,204,0,.35)",color:"#ffe082",fontFamily:"var(--mono)",letterSpacing:.5}}>
+                    ⚡ System: Awaiting Mobile Money Gateway Integration
+                  </span>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
+                  {(()=>{
+                    const totalUnits=members.reduce((s,m)=>s+Math.round((m.shares||0)/50000),0);
+                    const portfolioGrowthPct=savT.total>0?((finance.capitalGainsPool)/savT.total*100).toFixed(1):"0.0";
+                    const now2=new Date();
+                    const thisMonthContribs=contribLog.filter(c=>{const d=new Date(c.date);return d.getFullYear()===now2.getFullYear()&&d.getMonth()===now2.getMonth();}).reduce((s,c)=>s+(c.amount||0),0);
+                    const lastMonthContribs=contribLog.filter(c=>{const d=new Date(c.date);const lm=new Date(now2.getFullYear(),now2.getMonth()-1,1);return d.getFullYear()===lm.getFullYear()&&d.getMonth()===lm.getMonth();}).reduce((s,c)=>s+(c.amount||0),0);
+                    const monthlyTrend=thisMonthContribs-lastMonthContribs;
+                    return [
+                      ["Total Banked",fmt(savT.total),"#90caf9","All member deposits combined"],
+                      ["Monthly Savings",fmt(savT.monthly),"#64b5f6","Cumulative monthly savings"],
+                      ["Shares Capital",fmt(savT.shares)+" ("+totalUnits+" units)","#a5d6a7","@UGX 50,000/unit"],
+                      ["Welfare Pool",fmt(savT.welfare),"#ce93d8","Welfare fund total"],
+                      ["Voluntary Savings",fmt(savT.voluntary),"#80cbc4","Member voluntary deposits"],
+                      ["Cash Invested",fmt(finance.activeInvestments),"#ffb74d","Active investments deployed"],
+                      ["Investment Profit",fmt(finance.investmentProfit),"#81c784","Returns on investments"],
+                      ["Outstanding Loans",fmt(lStat.outstanding),"#ffcc80","Active loan balances"],
+                      ["Loan Profit",fmt(finance.loanInterestEarned),"#a5d6a7","Realised from settled loans"],
+                      ["Expenses",fmt(totalExpenses),"#ef9a9a","All recorded outflows"],
+                      ["Cash in Bank",fmt(finance.cashInBank),finance.cashInBank<0?"#ef5350":"#69f0ae","Net cash position"],
+                      ["Portfolio Growth",portfolioGrowthPct+"%","#80deea","Capital Gains ÷ Total Banked"],
+                      ["Monthly Trend",(monthlyTrend>=0?"+":"")+fmt(monthlyTrend),monthlyTrend>=0?"#a5d6a7":"#ef9a9a","This vs last month contribs"],
+                    ];
+                  })().map(([l,v,c,sub])=>(
                     <div key={l} style={{background:"rgba(255,255,255,.08)",borderRadius:10,padding:"11px 13px",border:"1px solid rgba(255,255,255,.11)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}>
                       <div style={{fontSize:9,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>{l}</div>
-                      <div style={{fontSize:14,fontWeight:900,color:c,fontFamily:"var(--mono)"}}>{v}</div>
-                      {sub&&<div style={{fontSize:9,color:"rgba(255,255,255,.45)",marginTop:2}}>{sub}</div>}
+                      <div style={{fontSize:13,fontWeight:900,color:c,fontFamily:"var(--mono)"}}>{v}</div>
+                      {sub&&<div style={{fontSize:8,color:"rgba(255,255,255,.4)",marginTop:2}}>{sub}</div>}
                     </div>
                   ))}
                 </div>
-                {cashInBank<0&&<div style={{marginTop:10,background:"rgba(229,57,53,.2)",border:"1px solid rgba(229,57,53,.4)",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#ffcdd2",fontWeight:700}}>⚠️ Cash in bank is negative — expenses exceed total deposits + profit. Review immediately.</div>}
+                {finance.cashInBank<0&&<div style={{marginTop:10,background:"rgba(229,57,53,.2)",border:"1px solid rgba(229,57,53,.4)",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#ffcdd2",fontWeight:700}}>⚠️ Cash in bank is negative — expenses exceed total deposits + profit. Review immediately.</div>}
               </div>
 
+              {/* ── Risk Alert Widget ── */}
+              {finance.riskAlerts.length>0&&(
+                <div style={{marginBottom:14}}>
+                  {finance.riskAlerts.map((alert,i)=>(
+                    <div key={i} style={{
+                      background:alert.level==="critical"?"rgba(198,40,40,.1)":alert.level==="warn"?"rgba(230,81,0,.08)":"rgba(21,101,192,.08)",
+                      border:"1.5px solid "+(alert.level==="critical"?"rgba(198,40,40,.4)":alert.level==="warn"?"rgba(230,81,0,.3)":"rgba(21,101,192,.25)"),
+                      borderRadius:"var(--radius-md)",padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"flex-start",gap:10
+                    }}>
+                      <span style={{fontSize:16,flexShrink:0}}>{alert.icon}</span>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:11,color:alert.level==="critical"?"#c62828":alert.level==="warn"?"#e65100":"#1565c0",marginBottom:2}}>
+                          {alert.level==="critical"?"CRITICAL ALERT":alert.level==="warn"?"WARNING":"INFO"}
+                        </div>
+                        <div style={{fontSize:11,color:"var(--td)",lineHeight:1.5}}>{alert.msg}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Quick stats row ── */}
               <div className="stats">
                 <div className="card"><div className="clabel">Members</div><div className="cval">{members.length}</div></div>
                 <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
                 <div className="card"><div className="clabel">Monthly Savings</div><div className="cval">{fmt(savT.monthly)}</div></div>
                 <div className="card"><div className="clabel">Welfare Pool</div><div className="cval">{fmt(savT.welfare)}</div></div>
-                <div className="card ck"><div className="clabel">Voluntary Savings</div><div className="cval ok">{fmt(savT.voluntary)}</div><div className="csub">Member voluntary deposits</div></div>
-                <div className="card"><div className="clabel">Total Share Units</div><div className="cval">{members.reduce((s,m)=>s+Math.round((m.shares||0)/50000),0)} units</div><div className="csub">{fmt(savT.shares)} @ UGX 50,000/unit</div></div>
                 <div className="card cd" title="Includes operational costs + bank transactional charges">
                   <div className="clabel">Total Expenses</div>
                   <div className="cval danger">{fmt(totalExpenses)}</div>
                   <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
                 </div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Exp − Loans Out</div></div>
-                {totalInvInterest>0&&<div className="card ck"><div className="clabel">Investment Returns</div><div className="cval ok">{fmt(totalInvInterest)}</div><div className="csub">40% members · 60% pool</div></div>}
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Net position</div></div>
+                {totalInvInterest>0&&<div className="card ck"><div className="clabel">Capital Gains Pool</div><div className="cval ok">{fmt(finance.capitalGainsPool)}</div><div className="csub">40% to members at AGM</div></div>}
               </div>
 
-              <SavingsExpensesChart savingsData={SAVINGS_CHART_DATA} expensesData={EXPENSES_CHART_DATA}/>
+              {/* ── Recent Payments (latest 5 from contrib_log) ── */}
+              {contribLog.length>0&&(
+                <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.6)",borderRadius:"var(--radius-lg)",padding:"14px 18px",marginBottom:14,boxShadow:"var(--shadow-sm)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <div style={{fontWeight:700,fontSize:13,color:"var(--p800)"}}>💸 Recent Payments</div>
+                    <span style={{fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>Latest 5 transactions</span>
+                  </div>
+                  {[...contribLog].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5).map((c,i)=>{
+                    const mem=members.find(m=>m.id===+c.memberId);
+                    const CATS={monthlySavings:"Monthly Savings",welfare:"Welfare",annualSub:"Annual Sub",shares:"Shares",voluntaryDeposit:"Voluntary Savings",membership:"Membership"};
+                    const COLS={monthlySavings:"#1565c0",welfare:"#2e7d32",annualSub:"#e65100",shares:"#00695c",voluntaryDeposit:"#546e7a",membership:"#6a1b9a"};
+                    return (
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<4?"1px solid #f5f5f5":"none"}}>
+                        {mem?.photoUrl
+                          ?<img src={mem.photoUrl} alt={mem.name} style={{width:32,height:32,borderRadius:"50%",objectFit:"cover",border:"1.5px solid var(--bdr)",flexShrink:0}}/>
+                          :<div style={{width:32,height:32,borderRadius:"50%",background:"var(--p600)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,flexShrink:0}}>{(mem?.name||"?")[0]}</div>
+                        }
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:600,fontSize:12,color:"var(--p800)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{mem?.name||"Member #"+c.memberId}</div>
+                          <div style={{fontSize:10,color:"var(--tmuted)"}}>{fmtD(c.date)} · <span style={{color:COLS[c.category]||"#546e7a",fontWeight:600}}>{CATS[c.category]||c.category}</span></div>
+                        </div>
+                        <div style={{fontWeight:800,fontSize:13,color:"#1b5e20",fontFamily:"var(--mono)",flexShrink:0}}>{fmt(c.amount)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-              <PaymentRequestsInbox members={members} setMembers={setMembers} saveRecord={saveRecord} setSyncStatus={setSyncStatus} authUser={authUser}/>
+              <SavingsExpensesChart totalBanked={savT.total} expensesData={EXPENSES_CHART_DATA}/>
 
+              {/* ── All Members — search + summary only, no card grid ── */}
               <div className="toolbar">
-                <div className="tl"><span className="ttitle">All Members</span><span className="tcount">{fmems.length}</span></div>
+                <div className="tl"><span className="ttitle">Members</span><span className="tcount">{members.length}</span></div>
                 <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
-                  <div className="swrap"><span className="sico">🔍</span><input className="sinput" placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
                   <button className="btn bpdf sm" onClick={()=>handlePDF("savings")} disabled={!!pdfGen}>{pdfGen==="savings"?"⏳...":"📥 PDF"}</button>
                   <button className="btn bp sm" onClick={()=>setAddMModal(true)}>＋ Add</button>
                 </div>
               </div>
-              {fmems.length===0&&<div className="empty"><div className="eico">📭</div>No members found.</div>}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:10,marginBottom:14}}>
-                {fmems.map((m)=>{
-                  const units=Math.round((m.shares||0)/50000);
-                  const tb=totBanked(m);
-                  const hasLoan=loans.some(l=>l.memberId===m.id&&l.status!=="paid");
-                  return(
-                    <div key={m.id} onClick={()=>openProfile(m)}
-                      style={{background:"#fff",border:"1px solid rgba(197,220,245,.6)",borderRadius:"var(--radius-lg)",padding:"13px 15px",cursor:"pointer",transition:"var(--trans)",boxShadow:"var(--shadow-sm)",display:"flex",gap:12,alignItems:"center"}}
-                      onMouseEnter={e=>e.currentTarget.style.boxShadow="var(--shadow-md)"}
-                      onMouseLeave={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}>
-                      {m.photoUrl
-                        ?<img src={m.photoUrl} alt={m.name} style={{width:46,height:46,borderRadius:"50%",objectFit:"cover",border:"2px solid var(--bdr)",flexShrink:0}}/>
-                        :<div style={{width:46,height:46,borderRadius:"50%",background:"var(--p600)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,flexShrink:0}}>{(m.name||"?")[0]}</div>
-                      }
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</div>
-                        <div style={{fontSize:10,color:"var(--tmuted)",marginTop:1}}>Joined {fmtD(m.joinDate)}</div>
-                        <div style={{display:"flex",gap:6,marginTop:5,flexWrap:"wrap",alignItems:"center"}}>
-                          <span style={{fontSize:10,fontWeight:700,color:"var(--p600)",background:"var(--p50)",borderRadius:6,padding:"2px 7px",fontFamily:"var(--mono)"}}>{units} unit{units!==1?"s":""}</span>
-                          <span style={{fontSize:10,fontWeight:700,color:"#1b5e20",background:"#e8f5e9",borderRadius:6,padding:"2px 7px",fontFamily:"var(--mono)"}}>{fmt(tb)}</span>
-                          {hasLoan&&<span style={{fontSize:9,fontWeight:700,color:"#e65100",background:"#fff3e0",borderRadius:6,padding:"2px 6px"}}>Loan</span>}
-                        </div>
-                      </div>
-                      <div style={{fontSize:18,color:"var(--bdr2)",flexShrink:0}}>›</div>
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.6)",borderRadius:"var(--radius-lg)",padding:"16px 18px",marginBottom:14,boxShadow:"var(--shadow-sm)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12,marginBottom:14}}>
+                  <div>
+                    <div style={{fontSize:11,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7,marginBottom:3}}>Total Members</div>
+                    <div style={{fontSize:32,fontWeight:900,color:"var(--p800)",fontFamily:"var(--mono)"}}>{members.length}</div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:11,color:"var(--tmuted)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7,marginBottom:3}}>Total Amount Banked</div>
+                    <div style={{fontSize:22,fontWeight:900,color:"var(--mint-600)",fontFamily:"var(--mono)"}}>{fmt(savT.total)}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+                  {[
+                    ["Active",members.filter(m=>m.approvalStatus==="approved"||!m.approvalStatus).length,"#1b5e20","#e8f5e9"],
+                    ["With Loans",loans.filter(l=>l.status!=="paid").map(l=>l.memberId).filter((v,i,a)=>a.indexOf(v)===i).length,"#e65100","#fff3e0"],
+                    ["Share Holders",members.filter(m=>(m.shares||0)>0).length,"#1565c0","#e3f2fd"],
+                  ].map(([lbl,val,color,bg])=>(
+                    <div key={lbl} style={{background:bg,borderRadius:9,padding:"8px 14px",flex:1,minWidth:80,textAlign:"center"}}>
+                      <div style={{fontSize:18,fontWeight:900,color,fontFamily:"var(--mono)"}}>{val}</div>
+                      <div style={{fontSize:9,color,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,marginTop:2}}>{lbl}</div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+                <button
+                  style={{width:"100%",padding:"12px",borderRadius:"var(--radius-md)",border:"2px solid var(--p600)",background:"var(--p50)",color:"var(--p700)",fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"var(--trans)"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background="var(--p600)";e.currentTarget.style.color="#fff";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background="var(--p50)";e.currentTarget.style.color="var(--p700)";}}
+                  onClick={()=>setShowAllMembers(v=>!v)}
+                >
+                  {showAllMembers?"▲ Hide Members":"👥 View All Members →"}
+                </button>
               </div>
-              {!search&&<div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:"var(--radius-md)",padding:"9px 16px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:8}}>
-                <span style={{fontSize:11,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>{fmems.length} members</span>
-                <span style={{fontSize:12,fontWeight:800,color:"var(--p700)",fontFamily:"var(--mono)"}}>{fmt(savT.total)} total banked</span>
-              </div>}
-              <p style={{fontSize:10,color:"var(--tmuted)",marginTop:4,fontFamily:"var(--mono)"}}>💡 Tap a member card to view profile, edit details, or download a statement.</p>
+
+              {/* ── Expandable member list ── */}
+              {showAllMembers&&(
+                <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.6)",borderRadius:"var(--radius-lg)",padding:"16px 18px",marginBottom:14,boxShadow:"var(--shadow-sm)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                    <div style={{fontWeight:700,fontSize:13,color:"var(--p800)"}}>All Members <span style={{fontWeight:400,color:"var(--tmuted)",fontSize:11}}>({fmems.length})</span></div>
+                    <div style={{display:"flex",gap:7,alignItems:"center",flexWrap:"wrap"}}>
+                      <div className="swrap"><span className="sico">🔍</span><input className="sinput" placeholder="Search members..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+                      <button className="btn bpdf sm" onClick={()=>handlePDF("savings")} disabled={!!pdfGen}>{pdfGen==="savings"?"⏳...":"📥 PDF"}</button>
+                      <button className="btn bp sm" onClick={()=>setAddMModal(true)}>＋ Add</button>
+                    </div>
+                  </div>
+                  {fmems.length===0&&<div className="empty"><div className="eico">📭</div>No members found.</div>}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:10}}>
+                    {fmems.map((m)=>{
+                      const units=Math.round((m.shares||0)/50000);
+                      const tb=totBanked(m);
+                      const hasLoan=loans.some(l=>l.memberId===m.id&&l.status!=="paid");
+                      return(
+                        <div key={m.id} onClick={()=>openProfile(m)}
+                          style={{background:"#fff",border:"1px solid rgba(197,220,245,.6)",borderRadius:"var(--radius-lg)",padding:"13px 15px",cursor:"pointer",transition:"var(--trans)",boxShadow:"var(--shadow-sm)",display:"flex",gap:12,alignItems:"center"}}
+                          onMouseEnter={e=>e.currentTarget.style.boxShadow="var(--shadow-md)"}
+                          onMouseLeave={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}>
+                          {m.photoUrl
+                            ?<img src={m.photoUrl} alt={m.name} style={{width:46,height:46,borderRadius:"50%",objectFit:"cover",border:"2px solid var(--bdr)",flexShrink:0}}/>
+                            :<div style={{width:46,height:46,borderRadius:"50%",background:"var(--p600)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:17,flexShrink:0}}>{(m.name||"?")[0]}</div>
+                          }
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</div>
+                            <div style={{fontSize:10,color:"var(--tmuted)",marginTop:1}}>Joined {fmtD(m.joinDate)}</div>
+                            <div style={{display:"flex",gap:6,marginTop:5,flexWrap:"wrap",alignItems:"center"}}>
+                              <span style={{fontSize:10,fontWeight:700,color:"var(--p600)",background:"var(--p50)",borderRadius:6,padding:"2px 7px",fontFamily:"var(--mono)"}}>{units} unit{units!==1?"s":""}</span>
+                              <span style={{fontSize:10,fontWeight:700,color:"#1b5e20",background:"#e8f5e9",borderRadius:6,padding:"2px 7px",fontFamily:"var(--mono)"}}>{fmt(tb)}</span>
+                              {hasLoan&&<span style={{fontSize:9,fontWeight:700,color:"#e65100",background:"#fff3e0",borderRadius:6,padding:"2px 6px"}}>Loan</span>}
+                            </div>
+                          </div>
+                          <div style={{fontSize:18,color:"var(--bdr2)",flexShrink:0}}>›</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:"var(--radius-md)",padding:"9px 16px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginTop:10}}>
+                    <span style={{fontSize:11,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>{fmems.length} members shown</span>
+                    <span style={{fontSize:12,fontWeight:800,color:"var(--p700)",fontFamily:"var(--mono)"}}>{fmt(savT.total)} total banked</span>
+                  </div>
+                </div>
+              )}
             </React.Fragment>
           )}
 
@@ -4920,9 +5136,9 @@ function AppInner(){
                         </div>
                         <div className="fg ff">
                           <label className="fl">Claim Type</label>
-                          <div style={{display:"flex",gap:8,marginTop:4}}>
-                            {[["death","🕊 Passing"],["illness","🏥 Serious Illness"]].map(([v,lbl])=>(
-                              <button key={v} type="button" onClick={()=>setClaimType(v)} style={{flex:1,padding:"8px",borderRadius:9,border:claimType===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:claimType===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:12,fontWeight:claimType===v?700:400,color:claimType===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
+                          <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap"}}>
+                            {[["death","🕊 Passing"],["illness","🏥 Serious Illness"],["injury","🩹 Disability/Injury"]].map(([v,lbl])=>(
+                              <button key={v} type="button" onClick={()=>setClaimType(v)} style={{flex:1,minWidth:100,padding:"8px",borderRadius:9,border:claimType===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:claimType===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:claimType===v?700:400,color:claimType===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
                             ))}
                           </div>
                         </div>
@@ -4952,14 +5168,20 @@ function AppInner(){
                               ["Guaranteed minimum to NOK (70%)",fmt(minPayout),"#1b5e20"],
                               ["Remaining 30% — board decision",fmt(remaining30),retention==="compensate"?"#1b5e20":"#e65100"],
                               ["Full payout if board agrees (100%)",fmt(fullPayout),"#1565c0"],
-                            ]:[
+                            ]:claimType==="illness"?[
                               ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
                               ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
                               ["Benevolent Base (Savings + Welfare)",fmt(illnessBase*2),"var(--p800)"],
                               ["Illness support payout (50% of base)",fmt(illnessBase),"#1b5e20"],
                               ["Member retains account","Active — continues after recovery","#1565c0"],
+                            ]:[
+                              ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
+                              ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
+                              ["Benevolent Base (Savings + Welfare)",fmt(illnessBase*2),"var(--p800)"],
+                              ["Disability/Injury payout (75% of base)",fmt(Math.round(illnessBase*1.5)),"#1b5e20"],
+                              ["Medical docs + board resolution required","Mandatory for all injury claims","#e65100"],
                             ]).map(([lb,v,c],i)=>(
-                              <div key={lb} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i<5?"1px solid var(--bdr)":"none",fontWeight:i===2||i===5?700:400}}>
+                              <div key={lb} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i<5?"1px solid var(--bdr)":"none",fontWeight:i===2?700:400}}>
                                 <span style={{fontSize:11,color:"var(--td)"}}>{lb}</span>
                                 <span style={{fontFamily:"var(--mono)",fontSize:12,fontWeight:700,color:c}}>{v}</span>
                               </div>
@@ -4986,19 +5208,27 @@ function AppInner(){
                               <strong>🏥 Illness Support Logic:</strong> Member receives 50% of their monthly savings + welfare contributions banked. Member keeps account active and resumes after recovery. Board approval and medical documentation required.
                             </div>
                           )}
-                          <div style={{background:claimType==="death"?"linear-gradient(135deg,#1b5e20,#2e7d32)":"linear-gradient(135deg,#0d3461,#1565c0)",borderRadius:10,padding:"12px 16px",color:"#fff"}}>
-                            <div style={{fontSize:10,opacity:.7,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>
-                              {claimType==="death"?"Recommended Payout to "+((nok&&nok.name)||"Next of Kin"):"Support Entitlement for "+m.name}
+                          {claimType==="injury"&&(
+                            <div style={{background:"rgba(21,101,192,.07)",border:"1px solid rgba(21,101,192,.25)",borderRadius:9,padding:"10px 12px",marginBottom:10,fontSize:11,color:"var(--p700)",lineHeight:1.6}}>
+                              <strong>🩹 Disability/Injury Logic:</strong> Member receives 75% of benevolent base. Applies to permanent or long-term disability preventing income generation. Requires medical certification, board resolution, and government-issued disability assessment where applicable.
                             </div>
-                            <div style={{fontSize:26,fontWeight:900,fontFamily:"var(--mono)"}}>{fmt(claimType==="death"?(retention==="compensate"?fullPayout:minPayout):illnessBase)}</div>
+                          )}
+                          <div style={{background:claimType==="death"?"linear-gradient(135deg,#1b5e20,#2e7d32)":claimType==="injury"?"linear-gradient(135deg,#0d3461,#1350a0)":"linear-gradient(135deg,#4a148c,#6a1b9a)",borderRadius:10,padding:"12px 16px",color:"#fff"}}>
+                            <div style={{fontSize:10,opacity:.7,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>
+                              {claimType==="death"?"Recommended Payout to "+((nok&&nok.name)||"Next of Kin"):claimType==="injury"?"Disability Entitlement for "+m.name:"Illness Support for "+m.name}
+                            </div>
+                            <div style={{fontSize:26,fontWeight:900,fontFamily:"var(--mono)"}}>
+                              {fmt(claimType==="death"?(retention==="compensate"?fullPayout:minPayout):claimType==="injury"?Math.round(illnessBase*1.5):illnessBase)}
+                            </div>
                             <div style={{fontSize:10,opacity:.7,marginTop:4}}>
                               {claimType==="death"
                                 ?retention==="compensate"?"Full 100% — board agreed all funds to NOK":"70% guaranteed + NOK retains remaining 30% account"
+                                :claimType==="injury"?"75% of savings+welfare base — disability/injury claim"
                                 :"50% of monthly savings + welfare — member keeps account after recovery"
                               }
                             </div>
                             <div style={{marginTop:10,fontSize:10,opacity:.6,lineHeight:1.6,borderTop:"1px solid rgba(255,255,255,.2)",paddingTop:8}}>
-                              ⚠ This is a CALCULATION ONLY. Actual disbursement requires written board resolution, identity verification of next of kin, and formal documentation. Contact the BIDA board to initiate an official claim.
+                              ⚠ CALCULATION ONLY. Actual disbursement requires written board resolution, identity verification, and formal documentation.
                             </div>
                           </div>
                         </React.Fragment>
@@ -5008,43 +5238,8 @@ function AppInner(){
                 })()}
               </div>
 
-              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
-                <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10}}>👥 All Members — Benevolent Status</div>
-                <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                    <thead><tr style={{background:"var(--p50)"}}>
-                      {["#","Member","Total Invested","Min Payout (70%)","NOK Name","Relationship","NOK Phone","Status"].map(h=>(
-                        <th key={h} style={{padding:"8px 10px",textAlign:h==="Total Invested"||h==="Min Payout (70%)"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody>
-                      {members.map((m,i)=>{
-                        const nok=m.nextOfKin||null;
-                        const hasNOK=nok&&(nok.name||"").trim();
-                        const tb=totBanked(m);
-                        const minPayout=Math.round(((m.monthlySavings||0)+(m.welfare||0))*0.70);
-                        return (
-                          <tr key={m.id} style={{borderBottom:"1px solid #eef5ff",background:hasNOK?"":"#fffde7"}}>
-                            <td style={{padding:"7px 10px",fontSize:10,color:"var(--tmuted)"}}>{i+1}</td>
-                            <td style={{padding:"7px 10px"}}><span className="nc" onClick={()=>openProfile(m)}>{m.name}</span></td>
-                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11}}>{fmt(tb)}</td>
-                            <td style={{padding:"7px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11,color:"var(--mint-600)"}}>{fmt(minPayout)}</td>
-                            <td style={{padding:"7px 10px",fontSize:11,fontWeight:hasNOK?600:400,color:hasNOK?"var(--td)":"var(--tmuted)"}}>{hasNOK?nok.name:"—"}</td>
-                            <td style={{padding:"7px 10px",fontSize:11,color:"var(--tmuted)"}}>{hasNOK?nok.relationship||"—":"—"}</td>
-                            <td style={{padding:"7px 10px",fontSize:11,fontFamily:"var(--mono)",color:"var(--tmuted)"}}>{hasNOK?nok.phone||"—":"—"}</td>
-                            <td style={{padding:"7px 10px"}}>
-                              {hasNOK
-                                ?<span style={{fontSize:9,background:"rgba(0,200,83,.08)",color:"var(--mint-600)",border:"1px solid #a5d6a7",borderRadius:"var(--radius-xl)",padding:"2px 8px",fontWeight:700}}>✅ Protected</span>
-                                :<button onClick={()=>{openProfile(m);setTimeout(()=>setProfEdit(true),100);}} style={{fontSize:9,background:"rgba(255,109,0,.07)",color:"var(--warning)",border:"1px solid #ffcc80",borderRadius:"var(--radius-xl)",padding:"2px 8px",fontWeight:700,cursor:"pointer"}}>⚠ Add NOK</button>
-                              }
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              {/* ── All Members Benevolent Status — Accordion ── */}
+              <BenevolentAccordion members={members}/>
             </React.Fragment>
           )}
 
@@ -5055,19 +5250,27 @@ function AppInner(){
               {(()=>{
                 const pool=savT.total;
                 const outstanding=lStat.outstanding;
-                const loanProfit=lStat.profit;
-                const invTotal=investments.reduce((s,i)=>s+(+i.amount||0),0);
-                const invReturns=totalInvInterest;
-                const grossIncome=loanProfit+invReturns;
+                const loanProfit=finance.loanInterestEarned;
+                const invTotal=finance.activeInvestments;
+                const invReturns=finance.investmentProfit;
+                const grossIncome=finance.capitalGainsPool;
                 const netIncome=grossIncome-totalExpenses;
-                const totalAssets=cashInBank+outstanding+invTotal;
+                const totalAssets=finance.cashInBank+outstanding+invTotal;
                 const equity=totalAssets-pool;
                 return (
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(270px,1fr))",gap:12,marginBottom:12}}>
                     <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
                       <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>📊 Income Statement</div>
-                      {[["Loan Interest Income",loanProfit,"#2e7d32"],["Investment Returns",invReturns,"#2e7d32"],["Gross Income",grossIncome,"#1565c0"],["Less: Total Expenses",-totalExpenses,"#c62828"],["Net Surplus",netIncome,netIncome>=0?"#2e7d32":"#c62828"]].map(([l,v,c],i)=>(
-                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i===3?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i>=2?700:400}}>
+                      {[
+                        ["Loan Interest Income",loanProfit,"#2e7d32"],
+                        ["Investment Returns",invReturns,"#2e7d32"],
+                        ["Capital Gains Pool",grossIncome,"#1565c0"],
+                        ["→ 40% Distributable (AGM)",finance.distributableCapitalGains,"#1b5e20"],
+                        ["→ 60% Retained (Growth)",finance.retainedCapitalGains,"#1565c0"],
+                        ["Less: Total Expenses",-totalExpenses,"#c62828"],
+                        ["Net Surplus / Deficit",netIncome,netIncome>=0?"#2e7d32":"#c62828"],
+                      ].map(([l,v,c],i)=>(
+                        <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i===5?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===2||i===6?700:400,paddingLeft:i===3||i===4?12:0}}>
                           <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
                           <span style={{fontFamily:"var(--mono)",fontSize:11,color:c}}>{v<0?"("+fmt(Math.abs(v))+")":fmt(v)}</span>
                         </div>
@@ -5076,7 +5279,7 @@ function AppInner(){
                     <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px"}}>
                       <div style={{fontWeight:800,fontSize:13,color:"var(--p800)",marginBottom:10,paddingBottom:6,borderBottom:"2px solid var(--bdr2)"}}>🏦 Balance Sheet</div>
                       <div style={{fontSize:10,fontWeight:700,color:"var(--p700)",marginBottom:4}}>ASSETS</div>
-                      {[["Cash in Bank",cashInBank],["Loan Book (Outstanding)",outstanding],["Investments",invTotal],["Total Assets",totalAssets]].map(([l,v],i)=>(
+                      {[["Cash in Bank",finance.cashInBank],["Loan Book (Outstanding)",outstanding],["Active Investments",invTotal],["Total Assets",totalAssets]].map(([l,v],i)=>(
                         <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:i===2?"2px solid var(--bdr2)":"1px solid var(--bdr)",fontWeight:i===3?700:400}}>
                           <span style={{fontSize:11,color:"var(--td)"}}>{l}</span>
                           <span style={{fontFamily:"var(--mono)",fontSize:11,color:i===3?"#1565c0":"var(--td)"}}>{fmt(v)}</span>
@@ -5414,10 +5617,7 @@ function AppInner(){
                           });
                         }
                         if(data.expenses&&data.expenses.length>=0){
-                          setExpenses(prev=>{
-                            const dbIds=new Set(data.expenses.map(e=>e.id));
-                            return [...data.expenses,...prev.filter(e=>!dbIds.has(e.id))];
-                          });
+                          setExpenses(data.expenses.map(sanitiseExpense));
                         }
                         if(data.investments&&data.investments.length>=0) setInvestments(data.investments);
                         if(data.serviceProviders&&data.serviceProviders.length>0) setServiceProviders(data.serviceProviders);
@@ -5573,7 +5773,7 @@ function AppInner(){
                 <div>
                   <div style={{fontSize:10,opacity:.75,textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>💳 Cash in Bank (live)</div>
                   <div style={{fontSize:26,fontWeight:900,fontFamily:"var(--mono)",marginTop:2}}>{fmt(cashInBank)}</div>
-                  <div style={{fontSize:10,opacity:.7,marginTop:3}}>Banked {fmt(savT.total)} + Profit {fmt(lStat.profit)} − Expenses {fmt(totalExpenses)} − Loans Out {fmt(lStat.outstanding)}</div>
+                  <div style={{fontSize:10,opacity:.7,marginTop:3}}>Total Banked {fmt(savT.total)} + Profit {fmt(lStat.profit)} − Expenses {fmt(totalExpenses)}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontSize:10,opacity:.7}}>Transactions</div>
@@ -5589,7 +5789,7 @@ function AppInner(){
                   <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
                 </div>
                 <div className="card ck"><div className="clabel">Profit Realised</div><div className="cval ok">{fmt(lStat.profit)}</div></div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Exp − Loans Out</div></div>
+                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Banked + Profit − Expenses</div></div>
                 <div className="card cw"><div className="clabel">Transactions</div><div className="cval warn">{expenses.length}</div></div>
               </div>
 
@@ -5879,7 +6079,7 @@ function AppInner(){
                           {MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}
                         </select>
                         <select value={reportYear} onChange={e=>setReportYear(+e.target.value)} className="fi" style={{width:72,fontSize:11,padding:"4px 6px"}}>
-                          {Array.from({length:12},(_,i)=>2022+i).map(y=><option key={y} value={y}>{y}</option>)}
+                          {Array.from({length:5},(_,i)=>new Date().getFullYear()-2+i).map(y=><option key={y} value={y}>{y}</option>)}
                         </select>
                       </div>
                       <div style={{marginTop:8}}>
@@ -6448,14 +6648,48 @@ function AppInner(){
                         <div className="prof-item-val" style={{fontSize:12}}>{v}</div>
                       </div>
                     ))}
-                    {memberInvShare(profMember)>0&&(
+                    {memberCapitalGains(profMember)>0&&(
                       <div className="prof-item" style={{flex:1,minWidth:80,background:"rgba(0,200,83,.08)",borderColor:"#a5d6a7"}}>
-                        <div className="prof-item-label">Inv. Interest Share</div>
-                        <div className="prof-item-val ok" style={{fontSize:12}}>{fmt(memberInvShare(profMember))}</div>
-                        <div style={{fontSize:9,color:"var(--mint-600)",marginTop:2}}>40% of returns</div>
+                        <div className="prof-item-label">Accrued Capital Gain</div>
+                        <div className="prof-item-val ok" style={{fontSize:12}}>{fmt(memberCapitalGains(profMember))}</div>
+                        <div style={{fontSize:9,color:"var(--mint-600)",marginTop:2}}>Payable at AGM</div>
                       </div>
                     )}
                   </div>
+
+                  {/* ── Capital Gained panel — shown on every member profile ── */}
+                  {(()=>{
+                    const cg = memberCapitalGains(profMember);
+                    const memberSharePct = finance.totalShares > 0 ? ((profMember.shares||0)/finance.totalShares*100).toFixed(2) : "0.00";
+                    const loanIntShare = savT.total > 0 ? Math.round((totBanked(profMember)/savT.total)*finance.loanInterestEarned) : 0;
+                    const invProfShare = Math.round((profMember.shares||0)/Math.max(finance.totalShares,1)*finance.investmentProfit*0.4);
+                    return (
+                      <div style={{background:"linear-gradient(135deg,#e8f5e9,#f1f8e9)",border:"1.5px solid #a5d6a7",borderRadius:10,padding:"12px 14px",marginTop:8}}>
+                        <div style={{fontWeight:800,fontSize:12,color:"#1b5e20",marginBottom:8}}>💰 Capital Gained — AGM Dividend Entitlement</div>
+                        <div style={{fontSize:10,color:"#388e3c",marginBottom:8,lineHeight:1.6}}>
+                          Your capital gains are calculated quarterly and paid at the AGM. Based on your share capital weight ({memberSharePct}% of total shares).
+                        </div>
+                        {[
+                          ["Share Capital",fmt(profMember.shares||0),"Your BIDA share holding"],
+                          ["Share Weight",memberSharePct+"%","Your % of total share capital"],
+                          ["Loan Interest Gain",fmt(loanIntShare),"Your portion of BIDA loan earnings"],
+                          ["Investment Profit Gain",fmt(invProfShare),"40% of inv. profit × share weight"],
+                          ["Total Capital Gained",fmt(cg),"Payable at year-end AGM"],
+                        ].map(([lb,v,sub])=>(
+                          <div key={lb} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #c8e6c9"}}>
+                            <div>
+                              <div style={{fontSize:11,color:"#1b5e20",fontWeight:600}}>{lb}</div>
+                              <div style={{fontSize:9,color:"#388e3c"}}>{sub}</div>
+                            </div>
+                            <span style={{fontFamily:"var(--mono)",fontSize:12,fontWeight:800,color:"#1b5e20"}}>{v}</span>
+                          </div>
+                        ))}
+                        <div style={{fontSize:9,color:"#388e3c",marginTop:8,fontStyle:"italic"}}>
+                          ℹ️ Capital gains are accrued throughout the year and distributed at the Annual General Meeting. They do not reduce BIDA's fund pool — only 40% of profits are distributed, 60% is retained for growth.
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {(()=>{
@@ -6563,22 +6797,6 @@ function AppInner(){
                             finally{setPdfGen(null);}
                           }}>{pdfGen===("wa_"+profMember.id)?"⏳":WA_SVG} WA PDF</button>
                           <a className="btn bwa sm" href={waLink(profMember.whatsapp,buildWASavingsMsg(profMember))} target="_blank" rel="noreferrer">{WA_SVG}WA Text</a>
-                        <button className="btn bwa sm" style={{background:"#128C7E"}} disabled={!!pdfGen} onClick={async()=>{
-  try{
-    const blob=await generateMemberPDF(profMember,profLoans,members,loans,true);
-    const filename="BIDA_Statement_"+profMember.name.replace(/\s+/g,"_")+".pdf";
-    const file=new File([blob],filename,{type:"application/pdf"});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){
-      await navigator.share({files:[file],title:"BIDA — "+profMember.name});
-    } else {
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;a.download=filename;
-      a.style.cssText="position:fixed;top:-200px;opacity:0";
-      document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);try{document.body.removeChild(a);}catch(e){}},8000);
-    }
-  }catch(e){if(e.name!=="AbortError")alert("PDF error: "+e.message);}
-}}>{WA_SVG}WA PDF</button>
                         <button className="btn bsms sm" disabled={emailSending["sms_sav_"+profMember.id]==="sending"} onClick={()=>sendSavingsSMS(profMember)}>{emailSending["sms_sav_"+profMember.id]==="sending"?"⏳...":"📱 SMS"}</button></React.Fragment>}
                       </div>
                     </div>
@@ -6841,19 +7059,18 @@ function AppInner(){
               <div className="fg">
                 <label className="fl">Investment Year <span style={{fontWeight:400,color:"var(--tmuted)"}}>(annual only)</span></label>
                 <select className="fi" value={invF.investmentYear||new Date().getFullYear()} onChange={e=>setInvF(f=>({...f,investmentYear:+e.target.value}))}>
-                  {Array.from({length: new Date().getFullYear()-2022+9},(_,i)=>2022+i).map(y=><option key={y} value={y}>{y}</option>)}
+                  {[2024,2025,2026,2027,2028].map(y=><option key={y} value={y}>{y}</option>)}
                 </select>
                 <span className="fhint">Investments are annual — one per platform per year.</span>
               </div>
               <div className="fg"><label className="fl">Amount Invested (UGX)</label>
                 <input className="fi" type="number" value={invF.amount} onChange={e=>setInvF(f=>({...f,amount:e.target.value}))} placeholder="0"/>
                 {(()=>{
-                  // Use the same formula as global cashInBank
-                  const _loanProfit=(loans||[]).filter(l=>l.status==="paid").reduce((s,l)=>s+calcLoan(l).profit,0);
+                  const _rep=(loans||[]).reduce((s,l)=>s+(+l.amountPaid||0),0);
+                  const _dis=(loans||[]).filter(l=>l.approvalStatus==="approved"||!l.approvalStatus).reduce((s,l)=>s+(+l.amountLoaned||0),0);
+                  const _inv=(investments||[]).reduce((s,i)=>s+(+i.amount||0),0);
                   const _iret=(investments||[]).reduce((s,i)=>s+(+i.interestEarned||0),0);
-                  const _activeDisb=(loans||[]).filter(l=>l.status!=="paid").reduce((s,l)=>s+(+l.amountLoaned||0),0);
-                  const _inv=(investments||[]).filter(i=>i.status==="active").reduce((s,i)=>s+(+i.amount||0),0);
-                  const cashInBk=(savT.total||0)+_loanProfit+_iret-(totalExpenses||0)-_activeDisb-_inv;
+                  const cashInBk=(savT.total||0)+_rep+_iret-_dis-(totalExpenses||0)-_inv;
                   const maxInv=Math.round(cashInBk*0.20);
                   const over=(+invF.amount||0)>maxInv;
                   return <span className="fhint" style={{color:over?"#c62828":"var(--p500)"}}>Max investable: {fmt(maxInv)} (20% of cash in bank {fmt(cashInBk)}){over?" — ⚠ EXCEEDS LIMIT":""}</span>;
@@ -9164,7 +9381,7 @@ function MemberStatementButton({ m, loans }) {
       // Header
       doc.setFillColor(...NAVY);doc.rect(0,0,W,32,"F");
       doc.setFillColor(...BLUE);doc.rect(0,32,W,1.5,"F");
-      (()=>{const cx=22,cy=16,r=8,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);try{doc.polygon?doc.polygon(pts,"F"):(()=>{const steps=pts.slice(1).map((p,i)=>[p[0]-pts[i][0],p[1]-pts[i][1]]);doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);})();}catch(_e){doc.setFillColor(21,101,192);doc.circle(cx,cy,r,"F");}const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
+      (()=>{const cx=22,cy=16,r=8,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);(()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
       doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("BIDA",36,13);
       doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",14,19);doc.text("bidacooperative@gmail.com",14,25);
       doc.setFont("helvetica","bold");doc.setFontSize(14);doc.setTextColor(...WHITE);doc.text("MEMBER STATEMENT",W/2,13,{align:"center"});
