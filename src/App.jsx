@@ -9684,5 +9684,27 @@ function MemberDashboardInline({ session, onLogout }) {
 }
 
 export default function App(){
+  // Domain detection for main domain
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  if (hostname === 'pamojapay.co' || hostname === 'www.pamojapay.co') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: '#0d3461',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'system-ui, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center', color: 'white' }}>
+          <h1 style={{ fontSize: 40 }}>BIDA</h1>
+          <p>Multi-Purpose Co-operative Society</p>
+          <p style={{ marginTop: 24 }}>
+            <a href="https://bida.pamojapay.co" style={{ color: '#90caf9' }}>bida.pamojapay.co</a>
+          </p>
+        </div>
+      </div>
+    );
+  }
   return React.createElement(ErrorBoundary,null,React.createElement(AppInner,null));
 }
