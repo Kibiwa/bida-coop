@@ -6856,7 +6856,16 @@ function AppInner(){
                         const hash=bc.hashSync(tempPass,salt);
                         await mDb.update('members','id=eq.'+profMember.id,{member_login_id:loginId,password_hash:hash,temp_password_plain:tempPass,is_first_login:true,account_status:'pending',login_email:profMember.email||null,login_phone:profMember.phone||profMember.whatsapp||null,tenant_id:'bida'});
                         setMembers(prev=>prev.map(m=>m.id===profMember.id?{...m,member_login_id:loginId,account_status:'pending',is_first_login:true}:m));
-                        alert('Credentials generated!\n\nMember ID: '+loginId+'\nTemporary Password: '+tempPass+'\n\nShare these securely with '+profMember.name+'. They will be prompted to change password on first login.');
+                        const msg=[
+                          'CREDENTIALS GENERATED',
+                          '─────────────────────',
+                          'Member ID:  '+loginId,
+                          'Password:   '+tempPass,
+                          '─────────────────────',
+                          'Share both with '+profMember.name+' securely.',
+                          'They will set a permanent password on first login.'
+                        ].join('\n');
+                        alert(msg);
                       } catch(ex){alert('Error generating credentials: '+ex.message+'\n\nCheck browser console for details.');console.error('genCreds error:',ex);}
                     }}>Generate Login Credentials</button>
                   ):(
@@ -6889,7 +6898,15 @@ function AppInner(){
                           const hash=bc.hashSync(tempPass,salt);
                           await mDb.update('members','id=eq.'+profMember.id,{password_hash:hash,temp_password_plain:tempPass,is_first_login:true,account_status:'pending',failed_login_attempts:0,locked_until:null});
                           setMembers(prev=>prev.map(m=>m.id===profMember.id?{...m,account_status:'pending',is_first_login:true}:m));
-                          alert('Password reset!\n\nNew temporary password: '+tempPass+'\n\nShare this securely with '+profMember.name+'.');
+                          const msg2=[
+                            'PASSWORD RESET',
+                            '─────────────────────',
+                            'Member ID:  '+profMember.member_login_id,
+                            'New Password: '+tempPass,
+                            '─────────────────────',
+                            'Share both with '+profMember.name+' securely.'
+                          ].join('\n');
+                          alert(msg2);
                         }}>Reset Password</button>
                         {profMember.account_status==='active'?(
                           <button className="btn bd xs" style={{flex:1}} onClick={async()=>{
