@@ -4371,7 +4371,7 @@ function AppInner(){
             <div className="login-card" style={{width:"100%",maxWidth:420,background:"rgba(255,255,255,.07)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.13)",borderRadius:"var(--radius-xl)",padding:"26px 24px",boxShadow:"0 24px 64px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.1)"}}>
               <div style={{marginBottom:22,textAlign:"center"}}>
                 <div style={{fontSize:15,fontWeight:800,color:"#fff",letterSpacing:-.01}}>Member Portal</div>
-                <div style={{fontSize:12,color:"rgba(255,255,255,.55)",marginTop:5,lineHeight:1.5}}>Enter your registered email to receive a one-time login code</div>
+                <div style={{fontSize:12,color:"rgba(255,255,255,.55)",marginTop:5,lineHeight:1.5}}>Enter your Member ID and password to access your account</div>
               </div>
               <MemberEmailOTPWidget onLogin={s=>{const full={...s,exp:Date.now()+8*3600*1000};sessionStorage.setItem("bida_member_sess",JSON.stringify(full));setMemberSession(full);}}/>
             </div>
@@ -6813,6 +6813,82 @@ function AppInner(){
                   </div>
                 )}
 
+                {/* ── MEMBER ACCOUNT ACCESS (credential management) ── */}
+                <div className="prof-section" style={{marginTop:8}}>
+                  <div className="prof-section-title">🔐 Account Access</div>
+                  {!profMember.member_login_id?(
+                    <button className="btn bp sm" style={{width:'100%'}} onClick={async()=>{
+                      const bc=typeof window!=='undefined'&&window.dcodeIO&&window.dcodeIO.bcrypt?window.dcodeIO.bcrypt:window.bcrypt;
+                      if(!bc){alert('Security library not loaded — please refresh and try again.');return;}
+                      const year=new Date().getFullYear();
+                      const prefix='BIDA';
+                      const existing=await mDb.get('members','member_login_id=like.'+encodeURIComponent(prefix+'-'+year+'-%')+'&order=member_login_id.desc&limit=1').catch(()=>[]);
+                      let nextNum=1;
+                      if(existing&&existing[0]&&existing[0].member_login_id){
+                        const parts=existing[0].member_login_id.split('-');
+                        const last=parseInt(parts[parts.length-1]);
+                        if(!isNaN(last)) nextNum=last+1;
+                      }
+                      const loginId=prefix+'-'+year+'-'+String(nextNum).padStart(3,'0');
+                      const WORDS=['Bida','Coop','Save','Fund','Grow','Unity'];
+                      const word=WORDS[Math.floor(Math.random()*WORDS.length)];
+                      const num=Math.floor(1000+Math.random()*9000);
+                      const tempPass=word+'@'+num;
+                      const salt=bc.genSaltSync(10);
+                      const hash=bc.hashSync(tempPass,salt);
+                      await mDb.update('members','id=eq.'+profMember.id,{member_login_id:loginId,password_hash:hash,temp_password_plain:tempPass,is_first_login:true,account_status:'pending',login_email:profMember.email||null,login_phone:profMember.phone||profMember.whatsapp||null,tenant_id:'bida'});
+                      setMembers(prev=>prev.map(m=>m.id===profMember.id?{...m,member_login_id:loginId,account_status:'pending',is_first_login:true}:m));
+                      alert('Credentials generated!\n\nMember ID: '+loginId+'\nTemporary Password: '+tempPass+'\n\nShare these securely with '+profMember.name+'. They will be prompted to change password on first login.');
+                    }}>Generate Login Credentials</button>
+                  ):(
+                    <div>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}}>
+                        <span style={{fontSize:11,color:'var(--tmuted)'}}>Member ID</span>
+                        <span style={{fontFamily:'var(--mono)',fontWeight:700,fontSize:12}}>{profMember.member_login_id}</span>
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}}>
+                        <span style={{fontSize:11,color:'var(--tmuted)'}}>Status</span>
+                        <span style={{fontSize:11,fontWeight:700,color:profMember.account_status==='active'?'#2e7d32':profMember.account_status==='suspended'?'#c62828':'#e65100'}}>
+                          {profMember.account_status==='active'?'Active':profMember.account_status==='suspended'?'Suspended':'Pending Setup'}
+                        </span>
+                      </div>
+                      {profMember.last_login&&(
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                          <span style={{fontSize:11,color:'var(--tmuted)'}}>Last Login</span>
+                          <span style={{fontSize:11}}>{fmtD(profMember.last_login)}</span>
+                        </div>
+                      )}
+                      <div style={{display:'flex',gap:7,marginTop:8}}>
+                        <button className="btn bg xs" style={{flex:1}} onClick={async()=>{
+                          const bc=typeof window!=='undefined'&&window.dcodeIO&&window.dcodeIO.bcrypt?window.dcodeIO.bcrypt:window.bcrypt;
+                          if(!bc){alert('Security library not loaded — please refresh.');return;}
+                          const WORDS=['Bida','Coop','Save','Fund','Grow','Unity'];
+                          const word=WORDS[Math.floor(Math.random()*WORDS.length)];
+                          const num=Math.floor(1000+Math.random()*9000);
+                          const tempPass=word+'@'+num;
+                          const salt=bc.genSaltSync(10);
+                          const hash=bc.hashSync(tempPass,salt);
+                          await mDb.update('members','id=eq.'+profMember.id,{password_hash:hash,temp_password_plain:tempPass,is_first_login:true,account_status:'pending',failed_login_attempts:0,locked_until:null});
+                          setMembers(prev=>prev.map(m=>m.id===profMember.id?{...m,account_status:'pending',is_first_login:true}:m));
+                          alert('Password reset!\n\nNew temporary password: '+tempPass+'\n\nShare this securely with '+profMember.name+'.');
+                        }}>Reset Password</button>
+                        {profMember.account_status==='active'?(
+                          <button className="btn bd xs" style={{flex:1}} onClick={async()=>{
+                            if(!window.confirm('Suspend '+profMember.name+"'s account?"))return;
+                            await mDb.update('members','id=eq.'+profMember.id,{account_status:'suspended'});
+                            setMembers(prev=>prev.map(m=>m.id===profMember.id?{...m,account_status:'suspended'}:m));
+                          }}>Suspend</button>
+                        ):profMember.account_status==='suspended'?(
+                          <button className="btn bk xs" style={{flex:1}} onClick={async()=>{
+                            await mDb.update('members','id=eq.'+profMember.id,{account_status:'active',failed_login_attempts:0,locked_until:null});
+                            setMembers(prev=>prev.map(m=>m.id===profMember.id?{...m,account_status:'active'}:m));
+                          }}>Reactivate</button>
+                        ):null}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="div"/>
                 {!confirmOpt
                   ?<button className="btn bd sm" onClick={()=>setConfirmOpt(true)}>🚪 Remove Member</button>
@@ -8754,117 +8830,200 @@ function Timer({ s, onEnd }) {
 
 
 // ─────────────────────────────────────────────────────────────────
-// EMAIL OTP WIDGET — used on the welcome page member login card
-// ─────────────────────────────────────────────────────────────────
+// ============================================================
+// MEMBER LOGIN WIDGET — Member ID + Password (replaces email OTP)
+// bcryptjs loaded via CDN in index.html
+// ============================================================
 function MemberEmailOTPWidget({ onLogin }) {
-  const [phase, setPhase] = React.useState("email");
-  const [email, setEmail] = React.useState("");
-  const [otp, setOtp] = React.useState("");
-  const [memberName, setMemberName] = React.useState("");
-  const [devCode, setDevCode] = React.useState(null);
+  const [memberLoginId, setMemberLoginId] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState("");
-  const [cd, setCd] = React.useState(0);
+  const [err, setErr] = React.useState('');
+  const [showForgot, setShowForgot] = React.useState(false);
 
-  React.useEffect(() => {
-    if (cd <= 0) return;
-    const t = setTimeout(() => setCd(c => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [cd]);
+  const getBcrypt = () => {
+    if (typeof window !== 'undefined' && window.dcodeIO && window.dcodeIO.bcrypt) return window.dcodeIO.bcrypt;
+    if (typeof window !== 'undefined' && window.bcrypt) return window.bcrypt;
+    return null;
+  };
 
-  const sendCode = async () => {
-    setErr("");
-    const e = email.trim().toLowerCase();
-    if (!e || !e.includes("@")) { setErr("Enter a valid email address"); return; }
-    setBusy(true);
+  const handleLogin = async () => {
+    if (!memberLoginId.trim() || !password) { setErr('Enter your Member ID and password'); return; }
+    setBusy(true); setErr('');
     try {
-      const all = await mDb.get("members");
-      const member = all.find(m => (m.email||"").trim().toLowerCase() === e);
-      if (!member) {
-        setErr("No member found with that email. Ask your manager to add your email to your profile.");
+      const rows = await mDb.get('members', 'member_login_id=eq.' + encodeURIComponent(memberLoginId.toUpperCase().trim()) + '&tenant_id=eq.bida');
+      const member = rows && rows[0];
+      if (!member) { setErr('Invalid Member ID or password'); setBusy(false); return; }
+
+      if (member.locked_until && new Date(member.locked_until) > new Date()) {
+        const mins = Math.ceil((new Date(member.locked_until) - new Date()) / 60000);
+        setErr('Account locked. Try again in ' + mins + ' minute' + (mins !== 1 ? 's' : '') + '.'); setBusy(false); return;
+      }
+      if (member.account_status === 'suspended') { setErr('Account suspended. Contact your BIDA manager.'); setBusy(false); return; }
+
+      const bc = getBcrypt();
+      if (!bc) { setErr('Security library not loaded — please refresh the page.'); setBusy(false); return; }
+
+      const valid = bc.compareSync(password, member.password_hash || '');
+      if (!valid) {
+        const attempts = (member.failed_login_attempts || 0) + 1;
+        const lockUntil = attempts >= 5 ? new Date(Date.now() + 30 * 60000).toISOString() : null;
+        await mDb.update('members', 'id=eq.' + member.id, { failed_login_attempts: attempts, locked_until: lockUntil });
+        const rem = 5 - attempts;
+        setErr(rem > 0 ? 'Invalid password. ' + rem + ' attempt' + (rem !== 1 ? 's' : '') + ' remaining.' : 'Too many failed attempts. Account locked for 30 minutes.');
         setBusy(false); return;
       }
-      setMemberName(member.name);
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const exp = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      const old = await mDb.get("login_codes", "email=eq."+e+"&used=eq.false").catch(() => []);
-      for (const c of (old||[])) await mDb.update("login_codes", "id=eq."+c.id, { used: true }).catch(() => {});
-      await mDb.insert("login_codes", { email: e, code, expires_at: exp, used: false, member_id: member.id });
-      let emailSent = false;
-      try {
-        const first=member.name.split(" ")[0];
-        const text="Dear "+first+",\n\nYour BIDA Member Portal login code is:\n\n  "+code+"\n\nThis code is valid for 5 minutes. Do not share it with anyone.\n\nIf you did not request this code, please ignore this email.\n\nWarm regards,\nThe Treasurer\nBida Multi-Purpose Co-operative Society";
-        const photoBlock=member.photoUrl
-          ?'<tr><td style="padding:20px 32px 0;text-align:center;"><img src="'+member.photoUrl+'" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.3);" alt="'+first+'"/></td></tr>'
-          :'<tr><td style="padding:20px 32px 0;text-align:center;"><div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);color:#fff;font-size:26px;font-weight:900;line-height:64px;text-align:center;display:inline-block;">'+first[0].toUpperCase()+'</div></td></tr>';
-        const html='<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:32px 0;"><tr><td align="center"><table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);"><tr><td style="background:linear-gradient(135deg,#0d3461,#1565c0);padding:28px 32px;text-align:center;"><div style="display:inline-block;background:#fff;border-radius:10px;padding:6px 16px;margin-bottom:12px;"><span style="font-size:26px;font-weight:900;color:#1565c0;letter-spacing:3px;">BIDA</span></div><div style="color:rgba(255,255,255,0.85);font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:600;">Multi-Purpose Co-operative Society</div></td></tr>'+photoBlock+'<tr><td style="padding:28px 32px 16px;text-align:center;"><p style="font-size:15px;color:#1a1a2e;margin:0 0 8px 0;">Dear <strong>'+first+'</strong>,</p><p style="font-size:14px;color:#555;line-height:1.6;margin:0 0 24px 0;">Use the code below to log in to your BIDA Member Portal. It expires in <strong>5 minutes</strong>.</p><div style="background:#f0f4f8;border:2px dashed #1565c0;border-radius:12px;padding:20px 32px;display:inline-block;margin-bottom:24px;"><div style="font-size:11px;color:#888;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">Your Login Code</div><div style="font-size:42px;font-weight:900;color:#1565c0;letter-spacing:10px;font-family:Courier,monospace;">'+code+'</div></div><p style="font-size:12px;color:#999;margin:0;">Do not share this code with anyone. If you did not request this, ignore this email.</p></td></tr><tr><td style="padding:0 32px 28px;text-align:center;"><p style="font-size:13px;color:#555;margin:0;">Warm regards,<br/><strong>The Treasurer</strong><br/><span style="color:#1565c0;font-weight:700;">Bida Multi-Purpose Co-operative Society</span></p></td></tr><tr><td style="background:#f0f4f8;padding:14px 32px;text-align:center;border-top:1px solid #e3eaf5;"><p style="font-size:10px;color:#999;margin:0;">This is an automated message. Please do not reply to this email.</p></td></tr></table></td></tr></table></body></html>';
-        // Use EmailJS (browser-side — no backend required)
-        await sendViaEmailJS(e, "BIDA — Your Login Code: "+code, text, html);
-        emailSent = true;
-      } catch (_) { console.warn("EmailJS OTP send failed:", _.message); }
-      setDevCode(emailSent ? null : code);
-      setPhase("verify"); setCd(60); setOtp("");
-    } catch (ex) { setErr("Error: " + (ex.message || "Unknown error. Open browser console for details.")); console.error("sendCode failed:", ex); }
+
+      await mDb.update('members', 'id=eq.' + member.id, { failed_login_attempts: 0, locked_until: null, last_login: new Date().toISOString() });
+      if (member.is_first_login && member.temp_password_plain) {
+        await mDb.update('members', 'id=eq.' + member.id, { temp_password_plain: null }).catch(() => {});
+      }
+
+      onLogin({ type: 'member', memberId: member.id, memberName: member.name, memberLoginId: member.member_login_id, isFirstLogin: member.is_first_login });
+    } catch (ex) { setErr('Login failed. Please try again.'); console.error('Member login error:', ex); }
     finally { setBusy(false); }
   };
 
-  const verify = async () => {
-    const c = otp.replace(/\s/g,"");
-    setErr("");
-    if (c.length !== 6) { setErr("Enter the 6-digit code"); return; }
-    setBusy(true);
-    try {
-      const e = email.trim().toLowerCase();
-      const now = new Date().toISOString();
-      const rows = await mDb.get("login_codes", "email=eq."+e+"&used=eq.false&expires_at=gt."+encodeURIComponent(now)+"&order=created_at.desc&limit=1");
-      if (!rows.length || rows[0].code !== c) throw new Error("Invalid or expired code. Try again.");
-      await mDb.update("login_codes", "id=eq."+rows[0].id, { used: true });
-      const fp = await mFingerprint();
-      const token = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36))+"-"+Date.now();
-      await mDb.insert("member_sessions", { member_id: rows[0].member_id, token, device_id: fp, user_agent: navigator.userAgent, expires_at: new Date(Date.now()+8*3600*1000).toISOString() }).catch(()=>{});
-      onLogin({ type:"member", token, memberId: rows[0].member_id, memberName });
-    } catch (ex) { setErr(ex.message); }
-    finally { setBusy(false); }
-  };
-
-  const iSt = { width:"100%", padding:"12px 14px", borderRadius:10, border:"1.5px solid rgba(255,255,255,.15)", fontSize:15, outline:"none", boxSizing:"border-box", fontFamily:"var(--sans)", background:"rgba(255,255,255,.07)", color:"#fff", caretColor:"#00E5A0", transition:"border-color .18s,background .18s" };
-  const bSt = (d) => ({ width:"100%", padding:13, borderRadius:"var(--radius-md)", border:"none", fontWeight:700, fontSize:14, cursor:d?"not-allowed":"pointer", background:d?"rgba(255,255,255,.08)":"linear-gradient(135deg,#00C853,#00897B)", color:d?"rgba(255,255,255,.3)":"#fff", marginTop:4, fontFamily:"var(--sans)", boxShadow:d?"none":"0 4px 16px rgba(0,200,83,.3)", transition:"all .18s" });
-  const lSt = { fontSize:10, fontWeight:700, color:"rgba(255,255,255,.5)", textTransform:"uppercase", letterSpacing:.9, display:"block", marginBottom:6, fontFamily:"var(--mono)" };
-
-  if (phase === "email") return (
-    <React.Fragment>
-      <div style={{marginBottom:14}}>
-        <label style={lSt}>Your registered email address</label>
-        <input style={iSt} type="email" placeholder="you@example.com" value={email}
-          onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendCode()} autoComplete="email"/>
-      </div>
-      {err&&<div className="login-err">{err}</div>}
-      <button style={bSt(busy||!email)} onClick={sendCode} disabled={busy||!email}>{busy?"Sending code...":"Send Login Code →"}</button>
-      <div style={{textAlign:"center",marginTop:10,fontSize:11,color:"rgba(255,255,255,.35)"}}>A 6-digit code will be emailed to you</div>
-    </React.Fragment>
-  );
+  const iSt = { width:'100%', padding:'12px 14px', borderRadius:10, border:'1.5px solid rgba(255,255,255,.15)', fontSize:15, outline:'none', boxSizing:'border-box', fontFamily:'var(--sans)', background:'rgba(255,255,255,.07)', color:'#fff', caretColor:'#00E5A0', transition:'border-color .18s,background .18s' };
+  const bSt = (d) => ({ width:'100%', padding:13, borderRadius:'var(--radius-md)', border:'none', fontWeight:700, fontSize:14, cursor:d?'not-allowed':'pointer', background:d?'rgba(255,255,255,.08)':'linear-gradient(135deg,#00C853,#00897B)', color:d?'rgba(255,255,255,.3)':'#fff', marginTop:4, fontFamily:'var(--sans)', boxShadow:d?'none':'0 4px 16px rgba(0,200,83,.3)', transition:'all .18s' });
+  const lSt = { fontSize:10, fontWeight:700, color:'rgba(255,255,255,.5)', textTransform:'uppercase', letterSpacing:.9, display:'block', marginBottom:6, fontFamily:'var(--mono)' };
 
   return (
     <React.Fragment>
-      {memberName&&<div style={{background:"rgba(0,200,83,.15)",border:"1px solid rgba(0,200,83,.3)",borderRadius:9,padding:"9px 12px",fontSize:12,color:"var(--mint-500)",marginBottom:12,textAlign:"center"}}>👋 Welcome, <strong>{memberName}</strong>! Check your email for the code.</div>}
-      {devCode&&<div style={{background:"rgba(255,160,0,.15)",border:"1px solid rgba(255,160,0,.3)",borderRadius:9,padding:"10px 12px",fontSize:12,color:"#ffcc02",marginBottom:12,textAlign:"center"}}>
-        Dev mode — email API not set up. Code: <strong style={{fontFamily:"var(--mono)",fontSize:20,letterSpacing:2}}>{devCode}</strong>
-        <div style={{fontSize:10,marginTop:4,opacity:.8}}>Deploy /api/send-email.js to Vercel and this disappears.</div>
-      </div>}
       <div style={{marginBottom:14}}>
-        <label style={lSt}>6-digit code from your email</label>
-        <input style={{...iSt,textAlign:"center",letterSpacing:8,fontSize:24,fontFamily:"var(--mono)"}}
-          type="text" inputMode="numeric" maxLength={6} placeholder="······"
-          value={otp} onChange={e=>{const v=e.target.value.replace(/\D/g,"");setOtp(v);}}
-          onKeyDown={e=>e.key==="Enter"&&verify()}/>
+        <label style={lSt}>Member ID</label>
+        <input style={{...iSt,fontFamily:'var(--mono)',letterSpacing:1}} type="text" placeholder="e.g. BIDA-2024-001"
+          value={memberLoginId} onChange={e=>setMemberLoginId(e.target.value.toUpperCase())}
+          onKeyDown={e=>e.key==='Enter'&&handleLogin()} autoComplete="username"/>
+      </div>
+      <div style={{marginBottom:14,position:'relative'}}>
+        <label style={lSt}>Password</label>
+        <input style={iSt} type={showPassword?'text':'password'} placeholder="••••••••"
+          value={password} onChange={e=>setPassword(e.target.value)}
+          onKeyDown={e=>e.key==='Enter'&&handleLogin()} autoComplete="current-password"/>
+        <button type="button" onClick={()=>setShowPassword(v=>!v)} style={{position:'absolute',right:12,bottom:13,background:'none',border:'none',cursor:'pointer',fontSize:14,color:'rgba(255,255,255,.4)',padding:0}}>{showPassword?'🙈':'👁️'}</button>
       </div>
       {err&&<div className="login-err">{err}</div>}
-      <button style={bSt(busy||otp.length<6)} onClick={verify} disabled={busy||otp.length<6}>{busy?"⏳ Verifying...":"✓ Verify & Login"}</button>
-      <div style={{display:"flex",justifyContent:"space-between",marginTop:10,fontSize:11,color:"rgba(255,255,255,.35)"}}>
-        <button onClick={()=>{setPhase("email");setOtp("");setErr("");setDevCode(null);}} style={{background:"none",border:"none",color:"rgba(0,229,160,.8)",cursor:"pointer",fontSize:11,fontWeight:600,padding:0}}>← Change email</button>
-        {cd>0?<span>Resend in {cd}s</span>:<button onClick={sendCode} style={{background:"none",border:"none",color:"rgba(0,229,160,.8)",cursor:"pointer",fontSize:11,fontWeight:600,padding:0}}>Resend code</button>}
+      <button style={bSt(busy||!memberLoginId||!password)} onClick={handleLogin} disabled={busy||!memberLoginId||!password}>
+        {busy?'⏳ Verifying...':'Login →'}
+      </button>
+      <div style={{textAlign:'center',marginTop:10}}>
+        <button onClick={()=>setShowForgot(true)} style={{background:'none',border:'none',color:'rgba(0,229,160,.7)',cursor:'pointer',fontSize:11,fontWeight:600,padding:0,fontFamily:'var(--sans)'}}>Forgot password?</button>
       </div>
+      {showForgot&&<MemberForgotPasswordModal onClose={()=>setShowForgot(false)}/>}
     </React.Fragment>
+  );
+}
+
+// ============================================================
+// FORGOT PASSWORD MODAL
+// ============================================================
+function MemberForgotPasswordModal({ onClose }) {
+  const [step, setStep] = React.useState('member_id');
+  const [loginId, setLoginId] = React.useState('');
+  const [member, setMember] = React.useState(null);
+  const [answer, setAnswer] = React.useState('');
+  const [newPass, setNewPass] = React.useState('');
+  const [confirmPass, setConfirmPass] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  const [done, setDone] = React.useState(false);
+
+  const getBcrypt = () => {
+    if (typeof window !== 'undefined' && window.dcodeIO && window.dcodeIO.bcrypt) return window.dcodeIO.bcrypt;
+    if (typeof window !== 'undefined' && window.bcrypt) return window.bcrypt;
+    return null;
+  };
+
+  const lookUp = async () => {
+    if (!loginId.trim()) { setErr('Enter your Member ID'); return; }
+    setBusy(true); setErr('');
+    try {
+      const rows = await mDb.get('members', 'member_login_id=eq.' + encodeURIComponent(loginId.toUpperCase().trim()));
+      if (!rows || !rows[0]) { setErr('Member ID not found'); setBusy(false); return; }
+      if (!rows[0].security_question) { setErr('No security question set. Contact your BIDA manager.'); setBusy(false); return; }
+      setMember(rows[0]); setStep('security');
+    } catch { setErr('Something went wrong. Try again.'); }
+    finally { setBusy(false); }
+  };
+
+  const verifyAnswer = async () => {
+    if (!answer.trim()) { setErr('Enter your security answer'); return; }
+    setBusy(true); setErr('');
+    try {
+      const bc = getBcrypt();
+      if (!bc) { setErr('Security library not loaded. Refresh and try again.'); setBusy(false); return; }
+      const ok = bc.compareSync(answer.toLowerCase().trim(), member.security_answer_hash || '');
+      if (!ok) { setErr('Incorrect answer'); setBusy(false); return; }
+      setStep('reset');
+    } catch { setErr('Verification failed'); }
+    finally { setBusy(false); }
+  };
+
+  const resetPassword = async () => {
+    if (newPass.length < 8) { setErr('Password must be at least 8 characters'); return; }
+    if (!/\d/.test(newPass)) { setErr('Password must contain at least one number'); return; }
+    if (newPass !== confirmPass) { setErr('Passwords do not match'); return; }
+    setBusy(true); setErr('');
+    try {
+      const bc = getBcrypt();
+      if (!bc) { setErr('Security library not loaded.'); setBusy(false); return; }
+      const salt = bc.genSaltSync(10);
+      const hash = bc.hashSync(newPass, salt);
+      await mDb.update('members', 'id=eq.' + member.id, { password_hash: hash, is_first_login: false, account_status: 'active', temp_password_plain: null, failed_login_attempts: 0, locked_until: null });
+      setDone(true);
+    } catch { setErr('Failed to reset password. Try again.'); }
+    finally { setBusy(false); }
+  };
+
+  const ovSt = { position:'fixed', inset:0, background:'rgba(0,0,0,.65)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:20 };
+  const boxSt = { background:'#0d2a5e', border:'1px solid rgba(255,255,255,.15)', borderRadius:16, padding:'24px 22px', width:'100%', maxWidth:380, color:'#fff' };
+  const iSt = { width:'100%', padding:'11px 13px', borderRadius:9, border:'1.5px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.08)', color:'#fff', fontSize:14, outline:'none', fontFamily:'var(--sans)', boxSizing:'border-box' };
+  const bSt = (d) => ({ width:'100%', padding:11, borderRadius:9, border:'none', fontWeight:700, fontSize:13, cursor:d?'not-allowed':'pointer', background:d?'rgba(255,255,255,.1)':'linear-gradient(135deg,#1565c0,#0d47a1)', color:'#fff', marginTop:8 });
+  const lSt = { fontSize:10, fontWeight:700, color:'rgba(255,255,255,.5)', textTransform:'uppercase', letterSpacing:.8, display:'block', marginBottom:5, fontFamily:'var(--mono)' };
+
+  return (
+    <div style={ovSt} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={boxSt}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}}>
+          <div style={{fontWeight:800,fontSize:15}}>🔑 Reset Password</div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'rgba(255,255,255,.5)',cursor:'pointer',fontSize:18,lineHeight:1,padding:0}}>✕</button>
+        </div>
+        {done?(
+          <div style={{textAlign:'center',padding:'10px 0'}}>
+            <div style={{fontSize:28,marginBottom:10}}>✅</div>
+            <div style={{fontWeight:700,marginBottom:6}}>Password reset successfully</div>
+            <div style={{fontSize:12,opacity:.7,marginBottom:16}}>You can now log in with your new password.</div>
+            <button style={bSt(false)} onClick={onClose}>Close</button>
+          </div>
+        ):step==='member_id'?(
+          <React.Fragment>
+            <div style={{fontSize:12,opacity:.7,marginBottom:14}}>Enter your Member ID to begin.</div>
+            <div style={{marginBottom:12}}><label style={lSt}>Member ID</label><input style={{...iSt,fontFamily:'var(--mono)'}} type="text" placeholder="BIDA-2024-001" value={loginId} onChange={e=>setLoginId(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&lookUp()}/></div>
+            {err&&<div style={{background:'rgba(229,57,53,.2)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#ff8a80',marginBottom:8}}>{err}</div>}
+            <button style={bSt(busy||!loginId.trim())} onClick={lookUp} disabled={busy||!loginId.trim()}>{busy?'Looking up...':'Continue →'}</button>
+          </React.Fragment>
+        ):step==='security'?(
+          <React.Fragment>
+            <div style={{background:'rgba(21,101,192,.2)',borderRadius:9,padding:'10px 12px',fontSize:12,marginBottom:14}}>
+              <div style={{fontWeight:700,marginBottom:4}}>Security Question</div>
+              <div style={{opacity:.85}}>{member.security_question}</div>
+            </div>
+            <div style={{marginBottom:12}}><label style={lSt}>Your Answer</label><input style={iSt} type="text" value={answer} onChange={e=>setAnswer(e.target.value)} onKeyDown={e=>e.key==='Enter'&&verifyAnswer()}/></div>
+            {err&&<div style={{background:'rgba(229,57,53,.2)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#ff8a80',marginBottom:8}}>{err}</div>}
+            <button style={bSt(busy||!answer.trim())} onClick={verifyAnswer} disabled={busy||!answer.trim()}>{busy?'Verifying...':'Verify →'}</button>
+          </React.Fragment>
+        ):(
+          <React.Fragment>
+            <div style={{marginBottom:12}}><label style={lSt}>New Password (min 8 chars, must include a number)</label><input style={iSt} type="password" value={newPass} onChange={e=>setNewPass(e.target.value)}/></div>
+            <div style={{marginBottom:12}}><label style={lSt}>Confirm New Password</label><input style={iSt} type="password" value={confirmPass} onChange={e=>setConfirmPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&resetPassword()}/></div>
+            {err&&<div style={{background:'rgba(229,57,53,.2)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#ff8a80',marginBottom:8}}>{err}</div>}
+            <button style={bSt(busy||!newPass||!confirmPass)} onClick={resetPassword} disabled={busy||!newPass||!confirmPass}>{busy?'Saving...':'Set New Password →'}</button>
+          </React.Fragment>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -9479,6 +9638,92 @@ function MemberDashboardInline({ session, onLogout }) {
   const [load,   setLoad]   = useState(true);
   const [err,    setErr]    = useState(null);
   const [showPay,setShowPay]= useState(false);
+  const [showFirstLogin, setShowFirstLogin] = useState(!!session?.isFirstLogin);
+  const [flPass, setFlPass] = useState('');
+  const [flConfirm, setFlConfirm] = useState('');
+  const [flErr, setFlErr] = useState('');
+  const [flBusy, setFlBusy] = useState(false);
+  const [flShowPass, setFlShowPass] = useState(false);
+  const [flSecQ, setFlSecQ] = useState('');
+  const [flSecA, setFlSecA] = useState('');
+
+  const handleFirstLoginSetup = async () => {
+    if (flPass.length < 8) { setFlErr('Password must be at least 8 characters'); return; }
+    if (!/\d/.test(flPass)) { setFlErr('Password must contain at least one number'); return; }
+    if (flPass !== flConfirm) { setFlErr('Passwords do not match'); return; }
+    if (!flSecQ.trim()) { setFlErr('Choose a security question'); return; }
+    if (!flSecA.trim()) { setFlErr('Enter your security answer'); return; }
+    setFlBusy(true); setFlErr('');
+    try {
+      const bc = typeof window !== 'undefined' && window.dcodeIO && window.dcodeIO.bcrypt ? window.dcodeIO.bcrypt : window.bcrypt;
+      if (!bc) { setFlErr('Security library not loaded — please refresh.'); setFlBusy(false); return; }
+      const salt = bc.genSaltSync(10);
+      const hash = bc.hashSync(flPass, salt);
+      const ansHash = bc.hashSync(flSecA.toLowerCase().trim(), bc.genSaltSync(10));
+      await mDb.update('members', 'id=eq.' + session.memberId, {
+        password_hash: hash, is_first_login: false, account_status: 'active',
+        temp_password_plain: null, security_question: flSecQ, security_answer_hash: ansHash,
+        failed_login_attempts: 0, locked_until: null
+      });
+      const saved = sessionStorage.getItem('bida_member_sess');
+      if (saved) { try { const s = JSON.parse(saved); s.isFirstLogin = false; sessionStorage.setItem('bida_member_sess', JSON.stringify(s)); } catch {} }
+      setShowFirstLogin(false);
+    } catch (ex) { setFlErr('Setup failed. Please try again.'); console.error(ex); }
+    finally { setFlBusy(false); }
+  };
+
+  if (showFirstLogin) {
+    const SEC_QUESTIONS = [
+      'What is the name of your primary school?',
+      "What is your mother's maiden name?",
+      'What was the name of your first pet?',
+      'What is the name of the town where you were born?',
+      'What was the make of your first vehicle?',
+    ];
+    const iSt = { width:'100%', padding:'11px 13px', borderRadius:9, border:'1.5px solid #cfd8dc', fontSize:14, outline:'none', fontFamily:'inherit', boxSizing:'border-box' };
+    return (
+      <div style={{minHeight:'100vh', background:'linear-gradient(135deg,#0a1f3d,#0d3461)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, fontFamily:'var(--sans)'}}>
+        <div style={{background:'#fff', borderRadius:20, padding:'32px 28px', width:'100%', maxWidth:400, boxShadow:'0 24px 64px rgba(0,0,0,.35)'}}>
+          <div style={{textAlign:'center', marginBottom:24}}>
+            <div style={{fontSize:22, fontWeight:900, color:'#0d2a5e', letterSpacing:2}}>BIDA</div>
+            <div style={{fontSize:11, color:'#90a4ae', letterSpacing:1, textTransform:'uppercase', marginBottom:16}}>Member Portal</div>
+            <div style={{background:'#e3f2fd', borderRadius:12, padding:'12px 16px'}}>
+              <div style={{fontWeight:800, fontSize:14, color:'#1565c0', marginBottom:4}}>Welcome! Set up your account</div>
+              <div style={{fontSize:12, color:'#546e7a', lineHeight:1.5}}>Choose a permanent password and a security question. You only do this once.</div>
+            </div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:10, fontWeight:700, color:'#90a4ae', textTransform:'uppercase', display:'block', marginBottom:5}}>New Password</label>
+            <div style={{position:'relative'}}>
+              <input style={iSt} type={flShowPass?'text':'password'} value={flPass} onChange={e=>setFlPass(e.target.value)} placeholder="Min 8 characters, include a number"/>
+              <button type="button" onClick={()=>setFlShowPass(v=>!v)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:13,color:'#90a4ae',padding:0}}>{flShowPass?'🙈':'👁️'}</button>
+            </div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:10, fontWeight:700, color:'#90a4ae', textTransform:'uppercase', display:'block', marginBottom:5}}>Confirm Password</label>
+            <input style={iSt} type="password" value={flConfirm} onChange={e=>setFlConfirm(e.target.value)} placeholder="Re-enter password"/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:10, fontWeight:700, color:'#90a4ae', textTransform:'uppercase', display:'block', marginBottom:5}}>Security Question</label>
+            <select style={{...iSt, background:'#fff', cursor:'pointer'}} value={flSecQ} onChange={e=>setFlSecQ(e.target.value)}>
+              <option value="">— Select a question —</option>
+              {SEC_QUESTIONS.map(q=><option key={q} value={q}>{q}</option>)}
+            </select>
+          </div>
+          {flSecQ&&(
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:10, fontWeight:700, color:'#90a4ae', textTransform:'uppercase', display:'block', marginBottom:5}}>Your Answer</label>
+              <input style={iSt} type="text" value={flSecA} onChange={e=>setFlSecA(e.target.value)} placeholder="Your answer (saved securely)"/>
+            </div>
+          )}
+          {flErr&&<div style={{background:'#ffebee', border:'1px solid #ffcdd2', borderRadius:8, padding:'9px 12px', fontSize:12, color:'#c62828', marginBottom:12, textAlign:'center'}}>{flErr}</div>}
+          <button onClick={handleFirstLoginSetup} disabled={flBusy||!flPass||!flConfirm||!flSecQ||!flSecA} style={{width:'100%', padding:13, borderRadius:10, border:'none', fontWeight:700, fontSize:14, cursor:(flBusy||!flPass||!flConfirm||!flSecQ||!flSecA)?'not-allowed':'pointer', background:(flBusy||!flPass||!flConfirm||!flSecQ||!flSecA)?'#cfd8dc':'linear-gradient(135deg,#1565c0,#0d47a1)', color:'#fff'}}>
+            {flBusy ? '⏳ Saving...' : 'Complete Setup →'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const fetch_ = useCallback(async () => {
     if(!session?.memberId) return;
@@ -9684,27 +9929,5 @@ function MemberDashboardInline({ session, onLogout }) {
 }
 
 export default function App(){
-  // Domain detection for main domain
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-  if (hostname === 'pamojapay.co' || hostname === 'www.pamojapay.co') {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        background: '#0d3461',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'system-ui, sans-serif'
-      }}>
-        <div style={{ textAlign: 'center', color: 'white' }}>
-          <h1 style={{ fontSize: 40 }}>BIDA</h1>
-          <p>Multi-Purpose Co-operative Society</p>
-          <p style={{ marginTop: 24 }}>
-            <a href="https://bida.pamojapay.co" style={{ color: '#90caf9' }}>bida.pamojapay.co</a>
-          </p>
-        </div>
-      </div>
-    );
-  }
   return React.createElement(ErrorBoundary,null,React.createElement(AppInner,null));
 }
