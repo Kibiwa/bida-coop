@@ -29,6 +29,16 @@ async function loadEmailJS() {
   if (window.emailjs) { window.emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY }); _ejsLoaded = true; }
 }
 
+// ── bcryptjs loader (self-contained, no index.html change needed) ──
+let _bcryptLoaded = false;
+async function loadBcrypt() {
+  const get = () => (window.dcodeIO && window.dcodeIO.bcrypt) ? window.dcodeIO.bcrypt : (window.bcrypt || null);
+  if (_bcryptLoaded && get()) return get();
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js");
+  _bcryptLoaded = true;
+  return get();
+}
+
 // Sends a plain email via EmailJS. Returns true on success.
 async function sendViaEmailJS(toEmail, subject, textBody, htmlBody) {
   await loadEmailJS();
@@ -6818,27 +6828,36 @@ function AppInner(){
                   <div className="prof-section-title">🔐 Account Access</div>
                   {!profMember.member_login_id?(
                     <button className="btn bp sm" style={{width:'100%'}} onClick={async()=>{
-                      const bc=typeof window!=='undefined'&&window.dcodeIO&&window.dcodeIO.bcrypt?window.dcodeIO.bcrypt:window.bcrypt;
-                      if(!bc){alert('Security library not loaded — please refresh and try again.');return;}
-                      const year=new Date().getFullYear();
-                      const prefix='BIDA';
-                      const existing=await mDb.get('members','member_login_id=like.'+encodeURIComponent(prefix+'-'+year+'-%')+'&order=member_login_id.desc&limit=1').catch(()=>[]);
-                      let nextNum=1;
-                      if(existing&&existing[0]&&existing[0].member_login_id){
-                        const parts=existing[0].member_login_id.split('-');
-                        const last=parseInt(parts[parts.length-1]);
-                        if(!isNaN(last)) nextNum=last+1;
-                      }
-                      const loginId=prefix+'-'+year+'-'+String(nextNum).padStart(3,'0');
-                      const WORDS=['Bida','Coop','Save','Fund','Grow','Unity'];
-                      const word=WORDS[Math.floor(Math.random()*WORDS.length)];
-                      const num=Math.floor(1000+Math.random()*9000);
-                      const tempPass=word+'@'+num;
-                      const salt=bc.genSaltSync(10);
-                      const hash=bc.hashSync(tempPass,salt);
-                      await mDb.update('members','id=eq.'+profMember.id,{member_login_id:loginId,password_hash:hash,temp_password_plain:tempPass,is_first_login:true,account_status:'pending',login_email:profMember.email||null,login_phone:profMember.phone||profMember.whatsapp||null,tenant_id:'bida'});
-                      setMembers(prev=>prev.map(m=>m.id===profMember.id?{...m,member_login_id:loginId,account_status:'pending',is_first_login:true}:m));
-                      alert('Credentials generated!\n\nMember ID: '+loginId+'\nTemporary Password: '+tempPass+'\n\nShare these securely with '+profMember.name+'. They will be prompted to change password on first login.');
+                      try {
+                        const bc=await loadBcrypt();
+                        if(!bc){alert('Security library not loaded — please refresh and try again.');return;}
+                        // Pre-flight: check SQL migration has been run
+                        const testRow=await mDb.get('members','id=eq.'+profMember.id+'&select=member_login_id,account_status').catch(e=>{throw new Error('Supabase connection failed: '+e.message);});
+                        if(!testRow||testRow.length===0){throw new Error('Could not read member record. Check Supabase connection.');}
+                        if(!('member_login_id' in (testRow[0]||{}))){throw new Error('SQL migration not run yet. Please run bida_auth_migration.sql in Supabase first.');}
+                        const year=new Date().getFullYear();
+                        const prefix='BIDA';
+                        // Fetch ALL members that have a login_id and find the max sequence number
+                        const allWithId=await mDb.get('members','select=member_login_id&member_login_id=not.is.null').catch(()=>[]);
+                        let nextNum=1;
+                        const pattern=new RegExp('^'+prefix+'-'+year+'-(\\d+)$');
+                        (allWithId||[]).forEach(r=>{
+                          if(r.member_login_id){
+                            const m2=r.member_login_id.match(pattern);
+                            if(m2){const n=parseInt(m2[1]);if(n>=nextNum)nextNum=n+1;}
+                          }
+                        });
+                        const loginId=prefix+'-'+year+'-'+String(nextNum).padStart(3,'0');
+                        const WORDS=['Bida','Coop','Save','Fund','Grow','Unity'];
+                        const word=WORDS[Math.floor(Math.random()*WORDS.length)];
+                        const num=Math.floor(1000+Math.random()*9000);
+                        const tempPass=word+'@'+num;
+                        const salt=bc.genSaltSync(10);
+                        const hash=bc.hashSync(tempPass,salt);
+                        await mDb.update('members','id=eq.'+profMember.id,{member_login_id:loginId,password_hash:hash,temp_password_plain:tempPass,is_first_login:true,account_status:'pending',login_email:profMember.email||null,login_phone:profMember.phone||profMember.whatsapp||null,tenant_id:'bida'});
+                        setMembers(prev=>prev.map(m=>m.id===profMember.id?{...m,member_login_id:loginId,account_status:'pending',is_first_login:true}:m));
+                        alert('Credentials generated!\n\nMember ID: '+loginId+'\nTemporary Password: '+tempPass+'\n\nShare these securely with '+profMember.name+'. They will be prompted to change password on first login.');
+                      } catch(ex){alert('Error generating credentials: '+ex.message+'\n\nCheck browser console for details.');console.error('genCreds error:',ex);}
                     }}>Generate Login Credentials</button>
                   ):(
                     <div>
@@ -6860,7 +6879,7 @@ function AppInner(){
                       )}
                       <div style={{display:'flex',gap:7,marginTop:8}}>
                         <button className="btn bg xs" style={{flex:1}} onClick={async()=>{
-                          const bc=typeof window!=='undefined'&&window.dcodeIO&&window.dcodeIO.bcrypt?window.dcodeIO.bcrypt:window.bcrypt;
+                          const bc=await loadBcrypt();
                           if(!bc){alert('Security library not loaded — please refresh.');return;}
                           const WORDS=['Bida','Coop','Save','Fund','Grow','Unity'];
                           const word=WORDS[Math.floor(Math.random()*WORDS.length)];
@@ -8842,12 +8861,6 @@ function MemberEmailOTPWidget({ onLogin }) {
   const [err, setErr] = React.useState('');
   const [showForgot, setShowForgot] = React.useState(false);
 
-  const getBcrypt = () => {
-    if (typeof window !== 'undefined' && window.dcodeIO && window.dcodeIO.bcrypt) return window.dcodeIO.bcrypt;
-    if (typeof window !== 'undefined' && window.bcrypt) return window.bcrypt;
-    return null;
-  };
-
   const handleLogin = async () => {
     if (!memberLoginId.trim() || !password) { setErr('Enter your Member ID and password'); return; }
     setBusy(true); setErr('');
@@ -8862,7 +8875,7 @@ function MemberEmailOTPWidget({ onLogin }) {
       }
       if (member.account_status === 'suspended') { setErr('Account suspended. Contact your BIDA manager.'); setBusy(false); return; }
 
-      const bc = getBcrypt();
+      const bc = await loadBcrypt();
       if (!bc) { setErr('Security library not loaded — please refresh the page.'); setBusy(false); return; }
 
       const valid = bc.compareSync(password, member.password_hash || '');
@@ -8930,12 +8943,6 @@ function MemberForgotPasswordModal({ onClose }) {
   const [err, setErr] = React.useState('');
   const [done, setDone] = React.useState(false);
 
-  const getBcrypt = () => {
-    if (typeof window !== 'undefined' && window.dcodeIO && window.dcodeIO.bcrypt) return window.dcodeIO.bcrypt;
-    if (typeof window !== 'undefined' && window.bcrypt) return window.bcrypt;
-    return null;
-  };
-
   const lookUp = async () => {
     if (!loginId.trim()) { setErr('Enter your Member ID'); return; }
     setBusy(true); setErr('');
@@ -8952,7 +8959,7 @@ function MemberForgotPasswordModal({ onClose }) {
     if (!answer.trim()) { setErr('Enter your security answer'); return; }
     setBusy(true); setErr('');
     try {
-      const bc = getBcrypt();
+      const bc = await loadBcrypt();
       if (!bc) { setErr('Security library not loaded. Refresh and try again.'); setBusy(false); return; }
       const ok = bc.compareSync(answer.toLowerCase().trim(), member.security_answer_hash || '');
       if (!ok) { setErr('Incorrect answer'); setBusy(false); return; }
@@ -8967,7 +8974,7 @@ function MemberForgotPasswordModal({ onClose }) {
     if (newPass !== confirmPass) { setErr('Passwords do not match'); return; }
     setBusy(true); setErr('');
     try {
-      const bc = getBcrypt();
+      const bc = await loadBcrypt();
       if (!bc) { setErr('Security library not loaded.'); setBusy(false); return; }
       const salt = bc.genSaltSync(10);
       const hash = bc.hashSync(newPass, salt);
@@ -9655,7 +9662,7 @@ function MemberDashboardInline({ session, onLogout }) {
     if (!flSecA.trim()) { setFlErr('Enter your security answer'); return; }
     setFlBusy(true); setFlErr('');
     try {
-      const bc = typeof window !== 'undefined' && window.dcodeIO && window.dcodeIO.bcrypt ? window.dcodeIO.bcrypt : window.bcrypt;
+      const bc = await loadBcrypt();
       if (!bc) { setFlErr('Security library not loaded — please refresh.'); setFlBusy(false); return; }
       const salt = bc.genSaltSync(10);
       const hash = bc.hashSync(flPass, salt);
