@@ -3555,6 +3555,20 @@ function AppInner(){
       setMembers(prev=>prev.map(m=>m.id===profId?before:m));
       alert("⚠️ Profile NOT saved to database.\n\nError: "+errMsg+"\n\nChanges have been reverted. Check your internet connection and try again.\nIf this keeps happening, run the SQL schema in Supabase.");
     });
+    // Auto-write contrib_log entries for any savings field that increased
+    const today=new Date().toISOString().split("T")[0];
+    ["monthlySavings","welfare","shares","membership","annualSub","voluntaryDeposit"].forEach(cat=>{
+      const prev2=+(before?.[cat]||0);
+      const next2=+(updated[cat]||0);
+      const delta=next2-prev2;
+      if(delta>0){
+        const logRec={id:Date.now()+Math.floor(Math.random()*1000),memberId:profId,date:today,
+          category:cat,amount:delta,note:"Updated via profile edit",
+          recordedBy:authUser?.name||"System",recordedAt:new Date().toISOString()};
+        setContribLog(p=>[...p,logRec]);
+        saveRecord("contrib_log",logRec,setSyncStatus);
+      }
+    });
     setProfEdit(false);
   };
   const optOutMember=()=>{
@@ -3637,6 +3651,18 @@ function AppInner(){
     saveRecord("members",newMember,setSyncStatus,(errMsg)=>{
       setMembers(prev=>prev.filter(m=>m.id!==newMember.id));
       alert("⚠️ New member NOT saved to database.\n\nError: "+errMsg+"\n\nThe member has been removed from your local view. Please check your connection and try again.");
+    });
+    // Auto-write contrib_log for initial savings on new member registration
+    const today2=joinDate||new Date().toISOString().split("T")[0];
+    ["monthlySavings","welfare","shares","membership","annualSub","voluntaryDeposit"].forEach(cat=>{
+      const amt2=+(newMember[cat]||0);
+      if(amt2>0){
+        const logRec={id:Date.now()+Math.floor(Math.random()*1000),memberId:id,date:today2,
+          category:cat,amount:amt2,note:"Initial registration",
+          recordedBy:authUser?.name||"System",recordedAt:new Date().toISOString()};
+        setContribLog(p=>[...p,logRec]);
+        saveRecord("contrib_log",logRec,setSyncStatus);
+      }
     });
     postAudit([mkAudit("create","member",id,null,newMember,authUser?.role,authUser?.name)]);
     setAddMModal(false);
