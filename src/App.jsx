@@ -4003,7 +4003,39 @@ function AppInner(){
   const handleBatchPDF=async()=>{
     setPdfGen("batch");setSharedPDF(null);
     try{
-      const blob=await generateMonthlyBatchPDF(reportMonth,reportYear,members,loans,expenses);
+      // Build period-scoped member figures from contribLog for the selected month/year.
+      // This ensures the batch report shows only what was contributed in that period,
+      // not cumulative all-time totals from the members table.
+      const mStart=new Date(reportYear,reportMonth,1);
+      const mEnd=new Date(reportYear,reportMonth+1,0,23,59,59);
+      const periodLog=contribLog.filter(c=>{const d=new Date(c.date);return d>=mStart&&d<=mEnd;});
+
+      // Try Supabase RPC first (requires BIDA_monthly_batch_fix.sql to be deployed)
+      let periodMembers=null;
+      try{
+        periodMembers=await supa("GET","rpc/get_monthly_batch",null,
+          "p_month="+(reportMonth+1)+"&p_year="+reportYear
+        );
+      }catch(_){periodMembers=null;}
+
+      // Fallback: derive period figures client-side from contribLog
+      const resolvedMembers=(periodMembers&&periodMembers.length>0)
+        ?periodMembers
+        :members.map(m=>{
+            const ml=periodLog.filter(c=>c.memberId===m.id||c.member_id===m.id);
+            const pick=(types)=>ml.filter(c=>types.includes(c.type||c.category||"")).reduce((s,c)=>s+(+c.amount||0),0);
+            return {
+              ...m,
+              monthlySavings:   pick(["monthly_savings","monthlySavings","savings"]),
+              welfare:          pick(["welfare"]),
+              shares:           pick(["shares"]),
+              membership:       pick(["membership"]),
+              annualSub:        pick(["annual_sub","annualSub"]),
+              voluntaryDeposit: pick(["voluntary_deposit","voluntaryDeposit","voluntary"]),
+            };
+          });
+
+      const blob=await generateMonthlyBatchPDF(reportMonth,reportYear,resolvedMembers,loans,expenses);
       const mName=MONTHS[reportMonth]+"_"+reportYear;
       setSharedPDF({blob,filename:"BIDA_Monthly_Statement_"+mName+".pdf",label:"Monthly Statement — "+MONTHS[reportMonth]+" "+reportYear,type:"batch",show:true});
     }catch(e){console.error("PDF error:",e);alert("⚠️ PDF generation failed.\n\nError: "+e.message+"\n\nIf this keeps happening, refresh the page and try again.");}
