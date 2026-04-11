@@ -451,7 +451,7 @@ function defaultPrincipalPenalty(m,loans){
   return maxOD<=3?0:Math.min((maxOD-3)*0.005,0.20);
 }
 function effectiveBorrowLimit(m,loans){
-  const base=(m.monthlySavings||0)+(m.welfare||0);
+  const base=(m.monthlySavings||0)+(m.shares||0);
   return Math.round(base*borrowCapacityRate(m,loans||[])*(1-defaultPrincipalPenalty(m,loans||[])));
 }
 const borrowLimit=(m,loans)=>effectiveBorrowLimit(m,loans||[]);
@@ -468,7 +468,7 @@ const spIsActive=(sp)=>{const e=spExpiryDate(sp);return e?new Date()<=e:false;};
 // =====================================================
 // CONSTANTS (SINGLE DECLARATION - NO DUPLICATES!)
 // =====================================================
-const WELFARE_RATE = 0.40;
+const WELFARE_RATE = 0.30;
 const autoWelfare = (monthlySavings) => Math.round((monthlySavings||0) * WELFARE_RATE);
 const SHARE_UNIT_VALUE = 50000;
 const shareUnits = (m) => Math.round((m.shares||0)/SHARE_UNIT_VALUE);
@@ -3005,7 +3005,7 @@ function PayModal({loan, mem, payF, setPayF, savePay, setPayModal}){
   );
 }
 
-function SavingsExpensesChart({totalBanked, expensesData}){
+function SavingsExpensesChart({totalBanked, expensesData, investmentProfit}){
   const canvasRef = React.useRef(null);
   const chartRef  = React.useRef(null);
   const [mode, setMode] = React.useState("savings");
@@ -3036,13 +3036,19 @@ function SavingsExpensesChart({totalBanked, expensesData}){
             backgroundColor:bgColors,
             borderColor:borderColors,
             borderWidth:1,borderRadius:4
-          }]
+          },...((investmentProfit||0)>0?[{
+            label:"Investment Gains",
+            data:savingsData.map((_,i2)=>Math.round((investmentProfit||0)/savingsData.length*(i2+1))),
+            type:"line",borderColor:"#ff9800",backgroundColor:"rgba(255,152,0,.15)",
+            borderWidth:2,pointRadius:3,fill:true,tension:0.4
+          }]:[])
+          ]
         },
         options:{
           responsive:true,maintainAspectRatio:false,
           animation:{duration:0},
           plugins:{
-            legend:{display:false},
+            legend:{display:(investmentProfit||0)>0,position:"top",labels:{font:{size:9},padding:6,boxWidth:10}},
             tooltip:{callbacks:{label:c=>" UGX "+Number(c.raw).toLocaleString("en-UG")}},
             annotation:{}
           },
@@ -3094,8 +3100,8 @@ function BenevolentAccordion({members}){
         <div style={{overflowX:"auto",borderTop:"1px solid var(--bdr)"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead><tr style={{background:"var(--p50)"}}>
-              {["#","Member","Total Banked","Min Payout (70%)","NOK Name","Relationship","NOK Phone","Status"].map(h=>(
-                <th key={h} style={{padding:"8px 10px",textAlign:h==="Total Banked"||h==="Min Payout (70%)"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
+              {["#","Member","Total Banked","Min Payout (60%)","NOK Name","Relationship","NOK Phone","Status"].map(h=>(
+                <th key={h} style={{padding:"8px 10px",textAlign:h==="Total Banked"||h==="Min Payout (60%)"?"right":"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:600,color:"var(--p700)",textTransform:"uppercase",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
@@ -3103,7 +3109,7 @@ function BenevolentAccordion({members}){
                 const nok=m.nextOfKin||null;
                 const hasNOK=nok&&(nok.name||"").trim();
                 const tb=totBanked(m);
-                const minPayout=Math.round(((m.monthlySavings||0)+(m.welfare||0))*0.70);
+                const minPayout=Math.round(((m.monthlySavings||0)+(m.shares||0))*0.60);
                 return(
                   <tr key={m.id} style={{borderBottom:"1px solid #eef5ff"}} onMouseOver={e=>e.currentTarget.style.background="#f0f7ff"} onMouseOut={e=>e.currentTarget.style.background=""}>
                     <td style={{padding:"8px 10px",fontSize:10,color:"var(--tmuted)",fontFamily:"var(--mono)"}}>{i+1}</td>
@@ -3555,18 +3561,16 @@ function AppInner(){
       setMembers(prev=>prev.map(m=>m.id===profId?before:m));
       alert("⚠️ Profile NOT saved to database.\n\nError: "+errMsg+"\n\nChanges have been reverted. Check your internet connection and try again.\nIf this keeps happening, run the SQL schema in Supabase.");
     });
-    // Auto-write contrib_log entries for any savings field that increased
-    const today=new Date().toISOString().split("T")[0];
+    // Auto-write contrib_log for any savings field that increased
+    const _today=new Date().toISOString().split("T")[0];
     ["monthlySavings","welfare","shares","membership","annualSub","voluntaryDeposit"].forEach(cat=>{
-      const prev2=+(before?.[cat]||0);
-      const next2=+(updated[cat]||0);
-      const delta=next2-prev2;
-      if(delta>0){
-        const logRec={id:Date.now()+Math.floor(Math.random()*1000),memberId:profId,date:today,
-          category:cat,amount:delta,note:"Updated via profile edit",
+      const _prev=+(before?.[cat]||0), _next=+(updated[cat]||0), _delta=_next-_prev;
+      if(_delta>0){
+        const _lr={id:Date.now()+Math.floor(Math.random()*9999),memberId:profId,date:_today,
+          category:cat,amount:_delta,note:"Updated via profile edit",
           recordedBy:authUser?.name||"System",recordedAt:new Date().toISOString()};
-        setContribLog(p=>[...p,logRec]);
-        saveRecord("contrib_log",logRec,setSyncStatus);
+        setContribLog(p=>[...p,_lr]);
+        saveRecord("contrib_log",_lr,setSyncStatus);
       }
     });
     setProfEdit(false);
@@ -3635,13 +3639,13 @@ function AppInner(){
       const refId=+addMF.referredById;
       const referrer=members.find(m=>m.id===refId);
       const newAnnualSub=+addMF.annualSub||0;
-      if(referrer&&newAnnualSub>=50000){
-        const commBase=(referrer.monthlySavings||0)+(referrer.welfare||0);
-        const commission=Math.round(commBase*0.01);
+      if(referrer&&commBase>0){
+        const commBase=(+addMF.monthlySavings||0)+((+addMF.shareUnitsInput||0)*50000);
+        const commission=commBase>0?Math.round(commBase*0.01):0;
         const payableDate=new Date(joinDate);
         payableDate.setMonth(payableDate.getMonth()+1);
         const payableDateStr=payableDate.toISOString().split("T")[0];
-        const newCommission={newMemberId:id,newMemberName:addMF.name.trim(),amount:commission,earnedDate:joinDate,payableDate:payableDateStr,paid:false,base:commBase};
+        const newCommission={newMemberId:id,newMemberName:addMF.name.trim(),amount:commission,earnedDate:joinDate,payableDate:payableDateStr,paid:false,base:commBase,baseLabel:"1% of new member savings+shares"};
         const updatedReferrer={...referrer,referralCommission:(referrer.referralCommission||0)+commission,pendingCommissions:[...(referrer.pendingCommissions||[]),newCommission]};
         updatedMembers=updatedMembers.map(m=>m.id===refId?updatedReferrer:m);
         saveRecord("members",updatedReferrer,setSyncStatus);
@@ -3652,16 +3656,16 @@ function AppInner(){
       setMembers(prev=>prev.filter(m=>m.id!==newMember.id));
       alert("⚠️ New member NOT saved to database.\n\nError: "+errMsg+"\n\nThe member has been removed from your local view. Please check your connection and try again.");
     });
-    // Auto-write contrib_log for initial savings on new member registration
-    const today2=joinDate||new Date().toISOString().split("T")[0];
+    // Auto-write contrib_log for initial savings
+    const _joinD=joinDate||new Date().toISOString().split("T")[0];
     ["monthlySavings","welfare","shares","membership","annualSub","voluntaryDeposit"].forEach(cat=>{
-      const amt2=+(newMember[cat]||0);
-      if(amt2>0){
-        const logRec={id:Date.now()+Math.floor(Math.random()*1000),memberId:id,date:today2,
-          category:cat,amount:amt2,note:"Initial registration",
+      const _a=+(newMember[cat]||0);
+      if(_a>0){
+        const _lr={id:Date.now()+Math.floor(Math.random()*9999),memberId:id,date:_joinD,
+          category:cat,amount:_a,note:"Initial registration",
           recordedBy:authUser?.name||"System",recordedAt:new Date().toISOString()};
-        setContribLog(p=>[...p,logRec]);
-        saveRecord("contrib_log",logRec,setSyncStatus);
+        setContribLog(p=>[...p,_lr]);
+        saveRecord("contrib_log",_lr,setSyncStatus);
       }
     });
     postAudit([mkAudit("create","member",id,null,newMember,authUser?.role,authUser?.name)]);
@@ -4692,8 +4696,8 @@ function AppInner(){
                     const totalUnits=members.reduce((s,m)=>s+Math.round((m.shares||0)/50000),0);
                     const portfolioGrowthPct=savT.total>0?((finance.capitalGainsPool)/savT.total*100).toFixed(1):"0.0";
                     const now2=new Date();
-                    const thisMonthContribs=contribLog.filter(c=>{const d=new Date(c.date);return d.getFullYear()===now2.getFullYear()&&d.getMonth()===now2.getMonth();}).reduce((s,c)=>s+(c.amount||0),0);
-                    const lastMonthContribs=contribLog.filter(c=>{const d=new Date(c.date);const lm=new Date(now2.getFullYear(),now2.getMonth()-1,1);return d.getFullYear()===lm.getFullYear()&&d.getMonth()===lm.getMonth();}).reduce((s,c)=>s+(c.amount||0),0);
+                    const thisMonthContribs=contribLog.filter(c=>{const d=new Date(c.date);return d.getFullYear()===now2.getFullYear()&&d.getMonth()===now2.getMonth()&&c.category!=="loan_repayment";}).reduce((s,c)=>s+(+c.amount||0),0);
+                    const lastMonthContribs=contribLog.filter(c=>{const d=new Date(c.date);const lm=new Date(now2.getFullYear(),now2.getMonth()-1,1);return d.getFullYear()===lm.getFullYear()&&d.getMonth()===lm.getMonth()&&c.category!=="loan_repayment";}).reduce((s,c)=>s+(+c.amount||0),0);
                     const monthlyTrend=thisMonthContribs-lastMonthContribs;
                     return [
                       ["Total Banked",fmt(savT.total),"#90caf9","All member deposits combined"],
@@ -4708,7 +4712,7 @@ function AppInner(){
                       ["Expenses",fmt(totalExpenses),"#ef9a9a","All recorded outflows"],
                       ["Cash in Bank",fmt(finance.cashInBank),finance.cashInBank<0?"#ef5350":"#69f0ae","Net cash position"],
                       ["Portfolio Growth",portfolioGrowthPct+"%","#80deea","Capital Gains ÷ Total Banked"],
-                      ["Monthly Trend",(monthlyTrend>=0?"+":"")+fmt(monthlyTrend),monthlyTrend>=0?"#a5d6a7":"#ef9a9a","This vs last month contribs"],
+                      ["Monthly Trend",(monthlyTrend>=0?"+":"")+fmt(monthlyTrend),monthlyTrend>=0?"#a5d6a7":"#ef9a9a","vs last month · "+now2.toLocaleDateString("en-GB",{month:"short",year:"numeric"})],
                     ];
                   })().map(([l,v,c,sub])=>(
                     <div key={l} style={{background:"rgba(255,255,255,.08)",borderRadius:10,padding:"11px 13px",border:"1px solid rgba(255,255,255,.11)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}>
@@ -4742,21 +4746,6 @@ function AppInner(){
                 </div>
               )}
 
-              {/* ── Quick stats row ── */}
-              <div className="stats">
-                <div className="card"><div className="clabel">Members</div><div className="cval">{members.length}</div></div>
-                <div className="card ck"><div className="clabel">Total Banked</div><div className="cval ok">{fmt(savT.total)}</div></div>
-                <div className="card"><div className="clabel">Monthly Savings</div><div className="cval">{fmt(savT.monthly)}</div></div>
-                <div className="card"><div className="clabel">Welfare Pool</div><div className="cval">{fmt(savT.welfare)}</div></div>
-                <div className="card cd" title="Includes operational costs + bank transactional charges">
-                  <div className="clabel">Total Expenses</div>
-                  <div className="cval danger">{fmt(totalExpenses)}</div>
-                  <div className="csub">incl. {fmt(expenses.filter(e=>e.category==="banking").reduce((s,e)=>s+(+e.amount||0),0))} bank charges</div>
-                </div>
-                <div className="card" style={{borderTop:"3px solid "+(cashInBank<0?"var(--error)":"var(--mint-600)")}}><div className="clabel">Cash in Bank</div><div className={"cval"+(cashInBank<0?" danger":" ok")}>{fmt(cashInBank)}</div><div className="csub">Net position</div></div>
-                {totalInvInterest>0&&<div className="card ck"><div className="clabel">Capital Gains Pool</div><div className="cval ok">{fmt(finance.capitalGainsPool)}</div><div className="csub">40% to members at AGM</div></div>}
-              </div>
-
               {/* ── Recent Payments (latest 5 from contrib_log) ── */}
               {contribLog.length>0&&(
                 <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.6)",borderRadius:"var(--radius-lg)",padding:"14px 18px",marginBottom:14,boxShadow:"var(--shadow-sm)"}}>
@@ -4785,7 +4774,7 @@ function AppInner(){
                 </div>
               )}
 
-              <SavingsExpensesChart totalBanked={savT.total} expensesData={EXPENSES_CHART_DATA}/>
+              <SavingsExpensesChart totalBanked={savT.total} expensesData={EXPENSES_CHART_DATA} investmentProfit={finance.investmentProfit}/>
 
               {/* ── All Members — search + summary only, no card grid ── */}
               <div className="toolbar">
@@ -4884,7 +4873,7 @@ function AppInner(){
               <div className="int-rule">
                 <span style={{fontSize:18,flexShrink:0}}>📐</span>
                 <div className="int-rule-text">
-                  <strong>Interest Rules (automatic):</strong> Loans under UGX 7,000,000 → 4% flat, terms: 3/6/9/12/18/24 months. Loans ≥ UGX 7,000,000 → 6% reducing balance, fixed 12-month term. Processing fee: UGX 25,000 + 1%. Borrow limit: 60% of (monthly savings + welfare).
+                  <strong>Interest Rules (automatic):</strong> Loans under UGX 7,000,000 → 4% flat, terms: 3/6/9/12/18/24 months. Loans ≥ UGX 7,000,000 → 6% reducing balance, fixed 12-month term. Processing fee: UGX 25,000 + 1%. Borrow limit: 60% of (monthly savings + shares).
                 </div>
               </div>
               <div className="stats">
@@ -5128,8 +5117,8 @@ function AppInner(){
                 <div style={{fontWeight:800,fontSize:14,marginBottom:6}}>BIDA Member Protection Policy</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:8,marginBottom:10}}>
                   {[
-                    ["🕊 Passing","NOK receives minimum 70% of member's monthly savings + welfare (guaranteed). Board decides on 30%: full payout or NOK retains and continues the account.","#ef9a9a"],
-                    ["🏥 Serious Illness","Member receives 50% of their monthly savings + welfare banked. Member retains account and continues contributing after recovery.","#ffcc80"],
+                    ["🕊 Passing","NOK receives 60% of member's total monthly savings + shares (guaranteed). Board decides on 40%: full payout or NOK retains and continues the account.","#ef9a9a"],
+                    ["🏥 Serious Illness","Member receives 40% of their monthly savings + shares, plus 60% of their accrued investment gains. Member retains account and continues contributing after recovery.","#ffcc80"],
                     ["🔒 Protected","At least 70% guaranteed payout to beneficiary. BIDA compensates fully upon board agreement.","#a5d6a7"],
                   ].map(([t,d,c])=>(
                     <div key={t} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",borderRadius:9,padding:"10px 12px"}}>
@@ -5152,7 +5141,7 @@ function AppInner(){
                     <div className="card ck"><div className="clabel">Members with NOK</div><div className="cval ok">{eligibleMembers.length}</div><div className="csub">Benevolent-ready</div></div>
                     <div className="card cw"><div className="clabel">Missing NOK</div><div className="cval warn">{noNOK.length}</div><div className="csub">Cannot activate fund</div></div>
                     <div className="card ck"><div className="clabel">Total Pool</div><div className="cval ok">{fmt(totalPool)}</div><div className="csub">Basis for calculations</div></div>
-                    <div className="card"><div className="clabel">Avg Min Payout (70%)</div><div className="cval">{fmt(Math.round(members.reduce((s,m)=>s+((m.monthlySavings||0)+(m.welfare||0)),0)*0.70/Math.max(members.length,1)))}</div><div className="csub">Savings+Welfare base</div></div>
+                    <div className="card"><div className="clabel">Avg Min Payout (60%)</div><div className="cval">{fmt(Math.round(members.reduce((s,m)=>s+((m.monthlySavings||0)+(m.shares||0)),0)*0.60/Math.max(members.length,1)))}</div><div className="csub">Savings+Shares base</div></div>
                   </div>
                 );
               })()}
@@ -5188,8 +5177,10 @@ function AppInner(){
                   const retention=benovRetention;
                   const setRetention=setBenovRetention;
                   const m = members.find(mb=>mb.id===+selMemberId);
-                  const benevBase=m?((m.monthlySavings||0)+(m.welfare||0)):0;
-                  const deathBase=benevBase,minPayout=Math.round(benevBase*0.70),remaining30=Math.round(benevBase*0.30),fullPayout=benevBase,illnessBase=Math.round(benevBase*0.50),nok=m?.nextOfKin||null;
+                  const benevBase=m?((m.monthlySavings||0)+(m.shares||0)):0;
+                  const memberInvGains=m?(()=>{const sp=(m.shares||0)/Math.max(1,members.reduce((s,mb)=>s+(mb.shares||0),0));return Math.round(sp*finance.investmentProfit*0.4);})():0;
+                  const deathBase=benevBase,minPayout=Math.round(benevBase*0.60),remaining40=Math.round(benevBase*0.40),fullPayout=benevBase;
+                  const illnessSavBase=Math.round(benevBase*0.40),illnessInvGain=Math.round(memberInvGains*0.60),illnessTotalPayout=Math.round(benevBase*0.40)+Math.round(memberInvGains*0.60),nok=m?.nextOfKin||null;
                   return (
                     <div>
                       <div className="fgrid">
@@ -5232,21 +5223,23 @@ function AppInner(){
                             {(claimType==="death"?[
                               ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
                               ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
-                              ["Benevolent Base (Savings + Welfare)",fmt(deathBase),"var(--p800)"],
-                              ["Guaranteed minimum to NOK (70%)",fmt(minPayout),"#1b5e20"],
-                              ["Remaining 30% — board decision",fmt(remaining30),retention==="compensate"?"#1b5e20":"#e65100"],
+                              ["Benevolent Base (Savings + Shares)",fmt(deathBase),"var(--p800)"],
+                              ["Guaranteed minimum to NOK (60%)",fmt(minPayout),"#1b5e20"],
+                              ["Remaining 40% — board decision",fmt(remaining40),retention==="compensate"?"#1b5e20":"#e65100"],
                               ["Full payout if board agrees (100%)",fmt(fullPayout),"#1565c0"],
                             ]:claimType==="illness"?[
                               ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
                               ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
-                              ["Benevolent Base (Savings + Welfare)",fmt(illnessBase*2),"var(--p800)"],
-                              ["Illness support payout (50% of base)",fmt(illnessBase),"#1b5e20"],
+                              ["Benevolent Base (Savings + Shares)",fmt(benevBase),"var(--p800)"],
+                              ["40% of savings+shares base",fmt(illnessSavBase),"#1b5e20"],
+                              ["60% of investment gains",fmt(illnessInvGain),"#2e7d32"],
+                              ["Total illness payout",fmt(illnessTotalPayout),"#1b5e20"],
                               ["Member retains account","Active — continues after recovery","#1565c0"],
                             ]:[
                               ["Monthly Savings banked",fmt(m?.monthlySavings||0),"#1565c0"],
                               ["Welfare Contributions banked",fmt(m?.welfare||0),"#6a1b9a"],
-                              ["Benevolent Base (Savings + Welfare)",fmt(illnessBase*2),"var(--p800)"],
-                              ["Disability/Injury payout (75% of base)",fmt(Math.round(illnessBase*1.5)),"#1b5e20"],
+                              ["Benevolent Base (Savings + Shares)",fmt(benevBase),"var(--p800)"],
+                              ["Disability/Injury payout (75% of base)",fmt(Math.round(benevBase*0.75)),"#1b5e20"],
                               ["Medical docs + board resolution required","Mandatory for all injury claims","#e65100"],
                             ]).map(([lb,v,c],i)=>(
                               <div key={lb} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i<5?"1px solid var(--bdr)":"none",fontWeight:i===2?700:400}}>
@@ -5257,7 +5250,7 @@ function AppInner(){
                           </div>
                           {claimType==="death"&&(
                             <div style={{background:"#fff",border:"1px solid var(--bdr)",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
-                              <div style={{fontWeight:700,fontSize:12,color:"var(--p800)",marginBottom:8}}>Remaining 30% — Board Decision</div>
+                              <div style={{fontWeight:700,fontSize:12,color:"var(--p800)",marginBottom:8}}>Remaining 40% — Board Decision</div>
                               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                                 {[
                                   ["compensate","✅ Full compensation — NOK receives 100%","Pay out the remaining 30% to next of kin as goodwill"],
@@ -5290,7 +5283,7 @@ function AppInner(){
                             </div>
                             <div style={{fontSize:10,opacity:.7,marginTop:4}}>
                               {claimType==="death"
-                                ?retention==="compensate"?"Full 100% — board agreed all funds to NOK":"70% guaranteed + NOK retains remaining 30% account"
+                                ?retention==="compensate"?"Full 100% — board agreed all funds to NOK":"60% guaranteed + NOK retains remaining 40% account"
                                 :claimType==="injury"?"75% of savings+welfare base — disability/injury claim"
                                 :"50% of monthly savings + welfare — member keeps account after recovery"
                               }
@@ -6050,7 +6043,32 @@ function AppInner(){
                 <div className="card ck"><div className="clabel">Total Invested</div><div className="cval ok">{fmt(totalInvested)}</div><div className="csub">Active positions</div></div>
                 <div className="card ck"><div className="clabel">Total Interest Earned</div><div className="cval ok">{fmt(totalInvInterest)}</div></div>
                 <div className="card"><div className="clabel">Retained (60%)</div><div className="cval">{fmt(retainedInterest)}</div><div className="csub">BIDA projects</div></div>
-                <div className="card ck"><div className="clabel">To Members (40%)</div><div className="cval ok">{fmt(distributableInterest)}</div><div className="csub">By savings share</div></div>
+                
+              {investments.filter(i=>i.status==="active").length>0&&(
+                <div style={{background:"linear-gradient(135deg,#e8f5e9,#f1f8e9)",border:"1.5px solid #a5d6a7",borderRadius:"var(--radius-md)",padding:"12px 14px",marginBottom:12}}>
+                  <div style={{fontWeight:800,fontSize:12,color:"#1b5e20",marginBottom:8}}>📍 Where Your Money Is Invested</div>
+                  {investments.filter(i=>i.status==="active").map((inv,idx2)=>{
+                    const gainPct=inv.amount>0?((inv.interestEarned||0)/inv.amount*100).toFixed(1):"0.0";
+                    return(
+                      <div key={inv.id||idx2} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #c8e6c9"}}>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:12,color:"#1b5e20"}}>{inv.name||inv.type||"Investment"}</div>
+                          <div style={{fontSize:10,color:"#388e3c"}}>{INV_TYPE_LABELS[inv.type]||inv.type}</div>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontWeight:800,fontSize:12,color:"#1b5e20",fontFamily:"var(--mono)"}}>{fmt(+inv.amount||0)}</div>
+                          <div style={{fontSize:10,color:"#388e3c",fontFamily:"var(--mono)"}}>+{fmt(+inv.interestEarned||0)} ({gainPct}%)</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{display:"flex",justifyContent:"space-between",paddingTop:8,marginTop:4,borderTop:"2px solid #a5d6a7"}}>
+                    <span style={{fontSize:12,fontWeight:800,color:"#1b5e20"}}>Total</span>
+                    <span style={{fontSize:13,fontWeight:900,color:"#1b5e20",fontFamily:"var(--mono)"}}>{fmt(totalInvested)} · +{fmt(totalInvInterest)} ({totalInvested>0?((totalInvInterest/totalInvested)*100).toFixed(1):"0.0"}% gains)</span>
+                  </div>
+                </div>
+              )}
+              <div className="card ck"><div className="clabel">To Members (40%)</div><div className="cval ok">{fmt(distributableInterest)}</div><div className="csub">By savings share</div></div>
                 <div className="card"><div className="clabel">Fund Pool</div><div className="cval">{fmt(savT.total)}</div></div>
                 <div className="card"><div className="clabel">Positions</div><div className="cval">{investments.length}</div></div>
               </div>
@@ -6546,7 +6564,7 @@ function AppInner(){
                               ))}
                             </div>
                             <div style={{marginTop:8,fontSize:10,color:"var(--mint-600)",lineHeight:1.6}}>
-                              Min guaranteed payout: <strong>{fmt(Math.round(totBanked(profMember)*0.70))}</strong> (70% of {fmt(totBanked(profMember))})
+                              Min guaranteed payout: <strong>{fmt(Math.round(((profMember.monthlySavings||0)+(profMember.shares||0))*0.60))}</strong> (60% of savings+shares)
                             </div>
                           </div>
                         </React.Fragment>
@@ -6633,7 +6651,7 @@ function AppInner(){
 
                       {(profMember.pendingCommissions||[]).length>0&&(
                         <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"8px 12px",fontSize:10,color:"#5d4037",lineHeight:1.7}}>
-                          <strong>💡 How commission is calculated:</strong> 1% of your (Monthly Savings + Welfare) at the time each new member joins. Commission is payable 1 month after the new member's join date.
+                          <strong>💡 How commission is calculated:</strong> 1% of the recruited member's (Monthly Savings + Shares) — earned every month they save. Commission is payable 1 month after the new member's join date.
                           {nowPayable.length>0&&<div style={{marginTop:4,fontWeight:700,color:"var(--warning)"}}>⚠ {nowPayable.length} commission{nowPayable.length>1?"s":""} ({fmt(nowPayable.reduce((s,c)=>s+c.amount,0))}) are now due for payment.</div>}
                         </div>
                       )}
@@ -6675,10 +6693,10 @@ function AppInner(){
                         {[
                           ["Monthly Savings",fmt(ms),isLowSaver?"danger":"ok"],
                           ["Annual Subscription",fmt(annSub),annSub>=50000?"ok":"warn"],
-                          ["Welfare (should be 30%)",fmt(welfare),welfareDiff>0?"warn":"ok"],
-                          ["Expected Welfare (30%)",fmt(expectedWelfare),""],
+                          ["Welfare Amount",fmt(welfare),"ok"],
+                          ["Referral Earned",fmt(profMember.referralCommission||0)+(members.filter(m=>m.referredByMemberId===profMember.id).length>0?" ("+members.filter(m=>m.referredByMemberId===profMember.id).length+" ref)":""),"ok"],
                           ["Borrow Limit",fmt(borrowLimit(profMember,loans)),"ok"],
-                          ["Savings × Borrow Rate",borrowRate+"%",""],
+                          ["Savings × Borrow Rate",Math.round((borrowLimit(profMember,loans)/Math.max((profMember.monthlySavings||0)+(profMember.shares||0),1))*100)+"%",""],
                         ].map(([lb,v,cls])=>(
                           <div key={lb} style={{background:"var(--p50)",border:"1px solid var(--bdr)",borderRadius:8,padding:"7px 10px"}}>
                             <div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",letterSpacing:.3,textTransform:"uppercase",marginBottom:2}}>{lb}</div>
@@ -6687,7 +6705,7 @@ function AppInner(){
                         ))}
                       </div>
                       {annSub<50000&&<div style={{background:"rgba(255,109,0,.07)",border:"1px solid #ffcc80",borderRadius:8,padding:"7px 10px",fontSize:10,color:"var(--warning)",marginBottom:6}}>⚠ Annual subscription is below UGX 50,000 — member will not qualify for referral commissions until this is met.</div>}
-                      {welfareDiff>0&&<div style={{background:"rgba(21,101,192,.07)",border:"1px solid rgba(21,101,192,.25)",borderRadius:8,padding:"7px 10px",fontSize:10,color:"var(--p600)"}}>💡 Welfare should be 30% of monthly savings. Suggested welfare top-up: {fmt(welfareDiff)} (30% of UGX {fmt(ms)} = {fmt(expectedWelfare)})</div>}
+                      
                     </div>
                   );
                 })()}
@@ -7363,6 +7381,11 @@ function AppInner(){
                     <button key={v} type="button" onClick={()=>setContribF(f=>({...f,category:v}))} style={{padding:"6px 11px",borderRadius:8,border:contribF.category===v?"2px solid var(--p600)":"2px solid var(--bdr)",background:contribF.category===v?"var(--p100)":"#fff",cursor:"pointer",fontSize:11,fontWeight:contribF.category===v?700:400,color:contribF.category===v?"var(--p700)":"var(--tm)"}}>{lbl}</button>
                   ))}
                 </div>
+                {contribF.category==="shares"&&contribF.amount&&+contribF.amount>0&&Math.floor(+contribF.amount/50000)>0&&(
+                  <div style={{marginTop:6,background:"rgba(0,105,92,.08)",border:"1px solid #80cbc4",borderRadius:7,padding:"5px 10px",fontSize:11,color:"#00695c",fontWeight:600}}>
+                    {(()=>{const unitsBuying=Math.floor(+contribF.amount/50000);const member=members.find(mb=>mb.id===+contribF.memberId);const currentUnits=member?Math.floor((member.shares||0)/50000):0;return "📈 Buying "+unitsBuying+" share unit"+(unitsBuying!==1?"s":"")+" @ UGX 50,000 each · "+currentUnits+" → "+(currentUnits+unitsBuying)+" units total";})()}
+                  </div>
+                )}
               </div>
               <div className="fg ff">
                 <label className="fl">Note <span style={{fontWeight:400,color:"var(--tmuted)"}}>(optional)</span></label>
@@ -9712,22 +9735,27 @@ function MemberStatementButton({ m, loans }) {
 }
 
 function MemberDashboardInline({ session, onLogout }) {
-  const [m,      setM]      = useState(null);
-  const [loans,  setLoans]  = useState([]);
-  const [cl,     setCl]     = useState([]);
-  const [polls,  setPolls]  = useState([]);
-  const [tab,    setTab]    = useState("overview");
-  const [load,   setLoad]   = useState(true);
-  const [err,    setErr]    = useState(null);
-  const [showPay,setShowPay]= useState(false);
+  const [m,       setM]       = useState(null);
+  const [loans,   setLoans]   = useState([]);
+  const [cl,      setCl]      = useState([]);   // full contrib_log for member
+  const [polls,   setPolls]   = useState([]);
+  const [tab,     setTab]     = useState("overview");
+  const [load,    setLoad]    = useState(true);
+  const [err,     setErr]     = useState(null);
+  const [showPay, setShowPay] = useState(false);
+  // Monthly report state
+  const [rptMonth, setRptMonth] = useState(new Date().getMonth());
+  const [rptYear,  setRptYear]  = useState(new Date().getFullYear());
+  const [rptGen,   setRptGen]   = useState(false);
+  // First-login state
   const [showFirstLogin, setShowFirstLogin] = useState(!!session?.isFirstLogin);
-  const [flPass, setFlPass] = useState('');
+  const [flPass,    setFlPass]    = useState('');
   const [flConfirm, setFlConfirm] = useState('');
-  const [flErr, setFlErr] = useState('');
-  const [flBusy, setFlBusy] = useState(false);
-  const [flShowPass, setFlShowPass] = useState(false);
-  const [flSecQ, setFlSecQ] = useState('');
-  const [flSecA, setFlSecA] = useState('');
+  const [flErr,     setFlErr]     = useState('');
+  const [flBusy,    setFlBusy]    = useState(false);
+  const [flShowPass,setFlShowPass]= useState(false);
+  const [flSecQ,    setFlSecQ]    = useState('');
+  const [flSecA,    setFlSecA]    = useState('');
 
   const handleFirstLoginSetup = async () => {
     if (flPass.length < 8) { setFlErr('Password must be at least 8 characters'); return; }
@@ -9814,7 +9842,7 @@ function MemberDashboardInline({ session, onLogout }) {
       const [ms,ls,cs,ps]=await Promise.all([
         mDb.get("members","id=eq."+session.memberId),
         mDb.get("loans","memberId=eq."+session.memberId+"&order=id.desc"),
-        mDb.get("contrib_log","memberId=eq."+session.memberId+"&order=date.desc&limit=20").catch(()=>[]),
+        mDb.get("contrib_log","memberId=eq."+session.memberId+"&order=date.desc").catch(()=>[]),
         mDb.get("polls","status=eq.active").catch(()=>[]),
       ]);
       setM(ms?.[0]||null); setLoans(ls||[]); setCl(cs||[]); setPolls(ps||[]);
@@ -9827,13 +9855,191 @@ function MemberDashboardInline({ session, onLogout }) {
   const total  = m?(m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0):0;
   const active = loans.filter(l=>l.status!=="paid");
   const lbal   = active.reduce((s,l)=>{
-    const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
-    let ti=0;if(isR){let b=p;for(let i=0;i<term;i++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
+    const p=l.amountLoaned||0,paid=l.amountPaid||0,rate=0.04,term=l.term||12;
+    const ti=Math.round(p*rate*term);
     return s+Math.max(0,p+ti-paid);
   },0);
   const sUnits = m?Math.round((m.shares||0)/50000):0;
 
-  const TABS=[["overview","📊 Overview"],["loans","💳 Loans"],["history","📋 History"],["profile","👤 Profile"],["votes","🗳 Voting"+(polls.length?" ("+polls.length+")":"")]];
+  // ── Period-scoped contrib figures for selected month/year ──
+  const periodCl = useMemo(()=>{
+    const mS=new Date(rptYear,rptMonth,1), mE=new Date(rptYear,rptMonth+1,0,23,59,59);
+    return cl.filter(c=>{const d=new Date(c.date);return d>=mS&&d<=mE;});
+  },[cl,rptMonth,rptYear]);
+
+  const periodTotals = useMemo(()=>{
+    const cats=["monthlySavings","welfare","shares","membership","annualSub","voluntaryDeposit","monthly_savings","annual_sub","voluntary_savings","welfare_contribution","loan_repayment"];
+    const map={monthlySavings:0,welfare:0,shares:0,membership:0,annualSub:0,voluntaryDeposit:0,loan_repayment:0};
+    const aliases={monthly_savings:"monthlySavings",annual_sub:"annualSub",voluntary_savings:"voluntaryDeposit",welfare_contribution:"welfare"};
+    periodCl.forEach(c=>{
+      const key=aliases[c.category]||c.category;
+      if(key in map) map[key]+=(+c.amount||0);
+    });
+    return map;
+  },[periodCl]);
+
+  // ── All-time latest activity feed: contributions + loan payments ──
+  const activityFeed = useMemo(()=>{
+    const contribs = cl.map(c=>({...c, _type:"contrib"}));
+    const loanPays = loans.flatMap(l=>(l.payments||[]).map(p=>({
+      _type:"loan", date:p.date||l.dateBanked, amount:p.amount||0,
+      category:"loan_repayment", note:"Loan #"+l.id+" repayment", id:"lp_"+l.id+"_"+p.date
+    })));
+    return [...contribs,...loanPays].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,30);
+  },[cl,loans]);
+
+  // ── Member monthly report PDF ──
+  const downloadMonthlyPDF = async () => {
+    if(!m) return;
+    setRptGen(true);
+    try {
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+      await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+      if(!window.jspdf||!window.jspdf.jsPDF) throw new Error("jsPDF failed to load");
+      const {jsPDF}=window.jspdf;
+      const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+      const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+      const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREY=[94,127,160],RED=[198,40,40],GREEN=[27,94,32];
+      const mLabel=MONTHS[rptMonth]+" "+rptYear;
+      const mFmt2=(n)=>"UGX "+Number(n||0).toLocaleString("en-UG");
+      const fmtN2=(n)=>Number(n||0).toLocaleString("en-UG");
+
+      // Header
+      doc.setFillColor(...NAVY);doc.rect(0,0,W,30,"F");
+      doc.setFillColor(...BLUE);doc.rect(0,30,W,1.5,"F");
+      (()=>{const cx=14,cy=15,r=7,pts=[];for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}doc.setFillColor(21,101,192);(()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();const bw=r*0.22,bx=cx-r*0.34;doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");})();
+      doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("BIDA",26,12);
+      doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",26,18);
+      doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("MEMBER MONTHLY STATEMENT",W/2,12,{align:"center"});
+      doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text(mLabel.toUpperCase()+" · "+m.name,W/2,19,{align:"center"});
+      doc.setFontSize(6.5);doc.text("Generated: "+new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),W-10,24,{align:"right"});
+
+      // Member info box
+      let y=36;
+      doc.setFillColor(...BLITE);doc.roundedRect(8,y,W-16,20,2,2,"F");
+      doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...NAVY);doc.text(m.name,12,y+8);
+      doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);
+      doc.text("Member ID: #"+m.id,12,y+14);
+      if(m.phone||m.whatsapp)doc.text("Phone: "+(m.phone||m.whatsapp),W/2,y+8);
+      doc.text("Joined: "+(m.joinDate?new Date(m.joinDate).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}):"—"),W/2,y+14);
+      y+=25;
+
+      // Period contributions table
+      doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);
+      doc.text("CONTRIBUTIONS — "+mLabel.toUpperCase(),10,y);y+=3;
+      const CATLABELS={monthlySavings:"Monthly Savings",welfare:"Welfare Fund",annualSub:"Annual Subscription",membership:"Membership Fee",shares:"Shares",voluntaryDeposit:"Voluntary Savings",loan_repayment:"Loan Repayment"};
+      const periodRows=Object.entries(periodTotals).filter(([,v])=>v>0).map(([k,v])=>[CATLABELS[k]||k,fmtN2(v)]);
+      const periodTotal=Object.entries(periodTotals).filter(([k])=>k!=="loan_repayment").reduce((s,[,v])=>s+v,0);
+      const periodLoanPay=periodTotals.loan_repayment||0;
+      if(periodRows.length===0) periodRows.push(["No contributions recorded this period","—"]);
+      periodRows.push(["TOTAL CONTRIBUTIONS (excl. loan repayments)","UGX "+fmtN2(periodTotal)]);
+      if(periodLoanPay>0) periodRows.push(["LOAN REPAYMENTS THIS PERIOD","UGX "+fmtN2(periodLoanPay)]);
+      doc.autoTable({startY:y,
+        head:[["Category","Amount (UGX)"]],
+        body:periodRows,
+        styles:{fontSize:9,cellPadding:2.5},
+        headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
+        columnStyles:{0:{cellWidth:110,fontStyle:"normal"},1:{halign:"right"}},
+        didParseCell:(d)=>{
+          const raw=d.cell.raw||"";
+          if(raw.startsWith("TOTAL")||raw.startsWith("LOAN REPAYMENTS")){d.cell.styles.fontStyle="bold";d.cell.styles.fillColor=BLITE;}
+        },
+        margin:{left:10,right:10},
+        didDrawPage:()=>{
+          doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+          doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+          doc.text("Bida Multi-Purpose Co-operative Society · Confidential",10,H-3);
+          doc.text(new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),W-10,H-3,{align:"right"});
+        }
+      });
+      y=doc.lastAutoTable.finalY+10;
+
+      // All-time savings totals
+      doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);
+      doc.text("ALL-TIME SAVINGS TOTALS",10,y);y+=3;
+      doc.autoTable({startY:y,
+        head:[["Category","Cumulative Total (UGX)"]],
+        body:[
+          ["Membership Fee",fmtN2(m.membership||0)],
+          ["Annual Subscription",fmtN2(m.annualSub||0)],
+          ["Monthly Savings",fmtN2(m.monthlySavings||0)],
+          ["Welfare Contributions",fmtN2(m.welfare||0)],
+          ["Shares ("+Math.round((m.shares||0)/50000)+" units)",fmtN2(m.shares||0)],
+          ["Voluntary Savings",fmtN2(m.voluntaryDeposit||0)],
+          ["TOTAL BANKED","UGX "+fmtN2(total)],
+        ],
+        styles:{fontSize:9,cellPadding:2.5},
+        headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold"},
+        columnStyles:{0:{cellWidth:110,fontStyle:"normal"},1:{halign:"right"}},
+        didParseCell:(d)=>{if(d.row.index===6&&d.section==="body"){d.cell.styles.fillColor=BLITE;d.cell.styles.fontStyle="bold";d.cell.styles.textColor=BLUE;}},
+        margin:{left:10,right:10},
+        didDrawPage:()=>{
+          doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+          doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+          doc.text("Bida Multi-Purpose Co-operative Society · Confidential",10,H-3);
+          doc.text(new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),W-10,H-3,{align:"right"});
+        }
+      });
+
+      // Loan section
+      if(loans.length>0){
+        y=doc.lastAutoTable.finalY+10;
+        if(y>H-60){doc.addPage();y=20;}
+        doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("LOAN HISTORY",10,y);y+=3;
+        doc.autoTable({startY:y,
+          head:[["Issued","Principal","Paid","Balance","Status"]],
+          body:loans.map(l=>{
+            const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
+            let ti=0;if(isR){let b=p;for(let i2=0;i2<term;i2++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
+            const bal=Math.max(0,p+ti-paid);
+            return [new Date(l.dateBanked).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}),fmtN2(p),fmtN2(paid),bal>0?fmtN2(bal):"✓ CLEAR",l.status==="paid"?"PAID":"ACTIVE"];
+          }),
+          styles:{fontSize:8,cellPadding:2.2},
+          headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7.5},
+          columnStyles:{4:{halign:"center"}},
+          didParseCell:(d)=>{if(d.column.index===4&&d.section==="body"){d.cell.styles.fontStyle="bold";d.cell.styles.textColor=d.cell.raw==="PAID"?GREEN:RED;}},
+          margin:{left:10,right:10},
+          didDrawPage:()=>{
+            doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+            doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+            doc.text("Bida Multi-Purpose Co-operative Society · Confidential",10,H-3);
+            doc.text(new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}),W-10,H-3,{align:"right"});
+          }
+        });
+      }
+
+      // Footer on all pages
+      const pc=doc.internal.getNumberOfPages();
+      for(let pg=1;pg<=pc;pg++){
+        doc.setPage(pg);
+        doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+        doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+        doc.text("Thank you for being a valued BIDA member. Together we grow stronger.",10,H-3);
+        doc.text("Page "+pg+" of "+pc,W-10,H-3,{align:"right"});
+      }
+
+      const blob=doc.output("blob");
+      const fname="BIDA_Statement_"+m.name.replace(/\s+/g,"_")+"_"+MONTHS[rptMonth]+"_"+rptYear+".pdf";
+      if(navigator.canShare&&navigator.canShare({files:[new File([blob],fname,{type:"application/pdf"})]})){
+        try{await navigator.share({files:[new File([blob],fname,{type:"application/pdf"})],title:"BIDA Statement",text:"Your BIDA monthly statement for "+MONTHS[rptMonth]+" "+rptYear});}
+        catch(e){if(e.name!=="AbortError"){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=fname;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},8000);}}
+      } else {
+        const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=fname;
+        a.style.cssText="position:fixed;top:-200px;left:-200px;opacity:0";
+        document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},8000);
+      }
+    } catch(e){alert("⚠️ PDF failed: "+e.message);}
+    finally{setRptGen(false);}
+  };
+
+  const TABS=[
+    ["overview","📊 Overview"],
+    ["report","📅 My Report"],
+    ["activity","📋 Activity"],
+    ["loans","💳 Loans"],
+    ["profile","👤 Profile"],
+    ["votes","🗳 Voting"+(polls.length?" ("+polls.length+")":"")],
+  ];
 
   return (
     <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"var(--sans)"}}>
@@ -9868,6 +10074,7 @@ function MemberDashboardInline({ session, onLogout }) {
 
         {/* ── OVERVIEW ── */}
         {tab==="overview"&&<>
+          {/* Hero card */}
           <div style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",borderRadius:"var(--radius-lg)",padding:"22px 20px",marginBottom:14,color:"#fff"}}>
             {!load&&m?.photoUrl&&(
               <div style={{display:"flex",justifyContent:"center",marginBottom:14}}>
@@ -9880,6 +10087,7 @@ function MemberDashboardInline({ session, onLogout }) {
             <div style={{fontSize:11,opacity:.6,marginTop:6}}>Member since {mFmtD(m?.joinDate)}</div>
           </div>
 
+          {/* Summary cards */}
           {load?<>{[0,1,2,3].map(i=><Skel key={i}/>)}</>:
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
             <Card icon="💰" label="Monthly Savings" value={mFmt(m?.monthlySavings||0)} color="#1565c0"/>
@@ -9889,6 +10097,7 @@ function MemberDashboardInline({ session, onLogout }) {
             <Card icon="🤝" label="Welfare Fund" value={mFmt(m?.welfare||0)} color="#6a1b9a"/>
           </div>}
 
+          {/* Full savings breakdown */}
           {!load&&m&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
             <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:12}}>Savings Breakdown</div>
             {[["Membership","membership","#6a1b9a"],["Annual Subscription","annualSub","#e65100"],["Monthly Savings","monthlySavings","#1565c0"],["Welfare Fund","welfare","#2e7d32"],["Shares","shares","#00695c"],["Voluntary Savings","voluntaryDeposit","#546e7a"]].filter(([,k])=>(m[k]||0)>0).map(([lbl,k,col])=>(
@@ -9903,26 +10112,197 @@ function MemberDashboardInline({ session, onLogout }) {
             </div>
           </div>}
 
-          {!load&&cl.length>0&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>Recent Contributions</div>
-            {cl.slice(0,5).map((c,i)=><ContribRow key={i} c={c}/>)}
-            {cl.length>5&&<button onClick={()=>setTab("history")} style={{background:"none",border:"none",color:"var(--p600)",cursor:"pointer",fontSize:12,fontWeight:700,marginTop:8,padding:0}}>View all {cl.length} →</button>}
+          {/* Latest activity scroll */}
+          {!load&&activityFeed.length>0&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>Latest Activity</div>
+            <div style={{maxHeight:260,overflowY:"auto"}}>
+              {activityFeed.slice(0,15).map((c,i)=>{
+                const isLoan=c.category==="loan_repayment"||c._type==="loan";
+                const LABS={monthlySavings:"Monthly Savings",welfare:"Welfare Fund",annualSub:"Annual Subscription",membership:"Membership Fee",shares:"Shares",voluntaryDeposit:"Voluntary Savings",voluntary_savings:"Voluntary Savings",monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",loan_repayment:"Loan Repayment"};
+                return (
+                  <div key={c.id||i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid #f5f5f5"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:32,height:32,borderRadius:"50%",background:isLoan?"rgba(198,40,40,.1)":"rgba(21,101,192,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>
+                        {isLoan?"💳":"💰"}
+                      </div>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:600,color:"#263238"}}>{LABS[c.category]||c.category}</div>
+                        <div style={{fontSize:10,color:"#90a4ae"}}>{mFmtD(c.date)}{c.note?" · "+c.note.slice(0,30):""}</div>
+                      </div>
+                    </div>
+                    <div style={{fontWeight:800,fontSize:13,color:isLoan?"#c62828":"#1565c0",fontFamily:"var(--mono)",flexShrink:0,marginLeft:8}}>
+                      {isLoan?"-":"+"}{ mFmt(c.amount)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {activityFeed.length>15&&<button onClick={()=>setTab("activity")} style={{background:"none",border:"none",color:"var(--p600)",cursor:"pointer",fontSize:12,fontWeight:700,marginTop:8,padding:0}}>View all {activityFeed.length} →</button>}
           </div>}
 
+          {/* Active polls */}
           {!load&&polls.length>0&&<div onClick={()=>setTab("votes")} style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14,cursor:"pointer"}}>
             <div style={{fontWeight:700,color:"var(--mint-600)",fontSize:13}}>🗳 {polls.length} active poll{polls.length>1?"s":""} — Cast your vote!</div>
             <div style={{fontSize:11,color:"#388e3c",marginTop:3}}>Tap to view →</div>
           </div>}
 
+          {!load&&cl.length>0&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>📒 Contribution History</div>
+            <div style={{maxHeight:260,overflowY:"auto"}}>
+              {[...cl].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,20).map((c,i)=>{
+                const LABS={monthlySavings:"Monthly Savings",welfare:"Welfare Fund",annualSub:"Annual Sub",membership:"Membership",shares:"Shares",voluntaryDeposit:"Voluntary Savings"};
+                const COLS={monthlySavings:"#1565c0",welfare:"#2e7d32",annualSub:"#e65100",shares:"#00695c",voluntaryDeposit:"#546e7a",membership:"#6a1b9a"};
+                const col=COLS[c.category]||"#78909c";
+                return(
+                  <div key={c.id||i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #f5f5f5"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:600,color:"#263238"}}>{LABS[c.category]||c.category}</div>
+                      <div style={{fontSize:10,color:"#90a4ae"}}>{mFmtD(c.date)}{c.note?" · "+c.note.slice(0,25):""}</div>
+                    </div>
+                    <div style={{fontWeight:800,fontSize:13,color:col,fontFamily:"var(--mono)"}}>+{mFmt(c.amount)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>}
+
+          {/* Actions */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <button onClick={()=>setShowPay(true)} style={{background:"#fff",border:"1.5px solid #fff3cd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
-              <div style={{fontSize:24,marginBottom:4}}>🔗</div>
-              <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>Make Payment</div>
-              <div style={{fontSize:10,color:"#e65100",marginTop:2,fontWeight:600}}>API Integration Pending</div>
+            <button onClick={()=>setShowPay(true)} style={{background:"linear-gradient(135deg,#1b5e20,#2e7d32)",border:"none",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center",color:"#fff"}}>
+              <div style={{fontSize:24,marginBottom:4}}>💳</div>
+              <div style={{fontSize:12,fontWeight:700}}>Make Payment</div>
+              <div style={{fontSize:10,marginTop:2,opacity:.8}}>MoMo / Bank Transfer</div>
             </button>
-            <MemberStatementButton m={m} loans={loans}/>
+            <button onClick={()=>setTab("report")} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:4}}>📄</div>
+              <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e"}}>My Statement</div>
+              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>Monthly PDF report</div>
+            </button>
           </div>
         </>}
+
+        {/* ── MONTHLY REPORT TAB ── */}
+        {tab==="report"&&<>
+          <div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{fontSize:13,fontWeight:800,color:"#0d2a5e",marginBottom:14}}>📅 Monthly Statement</div>
+            {/* Month/year picker */}
+            <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:120}}>
+                <label style={{fontSize:10,fontWeight:700,color:"#90a4ae",textTransform:"uppercase",display:"block",marginBottom:5}}>Month</label>
+                <select value={rptMonth} onChange={e=>setRptMonth(+e.target.value)} style={{width:"100%",padding:"9px 10px",borderRadius:9,border:"1.5px solid #cfd8dc",fontSize:13,outline:"none",background:"#fff"}}>
+                  {MONTHS.map((mn,i)=><option key={i} value={i}>{mn}</option>)}
+                </select>
+              </div>
+              <div style={{flex:1,minWidth:100}}>
+                <label style={{fontSize:10,fontWeight:700,color:"#90a4ae",textTransform:"uppercase",display:"block",marginBottom:5}}>Year</label>
+                <select value={rptYear} onChange={e=>setRptYear(+e.target.value)} style={{width:"100%",padding:"9px 10px",borderRadius:9,border:"1.5px solid #cfd8dc",fontSize:13,outline:"none",background:"#fff"}}>
+                  {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Period contributions breakdown */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#546e7a",textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Contributions — {MONTHS[rptMonth]} {rptYear}</div>
+              {[
+                ["Monthly Savings","monthlySavings","#1565c0"],
+                ["Welfare Fund","welfare","#2e7d32"],
+                ["Annual Subscription","annualSub","#e65100"],
+                ["Membership Fee","membership","#6a1b9a"],
+                ["Shares","shares","#00695c"],
+                ["Voluntary Savings","voluntaryDeposit","#546e7a"],
+              ].map(([lbl,k,col])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #f5f5f5"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:periodTotals[k]>0?col:"#cfd8dc"}}/><span style={{fontSize:12,color:periodTotals[k]>0?"#263238":"#90a4ae"}}>{lbl}</span></div>
+                  <span style={{fontSize:12,fontWeight:periodTotals[k]>0?800:400,color:periodTotals[k]>0?col:"#90a4ae",fontFamily:"var(--mono)"}}>{periodTotals[k]>0?mFmt(periodTotals[k]):"—"}</span>
+                </div>
+              ))}
+              {periodTotals.loan_repayment>0&&(
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #f5f5f5"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:"#c62828"}}/><span style={{fontSize:12,color:"#263238"}}>Loan Repayment</span></div>
+                  <span style={{fontSize:12,fontWeight:800,color:"#c62828",fontFamily:"var(--mono)"}}>{mFmt(periodTotals.loan_repayment)}</span>
+                </div>
+              )}
+              {/* Period total */}
+              {(()=>{const pt=Object.entries(periodTotals).filter(([k])=>k!=="loan_repayment").reduce((s,[,v])=>s+v,0);return pt>0?(
+                <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0 0",borderTop:"2px solid #e3f2fd",marginTop:4}}>
+                  <span style={{fontSize:13,fontWeight:800,color:"#0d2a5e"}}>Period Total</span>
+                  <span style={{fontSize:15,fontWeight:900,color:"var(--p600)",fontFamily:"var(--mono)"}}>{mFmt(pt)}</span>
+                </div>
+              ):<div style={{textAlign:"center",padding:"16px 0",color:"#90a4ae",fontSize:12}}>No contributions recorded for {MONTHS[rptMonth]} {rptYear}</div>;})()}
+            </div>
+
+            {/* All-time totals */}
+            <div style={{background:"#f8faff",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#546e7a",textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>All-Time Totals</div>
+              {[["Monthly Savings","monthlySavings","#1565c0"],["Welfare","welfare","#2e7d32"],["Annual Sub","annualSub","#e65100"],["Membership","membership","#6a1b9a"],["Shares","shares","#00695c"],["Voluntary","voluntaryDeposit","#546e7a"]].filter(([,k])=>(m?.[k]||0)>0).map(([lbl,k,col])=>(
+                <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #eef5ff"}}>
+                  <span style={{fontSize:11,color:"#546e7a"}}>{lbl}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:col,fontFamily:"var(--mono)"}}>{mFmt(m?.[k]||0)}</span>
+                </div>
+              ))}
+              <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0 0",borderTop:"2px solid #e3f2fd",marginTop:4}}>
+                <span style={{fontSize:12,fontWeight:800,color:"#0d2a5e"}}>Total Banked</span>
+                <span style={{fontSize:14,fontWeight:900,color:"var(--p600)",fontFamily:"var(--mono)"}}>{mFmt(total)}</span>
+              </div>
+            </div>
+
+            {/* Loans summary in report */}
+            {active.length>0&&<div style={{background:"rgba(198,40,40,.05)",borderRadius:10,padding:"12px 14px",marginBottom:14,border:"1px solid #ffcdd2"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#c62828",textTransform:"uppercase",letterSpacing:.7,marginBottom:8}}>Active Loans</div>
+              {active.map(l=>{
+                const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
+                let ti=0;if(isR){let b=p;for(let i2=0;i2<term;i2++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
+                const bal=Math.max(0,p+ti-paid);
+                return (
+                  <div key={l.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #ffebee"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:600,color:"#263238"}}>Loan #{l.id}</div>
+                      <div style={{fontSize:10,color:"#90a4ae"}}>Issued {mFmtD(l.dateBanked)} · Principal {mFmt(p)}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:12,fontWeight:800,color:"#c62828",fontFamily:"var(--mono)"}}>{mFmt(bal)}</div>
+                      <div style={{fontSize:10,color:"#90a4ae"}}>balance</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>}
+
+            {/* Download PDF */}
+            <button onClick={downloadMonthlyPDF} disabled={rptGen||load} style={{width:"100%",padding:14,borderRadius:12,border:"none",fontWeight:800,fontSize:14,cursor:rptGen||load?"not-allowed":"pointer",background:rptGen||load?"#eceff1":"linear-gradient(135deg,#0d2a5e,#1565c0)",color:rptGen||load?"#90a4ae":"#fff",marginTop:4}}>
+              {rptGen?"⏳ Generating PDF…":"📥 Download "+MONTHS[rptMonth]+" "+rptYear+" Statement"}
+            </button>
+          </div>
+        </>}
+
+        {/* ── ACTIVITY TAB ── */}
+        {tab==="activity"&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:12}}>Full Activity History</div>
+          {load?<Skel/>:activityFeed.length===0
+            ?<div style={{textAlign:"center",padding:30,color:"#90a4ae"}}>No activity recorded yet</div>
+            :activityFeed.map((c,i)=>{
+              const isLoan=c.category==="loan_repayment"||c._type==="loan";
+              const LABS={monthlySavings:"Monthly Savings",welfare:"Welfare Fund",annualSub:"Annual Subscription",membership:"Membership Fee",shares:"Shares",voluntaryDeposit:"Voluntary Savings",voluntary_savings:"Voluntary Savings",monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",loan_repayment:"Loan Repayment"};
+              return (
+                <div key={c.id||i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid #f5f5f5"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:32,height:32,borderRadius:"50%",background:isLoan?"rgba(198,40,40,.1)":"rgba(21,101,192,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>
+                      {isLoan?"💳":"💰"}
+                    </div>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:600,color:"#263238"}}>{LABS[c.category]||c.category}</div>
+                      <div style={{fontSize:10,color:"#90a4ae"}}>{mFmtD(c.date)}{c.note?" · "+c.note.slice(0,40):""}</div>
+                    </div>
+                  </div>
+                  <div style={{fontWeight:800,fontSize:13,color:isLoan?"#c62828":"#1565c0",fontFamily:"var(--mono)",flexShrink:0,marginLeft:8}}>
+                    {isLoan?"-":"+"}{mFmt(c.amount)}
+                  </div>
+                </div>
+              );
+            })
+          }
+        </div>}
 
         {/* ── LOANS ── */}
         {tab==="loans"&&<>
@@ -9931,21 +10311,9 @@ function MemberDashboardInline({ session, onLogout }) {
             :loans.map(l=><LoanCard key={l.id} loan={l}/>)}
         </>}
 
-        {/* ── HISTORY ── */}
-        {tab==="history"&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:12}}>Contribution History</div>
-          {load?<Skel/>:cl.length===0
-            ?<div style={{textAlign:"center",padding:30,color:"#90a4ae"}}>No records found</div>
-            :cl.map((c,i)=><ContribRow key={i} c={c}/>)}
-        </div>}
-
-        {/* ── VOTING ── */}
-        {tab==="votes"&&<VotingPanelInline memberId={session.memberId} polls={polls} onRefresh={setPolls}/>}
-
         {/* ── PROFILE ── */}
         {tab==="profile"&&<>
           {load?<Skel/>:!m?<div style={{textAlign:"center",padding:30,color:"#90a4ae"}}>No profile data</div>:<>
-            {/* Member card */}
             <div style={{background:"#fff",borderRadius:14,padding:"18px 18px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
               <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
                 {m.photoUrl
@@ -9954,7 +10322,7 @@ function MemberDashboardInline({ session, onLogout }) {
                 }
                 <div>
                   <div style={{fontWeight:800,fontSize:17,color:"#0d2a5e"}}>{m.name}</div>
-                  <div style={{fontSize:11,color:"#90a4ae",marginTop:2}}>Member #{ m.id} · Joined {mFmtD(m.joinDate)}</div>
+                  <div style={{fontSize:11,color:"#90a4ae",marginTop:2}}>Member #{m.id} · Joined {mFmtD(m.joinDate)}</div>
                 </div>
               </div>
               <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>Personal Details</div>
@@ -9970,23 +10338,11 @@ function MemberDashboardInline({ session, onLogout }) {
                 </div>
               ))}
             </div>
-
-            {/* Next of Kin */}
             {m.nextOfKin&&(
               <div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:10}}>🧑‍🤝‍🧑 Next of Kin</div>
-                {m.nextOfKin.photoUrl&&(
-                  <div style={{display:"flex",justifyContent:"center",marginBottom:12}}>
-                    <img src={m.nextOfKin.photoUrl} alt={m.nextOfKin.name||"NOK"} style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:"2px solid #e3f2fd"}}/>
-                  </div>
-                )}
-                {[
-                  ["Name",m.nextOfKin.name||"—"],
-                  ["Relationship",m.nextOfKin.relationship||"—"],
-                  ["Phone",m.nextOfKin.phone||"—"],
-                  ["Address",m.nextOfKin.address||"—"],
-                  ["NIN",m.nextOfKin.nin||"—"],
-                ].filter(([,v])=>v&&v!=="—").map(([lbl,val])=>(
+                {m.nextOfKin.photoUrl&&(<div style={{display:"flex",justifyContent:"center",marginBottom:12}}><img src={m.nextOfKin.photoUrl} alt={m.nextOfKin.name||"NOK"} style={{width:56,height:56,borderRadius:"50%",objectFit:"cover",border:"2px solid #e3f2fd"}}/></div>)}
+                {[["Name",m.nextOfKin.name||"—"],["Relationship",m.nextOfKin.relationship||"—"],["Phone",m.nextOfKin.phone||"—"],["Address",m.nextOfKin.address||"—"],["NIN",m.nextOfKin.nin||"—"]].filter(([,v])=>v&&v!=="—").map(([lbl,val])=>(
                   <div key={lbl} style={{display:"flex",gap:12,padding:"7px 0",borderBottom:"1px solid #f5f5f5",alignItems:"flex-start"}}>
                     <span style={{fontSize:12,color:"#90a4ae",minWidth:100,flexShrink:0}}>{lbl}</span>
                     <span style={{fontSize:12,fontWeight:600,color:"#263238"}}>{val}</span>
@@ -9994,13 +10350,15 @@ function MemberDashboardInline({ session, onLogout }) {
                 ))}
               </div>
             )}
-
             <div style={{background:"rgba(21,101,192,.07)",borderRadius:"var(--radius-md)",padding:"12px 14px",fontSize:11,color:"var(--p600)",lineHeight:1.6}}>
               ℹ️ To update your details — photo, phone, address, or next of kin — please contact your BIDA manager.<br/>
               📧 <strong>bidacooperative@gmail.com</strong>
             </div>
           </>}
         </>}
+
+        {/* ── VOTING ── */}
+        {tab==="votes"&&<VotingPanelInline memberId={session.memberId} polls={polls} onRefresh={setPolls}/>}
 
         <div style={{textAlign:"center",padding:"20px 0 8px",fontSize:10,color:"#b0bec5"}}>Bida Multi-Purpose Co-operative Society</div>
       </div>
