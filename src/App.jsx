@@ -423,7 +423,7 @@ function buildLoanSchedule(loan) {
 }
 
 const totBanked   = (m) => (m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0);
-const procFee     = (a) => 25000 + 0.01 * a;
+const procFee     = (a) => Math.round(0.01 * a);
 
 function monthsOverdue(l){
   if(!l||l.status==="paid"||!l.dateBanked) return 0;
@@ -444,7 +444,7 @@ function calcPenalty(l){
 }
 function borrowCapacityRate(m,loans){
   const maxOD=(loans||[]).filter(l=>l.memberId===m.id&&l.status!=="paid").reduce((mx,l)=>Math.max(mx,monthsOverdue(l)),0);
-  return maxOD>=6?0.50:0.60;
+  return maxOD>=6?0.50:0.70;
 }
 function defaultPrincipalPenalty(m,loans){
   const maxOD=(loans||[]).filter(l=>l.memberId===m.id&&l.status!=="paid").reduce((mx,l)=>Math.max(mx,monthsOverdue(l)),0);
@@ -1671,12 +1671,12 @@ async function generateMemberPDF(member, memberLoans, allMembers, allLoans, retu
   });
 
   const bRate=Math.round(borrowCapacityRate(member,allLoans||[])*100);
-  const bBase=(member.monthlySavings||0)+(member.welfare||0);
+  const bBase=(member.monthlySavings||0)+(member.shares||0);
   const bPenalty=defaultPrincipalPenalty(member,allLoans||[]);
   const limY=doc.lastAutoTable.finalY+5;
   doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(...NAVY);doc.text("BORROWING CAPACITY",12,limY);
   doc.autoTable({startY:limY+3,
-    body:[["Savings + Welfare base",fmt(bBase),""],["Capacity rate",bRate+"%"+(bPenalty>0?" (penalty applied)":""),""],["Maximum loan limit",fmt(lim),"Up to this amount available"]],
+    body:[["Savings + Shares base",fmt(bBase),""],["Capacity rate",bRate+"%"+(bPenalty>0?" (penalty applied)":"")+" — 70% standard"],["Maximum loan limit",fmt(lim),"Up to this amount available"]],
     styles:{fontSize:8.5,cellPadding:2.5},
     columnStyles:{0:{cellWidth:80,fontStyle:"bold"},1:{halign:"right",cellWidth:46},2:{cellWidth:46,fontSize:7}},
     didParseCell:(d)=>{if(d.row.index===2&&d.section==="body"){d.cell.styles.fillColor=[232,245,233];d.cell.styles.textColor=GREEN;d.cell.styles.fontStyle="bold";d.cell.styles.fontSize=10;}},
@@ -4873,7 +4873,7 @@ function AppInner(){
               <div className="int-rule">
                 <span style={{fontSize:18,flexShrink:0}}>📐</span>
                 <div className="int-rule-text">
-                  <strong>Interest Rules (automatic):</strong> Loans under UGX 7,000,000 → 4% flat, terms: 3/6/9/12/18/24 months. Loans ≥ UGX 7,000,000 → 6% reducing balance, fixed 12-month term. Processing fee: UGX 25,000 + 1%. Borrow limit: 60% of (monthly savings + shares).
+                  <strong>Interest Rules (automatic):</strong> Loans under UGX 7,000,000 → 4% flat, terms: 3/6/9/12/18/24 months. Loans ≥ UGX 7,000,000 → 6% reducing balance, fixed 12-month term. Processing fee: 1% of principal. Borrow limit: 70% of (monthly savings + shares).
                 </div>
               </div>
               <div className="stats">
@@ -5279,7 +5279,7 @@ function AppInner(){
                               {claimType==="death"?"Recommended Payout to "+((nok&&nok.name)||"Next of Kin"):claimType==="injury"?"Disability Entitlement for "+m.name:"Illness Support for "+m.name}
                             </div>
                             <div style={{fontSize:26,fontWeight:900,fontFamily:"var(--mono)"}}>
-                              {fmt(claimType==="death"?(retention==="compensate"?fullPayout:minPayout):claimType==="injury"?Math.round(illnessBase*1.5):illnessBase)}
+                              {fmt(claimType==="death"?(retention==="compensate"?fullPayout:minPayout):claimType==="injury"?Math.round(benevBase*0.75):illnessTotalPayout)}
                             </div>
                             <div style={{fontSize:10,opacity:.7,marginTop:4}}>
                               {claimType==="death"
@@ -7689,7 +7689,7 @@ function AppInner(){
                 <input className="fi" type="number" value={lF.amountLoaned} onChange={e=>onAmt(e.target.value)} placeholder="0"/>
                 <LoanLimitBadge memberId={lF.memberId} members={members} amountLoaned={lF.amountLoaned}/>
               </div>
-              <div className="fg"><label className="fl">Processing Fee</label><input className="fi" type="number" value={lF.processingFeePaid} onChange={e=>setLF(f=>({...f,processingFeePaid:e.target.value}))}/><span className="fhint">Auto: 25,000 + 1%</span></div>
+              <div className="fg"><label className="fl">Processing Fee</label><input className="fi" type="number" value={lF.processingFeePaid} onChange={e=>setLF(f=>({...f,processingFeePaid:e.target.value}))}/><span className="fhint">Auto: 1% of principal</span></div>
               <div className="fg ff"><label className="fl">Loan Type</label>
                 <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:4}}>
                   {[["personal","👤 Personal"],["business","💼 Business"],["education","🎓 Education"],["medical","🏥 Medical"],["agriculture","🌾 Agriculture"],["other","📋 Other"]].map(([v,lbl])=>(
@@ -7909,6 +7909,122 @@ function PaymentRequestsInbox({members,setMembers,saveRecord,setSyncStatus,authU
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+// VOTES RESULTS PDF — for Auditor / Administrator
+// ═══════════════════════════════════════════════════════════════
+async function generateVotesPDF(poll, votes, tally, winner, members){
+  await loadJsPDF();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
+  const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  const NAVY=[13,52,97],BLUE=[21,101,192],BLITE=[227,242,253],WHITE=[255,255,255],GREEN=[27,94,32],RED=[198,40,40],GREY=[94,127,160];
+
+  // Header
+  doc.setFillColor(...NAVY);doc.rect(0,0,W,28,"F");
+  doc.setFillColor(...BLUE);doc.rect(0,28,W,1.5,"F");
+  const cx=14,cy=14,r=7,pts=[];
+  for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/2;pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]);}
+  doc.setFillColor(21,101,192);
+  (()=>{const steps=pts.slice(1).map((p2,i2)=>[p2[0]-pts[i2][0],p2[1]-pts[i2][1]]);try{doc.lines(steps,pts[0][0],pts[0][1],[1,1],"F",true);}catch(_e){doc.circle(cx,cy,r,"F");}})();
+  const bw=r*0.22,bx=cx-r*0.34;
+  doc.setFillColor(144,202,249);doc.roundedRect(bx,cy+r*0.08,bw,r*0.52,0.4,0.4,"F");
+  doc.setFillColor(100,181,246);doc.roundedRect(bx+r*0.38,cy-r*0.22,bw,r*0.82,0.4,0.4,"F");
+  doc.setFillColor(255,255,255);doc.roundedRect(bx+r*0.76,cy-r*0.52,bw,r*1.12,0.4,0.4,"F");
+  doc.setFillColor(255,255,255);doc.triangle(bx+r*0.76,cy-r*0.62,bx+r*0.76+bw,cy-r*0.62,bx+r*0.76+bw/2,cy-r*0.82,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...WHITE);doc.text("BIDA",26,11);
+  doc.setFont("helvetica","normal");doc.setFontSize(5.5);doc.setTextColor(144,202,249);doc.text("MULTI-PURPOSE CO-OPERATIVE SOCIETY",26,17);
+  doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...WHITE);doc.text("ELECTION / POLL RESULTS REPORT",W/2,11,{align:"center"});
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(187,222,251);doc.text("Confidential — Auditor & Administrator Access Only",W/2,18,{align:"center"});
+  doc.setFontSize(6.5);doc.text("Generated: "+toStr(),W-10,22,{align:"right"});
+
+  let y=36;
+  // Poll info box
+  doc.setFillColor(...BLITE);doc.roundedRect(10,y,W-20,22,2,2,"F");
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...NAVY);doc.text(poll.title||"Poll Results",14,y+7);
+  doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(...GREY);
+  doc.text("Type: "+(poll.poll_type||"").replace(/_/g," ")+"   Status: "+(poll.status||"").toUpperCase()+"   Total Votes: "+votes.length,14,y+13);
+  if(poll.end_date)doc.text("Closed: "+new Date(poll.end_date).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}),14,y+18);
+  y+=28;
+
+  // Winner banner
+  if(winner){
+    doc.setFillColor(27,94,32);doc.roundedRect(10,y,W-20,14,2,2,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(...WHITE);
+    doc.text("🏆 WINNER: "+winner.label+"  ("+winner.votes+" vote"+(winner.votes!==1?"s":"")+")",W/2,y+9,{align:"center"});
+    y+=20;
+  }
+
+  // Results table
+  doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("RESULTS BY CANDIDATE",12,y);
+  const resultRows=(poll.options||[]).map(o=>{
+    const cnt=tally[o.id]||0;
+    const pct=votes.length>0?((cnt/votes.length)*100).toFixed(1)+"%" : "0.0%";
+    const isW=winner?.id===o.id;
+    return [isW?"🏆 "+o.label:o.label,String(cnt),pct,isW?"WINNER":""];
+  });
+  doc.autoTable({
+    startY:y+3,
+    head:[["Candidate","Votes","Percentage","Result"]],
+    body:resultRows,
+    styles:{fontSize:9,cellPadding:2.5},
+    headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:8.5},
+    columnStyles:{0:{cellWidth:90,fontStyle:"bold"},1:{halign:"center",cellWidth:20},2:{halign:"center",cellWidth:25},3:{halign:"center",cellWidth:25,fontStyle:"bold"}},
+    didParseCell:(d)=>{
+      if(d.section==="body"&&d.row.index===0&&winner){d.cell.styles.fillColor=[232,245,233];d.cell.styles.textColor=GREEN;}
+    },
+    margin:{left:12,right:12}
+  });
+  y=doc.lastAutoTable.finalY+8;
+
+  // Individual vote log
+  if(votes.length>0){
+    doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);doc.text("INDIVIDUAL VOTE LOG (Auditor Reference)",12,y);
+    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Each vote is SHA-256 hashed and immutable. Device fingerprint recorded.",12,y+5);
+    const vRows=votes.map((v,i)=>{
+      const mem=members.find(m=>m.id===v.member_id);
+      const choiceLabels=(v.vote_data?.choices||[v.vote_data?.choice]).filter(Boolean).map(c=>(poll.options||[]).find(o=>o.id===c)?.label||c).join(", ");
+      const castAt=v.voted_at||v.cast_at?new Date(v.voted_at||v.cast_at).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+      return [i+1,mem?mem.name:"Member #"+v.member_id,choiceLabels,castAt,(v.vote_hash||"").slice(0,16)+"…"];
+    });
+    doc.autoTable({
+      startY:y+8,
+      head:[["#","Member","Choice","Cast At","Hash (first 16)"]],
+      body:vRows,
+      styles:{fontSize:7.5,cellPadding:2},
+      headStyles:{fillColor:NAVY,textColor:WHITE,fontStyle:"bold",fontSize:7},
+      columnStyles:{0:{halign:"center",cellWidth:8},1:{cellWidth:50,fontStyle:"bold"},2:{cellWidth:50},3:{halign:"center",cellWidth:30},4:{halign:"left",cellWidth:45,fontFamily:"courier",fontSize:6.5}},
+      alternateRowStyles:{fillColor:[245,250,255]},
+      margin:{left:12,right:12},
+      didDrawPage:(d)=>{
+        doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+        doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+        doc.text("Bida Multi-Purpose Co-operative Society — Election Results — Confidential",10,H-3);
+        doc.text("Page "+d.pageNumber+" · "+toStr(),W-10,H-3,{align:"right"});
+      }
+    });
+  }
+
+  // Sign-off
+  const sigY=doc.lastAutoTable?doc.lastAutoTable.finalY+10:y+60;
+  if(sigY<H-40){
+    doc.setFillColor(...BLITE);doc.roundedRect(10,sigY,W-20,30,2,2,"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(...NAVY);doc.text("CERTIFIED CORRECT BY:",14,sigY+7);
+    [["Auditor",""],["Administrator",""]].forEach((role,i)=>{
+      const sx=14+(i*80),sy=sigY+14;
+      doc.setDrawColor(...GREY);doc.line(sx,sy+8,sx+65,sy+8);
+      doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+      doc.text(role[0],sx,sy+11);doc.text("Signature & Date",sx,sy+15);
+    });
+  }
+
+  // Footer on page 1
+  doc.setFillColor(...BLITE);doc.rect(0,H-9,W,9,"F");
+  doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(...GREY);
+  doc.text("Bida Multi-Purpose Co-operative Society — Election Results — Confidential",10,H-3);
+  doc.text("Generated: "+toStr(),W-10,H-3,{align:"right"});
+  return doc.output("blob");
+}
+
 // ══════════════════════════════════════════════
 // VOTING ADMIN PANEL — Manager Side
 // ══════════════════════════════════════════════
@@ -7929,7 +8045,7 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
 
   const loadVotes=async(pollId)=>{
     setVotesLoading(true);
-    try{const r=await supa("GET","poll_votes",null,"poll_id=eq."+pollId+"&order=voted_at.desc");setVotes(r||[]);}
+    try{const r=await supa("GET","votes",null,"poll_id=eq."+pollId+"&order=cast_at.desc");setVotes(r||[]);}
     catch(e){console.warn("Votes load failed:",e);}
     finally{setVotesLoading(false);}
   };
@@ -8088,11 +8204,29 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
               {/* Individual votes log */}
               {votes.length>0&&(
                 <div style={{marginTop:16}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:8}}>Vote Log (time-stamped)</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"var(--p700)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>Vote Log (time-stamped)</div>
+                    <button
+                      className="btn bpdf sm"
+                      onClick={async()=>{
+                        try{
+                          const blob=await generateVotesPDF(selPoll,votes,tally,winner,members);
+                          const fname="BIDA_VoteResults_"+(selPoll.title||"Poll").replace(/\s+/g,"_")+".pdf";
+                          const u=URL.createObjectURL(blob);
+                          const a=document.createElement("a");a.href=u;a.download=fname;
+                          document.body.appendChild(a);a.click();
+                          setTimeout(()=>{URL.revokeObjectURL(u);try{document.body.removeChild(a);}catch(e){}},6000);
+                        }catch(e){alert("PDF error: "+e.message);}
+                      }}
+                    >📥 Download Results PDF</button>
+                  </div>
+                  <div style={{background:"#f0f7ff",border:"1px solid #bbdefb",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#1565c0",marginBottom:8,lineHeight:1.6}}>
+                    ℹ️ <strong>Who sees vote results:</strong> The <strong>Auditor</strong> and <strong>Administrator</strong> have full access to the vote log and PDF. The Treasurer and Finance Manager can view results but votes are anonymous — only a member count is shown per candidate.
+                  </div>
                   <div style={{maxHeight:200,overflowY:"auto",border:"1px solid var(--bdr)",borderRadius:9}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
                       <thead><tr style={{background:"var(--p50)",position:"sticky",top:0}}>
-                        {["Member ID","Choice(s)","Cast At"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--p700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>)}
+                        {["Member","Choice(s)","Cast At"].map(h=><th key={h} style={{padding:"6px 10px",textAlign:"left",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--p700)",borderBottom:"1.5px solid var(--bdr)"}}>{h}</th>)}
                       </tr></thead>
                       <tbody>
                         {votes.map((v,i)=>{
@@ -8102,7 +8236,7 @@ function VotingAdminPanel({polls,setPolls,pollModal,setPollModal,pollF,setPollF,
                             <tr key={i} style={{borderBottom:"1px solid var(--bdr)"}}>
                               <td style={{padding:"5px 10px",fontFamily:"var(--mono)",fontSize:9}}>{mem?mem.name:"Member #"+v.member_id}</td>
                               <td style={{padding:"5px 10px",fontWeight:600}}>{choiceLabels}</td>
-                              <td style={{padding:"5px 10px",fontFamily:"var(--mono)",fontSize:9,color:"var(--tmuted)",whiteSpace:"nowrap"}}>{v.voted_at?new Date(v.voted_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—"}</td>
+                              <td style={{padding:"5px 10px",fontFamily:"var(--mono)",fontSize:9,color:"var(--tmuted)",whiteSpace:"nowrap"}}>{v.voted_at||v.cast_at?new Date(v.voted_at||v.cast_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—"}</td>
                             </tr>
                           );
                         })}
@@ -8514,10 +8648,33 @@ function PollCard({ poll, memberId, onVoted }) {
       const now = new Date().toISOString();
       const vd  = {choices:sel,castAt:now,pollId:poll.id,memberId};
       const h   = await mSha256(JSON.stringify(vd)+memberId+poll.id+now);
-      await mDb.insert("votes",{poll_id:poll.id,member_id:memberId,vote_data:vd,vote_hash:h,device_fingerprint:fp,cast_at:now});
+      const voteRow = {poll_id:poll.id,member_id:memberId,vote_data:vd,vote_hash:h,device_fingerprint:fp,cast_at:now};
+      // Use main supa wrapper (uses stored/elevated key) for vote insert
+      // If RLS blocks this, run in Supabase SQL editor:
+      //   CREATE POLICY "allow_member_vote" ON votes FOR INSERT WITH CHECK (member_id IS NOT NULL);
+      //   ALTER TABLE votes ENABLE ROW LEVEL SECURITY;
+      const key = getSupaKey();
+      const url = SUPA_URL+"/rest/v1/votes";
+      const headers = {"Content-Type":"application/json","apikey":key,"Authorization":"Bearer "+key,"Prefer":"return=minimal"};
+      const res = await fetch(url,{method:"POST",headers,body:JSON.stringify([voteRow])});
+      if(!res.ok){
+        const errText = await res.text().catch(()=>"");
+        let parsed={};try{parsed=JSON.parse(errText);}catch{}
+        if(parsed.code==="42501"||errText.includes("row-level security")){
+          throw new Error("RLS_BLOCKED");
+        }
+        throw new Error(errText||("HTTP "+res.status));
+      }
       setMine(vd); await loadTally(); onVoted?.();
     } catch(e) {
-      setErr(e.message.includes("one_vote")||e.message.includes("unique")?"You already voted in this poll.":"Error: "+e.message);
+      const msg = e.message||"";
+      if(msg.includes("one_vote")||msg.includes("unique")||msg.includes("duplicate")){
+        setErr("You have already voted in this poll.");
+      } else if(msg==="RLS_BLOCKED"){
+        setErr("⚠ Voting is not yet enabled on the server. Ask your BIDA manager to run the votes RLS policy in Supabase.");
+      } else {
+        setErr("Error: "+msg);
+      }
     } finally { setBusy(false); }
   };
 
