@@ -288,20 +288,35 @@ function sanitiseInvestment(r){
 }
 
 async function loadAllFromSupabase(){
-  const [rawMembers,rawLoans,rawExpenses,rawInvestments,providers,receipts,rawContribLog,rawDividendPayouts,ledger,auditLog,settings,rawPolls]=await Promise.all([
-    supaFetch("members"),
-    supaFetch("loans"),
-    supaFetch("expenses"),
-    supaFetch("investments"),
-    supaFetch("service_providers").catch(()=>[]),
-    supaFetch("receipts").catch(()=>[]),
-    supaFetch("contrib_log").catch(()=>[]),
-    supaFetch("dividend_payouts").catch(()=>[]),
-    supaFetch("ledger").catch(()=>[]),
-    supaFetch("audit_log").catch(()=>[]),
-    supaFetch("settings").catch(()=>[]),
-    supaFetch("polls").catch(()=>[]),
+  // Use allSettled so a single failing table never blocks everything else
+  const settled = await Promise.allSettled([
+    supaFetch("members"),           // 0
+    supaFetch("loans"),             // 1
+    supaFetch("expenses"),          // 2
+    supaFetch("investments"),       // 3
+    supaFetch("service_providers"), // 4
+    supaFetch("receipts"),          // 5
+    supaFetch("contrib_log"),       // 6
+    supaFetch("dividend_payouts"),  // 7
+    supaFetch("ledger"),            // 8
+    supaFetch("audit_log"),         // 9
+    supaFetch("settings"),          // 10
+    supaFetch("polls"),             // 11
   ]);
+  const val = (i, fallback=[]) => settled[i].status==="fulfilled" ? (settled[i].value||fallback) : fallback;
+  const rawMembers        = val(0);
+  const rawLoans          = val(1);
+  const rawExpenses       = val(2);
+  const rawInvestments    = val(3);
+  const providers         = val(4);
+  const receipts          = val(5);
+  const rawContribLog     = val(6);
+  const rawDividendPayouts= val(7);
+  const ledger            = val(8);
+  const auditLog          = val(9);
+  const settings          = val(10);
+  const rawPolls          = val(11);
+
   if(Array.isArray(settings)){
     settings.forEach(row=>{
       if(row.key&&row.key.startsWith("pin_")&&row.value){
@@ -3229,6 +3244,32 @@ function AppInner(){
   const [docsLoading,setDocsLoading]=useState(false);
   const [docsFilterCat,setDocsFilterCat]=useState("all");
   const [docsSearch,setDocsSearch]=useState("");
+  // ── Notification / app-wide settings ──
+  const [notifSettings,setNotifSettings]=useState(()=>{
+    try{const s=localStorage.getItem("bida_notif_settings");return s?JSON.parse(s):{chairmanEmail:"",adminEmail:"",appUrl:"https://bida.pamojapay.co",ccOnPayments:true};}
+    catch{return{chairmanEmail:"",adminEmail:"",appUrl:"https://bida.pamojapay.co",ccOnPayments:true};}
+  });
+  const saveNotifSettings=(patch)=>{
+    const next={...notifSettings,...patch};
+    setNotifSettings(next);
+    try{localStorage.setItem("bida_notif_settings",JSON.stringify(next));}catch{}
+  };
+  // ── Loan requests state ──
+  const [loanRequests,setLoanRequests]=useState([]);
+  const [loanReqTab,setLoanReqTab]=useState("list");
+  const [loanReqSelected,setLoanReqSelected]=useState(null);
+  const [loanReqBusy,setLoanReqBusy]=useState(false);
+  const [loanReqToast,setLoanReqToast]=useState("");
+  const showLRToast=(msg)=>{setLoanReqToast(msg);setTimeout(()=>setLoanReqToast(""),4000);};
+  // ── Dynamic roles state ──
+  const [sysRoles,setSysRoles]=useState([]);
+  const [roleAssignments,setRoleAssignments]=useState([]);
+  const [rolesLoading,setRolesLoading]=useState(false);
+  const [roleModal,setRoleModal]=useState(false);
+  const [roleF,setRoleF]=useState({role_name:"",description:"",receives_email_for:[],approval_order:""});
+  const [assignRoleModal,setAssignRoleModal]=useState(null); // memberId
+  const [assignRoleId,setAssignRoleId]=useState("");
+  const [assignRoleExpiry,setAssignRoleExpiry]=useState("");
   const [docUpName,setDocUpName]=useState("");
   const [docUpCat,setDocUpCat]=useState("minutes");
   const [docUpNote,setDocUpNote]=useState("");
@@ -3238,6 +3279,29 @@ function AppInner(){
     const t=setInterval(()=>setLiveTime(new Date()),1000);
     return ()=>clearInterval(t);
   },[]);
+
+  // ── Load loan requests from Supabase ──
+  const loadLoanRequests = React.useCallback(async()=>{
+    try{
+      const r=await supa("GET","loan_requests",null,"order=created_at.desc&tenant_id=eq.bida").catch(()=>[]);
+      setLoanRequests(r||[]);
+    }catch(e){ console.warn("loadLoanRequests:",e.message); }
+  },[]);
+
+  // ── Load roles from Supabase when settings tab opens ──
+  const loadRoles = React.useCallback(async()=>{
+    setRolesLoading(true);
+    try{
+      const [r,a]=await Promise.all([
+        supa("GET","system_roles",null,"order=id&tenant_id=eq.bida").catch(()=>[]),
+        supa("GET","member_role_assignments",null,"is_active=eq.true&tenant_id=eq.bida").catch(()=>[]),
+      ]);
+      setSysRoles(r||[]); setRoleAssignments(a||[]);
+    }catch(e){ console.warn("loadRoles:",e.message); }
+    finally{ setRolesLoading(false); }
+  },[]);
+
+  useEffect(()=>{ if(tab==="settings") loadRoles(); },[tab]);
 
   useEffect(()=>{
     if(!authUser) return;
@@ -4540,6 +4604,8 @@ function AppInner(){
             {[
               {id:"approvals",  icon:"✅", label:"Approvals",
                 badge: myPendingItems.length||0},
+              {id:"loan_apps",  icon:"📝", label:"Loan Apps",
+                badge: loanRequests.filter(r=>["pending_guarantor","under_review","pending_treasurer","pending_chairman","ready_for_disbursement","awaiting_borrower_confirmation"].includes(r.status)).length||0},
               {id:"voting",     icon:"🗳", label:"Voting"},
               {id:"benevolent", icon:"🕊", label:"Benevolent"},
               {id:"audit",      icon:"🔒", label:"Audit Log"},
@@ -4647,6 +4713,14 @@ function AppInner(){
               <button className={"nbtn"+(tab==="voting"?" on":"")} onClick={()=>{setTab("voting");setSearch("");}}>🗳 Voting</button>
               <button className={"nbtn"+(tab==="audit"?" on":"")} onClick={()=>{setTab("audit");setSearch("");}}>🔒 Audit</button>
               {authUser?.role==="auditor"&&<button className={"nbtn"+(tab==="auditor_hub"?" on":"")} onClick={()=>{setTab("auditor_hub");setSearch("");}}>📁 Auditor</button>}
+              <button className={"nbtn"+(tab==="loan_apps"?" on":"")} onClick={()=>{setTab("loan_apps");setSearch(""); loadLoanRequests();}} style={{position:"relative"}}>
+                📝 Loan Apps
+                {loanRequests.filter(r=>["pending_guarantor","under_review","pending_treasurer","pending_chairman","ready_for_disbursement","awaiting_borrower_confirmation"].includes(r.status)).length>0&&(
+                  <span style={{position:"absolute",top:-4,right:-4,background:"#e65100",color:"#fff",borderRadius:"50%",width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:9}}>
+                    {loanRequests.filter(r=>["pending_guarantor","under_review","pending_treasurer","pending_chairman","ready_for_disbursement","awaiting_borrower_confirmation"].includes(r.status)).length}
+                  </span>
+                )}
+              </button>
               <button className={"nbtn"+(tab==="settings"?" on":"")} onClick={()=>{setTab("settings");setSearch("");}}>⚙️ Settings</button>
             </nav>
           </div>
@@ -4678,6 +4752,15 @@ function AppInner(){
                 </div>
               </div>
               <div className="ptitle"><div className="ptdot"/>Dashboard — Member Savings Ledger</div>
+
+              {/* ── PAYMENT REQUESTS INBOX (Treasurer approval queue) ── */}
+              <PaymentRequestsInbox
+                members={members}
+                setMembers={setMembers}
+                saveRecord={saveRecord}
+                setSyncStatus={setSyncStatus}
+                authUser={authUser}
+              />
 
               {/* ── BIDA Fund Summary — 13-field grid ── */}
               <div style={{background:"linear-gradient(145deg,#0d3461 0%,#1565c0 100%)",borderRadius:"var(--radius-lg)",padding:"16px 18px",marginBottom:14,color:"#fff",border:"1px solid rgba(255,255,255,.08)",boxShadow:"var(--shadow-md)"}}>
@@ -5653,6 +5736,292 @@ function AppInner(){
                 ✅ Connected to: <strong>{SUPA_URL||"Supabase"}</strong> · Key active · Real-time sync every 15s
               </div>
 
+              {/* ── SQL MIGRATION REMINDER ── */}
+              <div style={{background:"#f8faff",border:"1px solid #c5daf5",borderRadius:"var(--radius-md)",padding:"14px 16px",marginBottom:12}}>
+                <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:6}}>🗄️ Required SQL Migration</div>
+                <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:8,lineHeight:1.6}}>
+                  If you haven't run the SQL migrations yet, run these in <strong>Supabase → SQL Editor</strong>. Safe to run multiple times.
+                </div>
+                <pre style={{background:"#0d2a5e",color:"#90caf9",borderRadius:8,padding:"10px 12px",fontSize:10,overflowX:"auto",margin:0,fontFamily:"var(--mono)",lineHeight:1.7}}>{`-- Run SQL_1_payment_system.sql  (payment_requests table)
+-- Run SQL_2_loans_and_roles.sql  (loan_requests, system_roles, etc.)
+
+-- Additional columns for members table (safe to re-run):
+ALTER TABLE members
+  ADD COLUMN IF NOT EXISTS security_question TEXT,
+  ADD COLUMN IF NOT EXISTS security_answer_hash TEXT,
+  ADD COLUMN IF NOT EXISTS assigned_role TEXT,
+  ADD COLUMN IF NOT EXISTS role_term_expires DATE,
+  ADD COLUMN IF NOT EXISTS member_login_id TEXT,
+  ADD COLUMN IF NOT EXISTS password_hash TEXT,
+  ADD COLUMN IF NOT EXISTS is_first_login BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS account_status TEXT DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS temp_password_plain TEXT,
+  ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ;`}</pre>
+              </div>
+
+              {/* ── NOTIFICATION SETTINGS CARD ── */}
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"16px",marginBottom:12}}>
+                <div style={{fontWeight:800,fontSize:14,color:"var(--p800)",marginBottom:4}}>📧 Notification Email Settings</div>
+                <div style={{fontSize:11,color:"var(--tmuted)",marginBottom:14,lineHeight:1.6}}>
+                  Set the Chairman and Admin email addresses for CC notifications on payment approvals, loan approvals, and disbursements.
+                  Also enter your live app URL so guarantor and chairman approval links work correctly.
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12,marginBottom:12}}>
+                  <div>
+                    <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:5,fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7}}>Chairman Email</label>
+                    <input className="fi" type="email" placeholder="chairman@example.com"
+                      value={notifSettings.chairmanEmail}
+                      onChange={e=>saveNotifSettings({chairmanEmail:e.target.value})}/>
+                    <div style={{fontSize:10,color:"var(--tmuted)",marginTop:3}}>Receives CC on payment approvals, loan stages, disbursements</div>
+                  </div>
+                  <div>
+                    <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:5,fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7}}>Admin / Secretary Email</label>
+                    <input className="fi" type="email" placeholder="admin@example.com"
+                      value={notifSettings.adminEmail}
+                      onChange={e=>saveNotifSettings({adminEmail:e.target.value})}/>
+                    <div style={{fontSize:10,color:"var(--tmuted)",marginTop:3}}>Receives CC on all payment approvals and disbursements</div>
+                  </div>
+                  <div style={{gridColumn:"1/-1"}}>
+                    <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:5,fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.7}}>Live App URL (for email links)</label>
+                    <input className="fi" type="url" placeholder="https://bida.pamojapay.co"
+                      value={notifSettings.appUrl}
+                      onChange={e=>saveNotifSettings({appUrl:e.target.value.replace(/\/+$/,"")})}/>
+                    <div style={{fontSize:10,color:"var(--tmuted)",marginTop:3}}>Used in guarantor confirmation links and chairman approval links — must be your Vercel/Netlify URL</div>
+                  </div>
+                </div>
+                {notifSettings.chairmanEmail&&notifSettings.adminEmail&&notifSettings.appUrl?(
+                  <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#1b5e20"}}>
+                    ✅ Notification emails configured — payment approvals will CC {notifSettings.chairmanEmail} and {notifSettings.adminEmail}
+                  </div>
+                ):(
+                  <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#e65100"}}>
+                    ⚠️ Fill in all three fields to enable CC notifications and approval email links
+                  </div>
+                )}
+              </div>
+
+              {/* ── DYNAMIC ROLES MANAGEMENT CARD ── */}
+              <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"16px",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:14,color:"var(--p800)"}}>🏛️ Dynamic Roles Management</div>
+                    <div style={{fontSize:11,color:"var(--tmuted)",marginTop:2}}>Create roles and assign them to members. Role holders receive email notifications but do not log into the manager portal.</div>
+                  </div>
+                  {canDo(authUser,"all")&&(
+                    <button className="btn bp sm" onClick={()=>{setRoleF({role_name:"",description:"",receives_email_for:[],approval_order:""});setRoleModal(true);}}>＋ Create Role</button>
+                  )}
+                </div>
+
+                {/* Roles list */}
+                {sysRoles.length===0?(
+                  <div style={{textAlign:"center",padding:"20px 0",color:"var(--tmuted)",fontSize:12}}>
+                    No roles yet. Click "＋ Create Role" to add one, or run SQL_2 in Supabase to seed defaults.
+                    <button className="btn bg sm" style={{display:"block",margin:"10px auto 0"}} onClick={async()=>{
+                      setRolesLoading(true);
+                      try{
+                        const r=await supa("GET","system_roles",null,"order=id&tenant_id=eq.bida").catch(()=>[]);
+                        setSysRoles(r||[]);
+                        const a=await supa("GET","member_role_assignments",null,"is_active=eq.true&tenant_id=eq.bida").catch(()=>[]);
+                        setRoleAssignments(a||[]);
+                      }catch(e){console.warn(e);}
+                      finally{setRolesLoading(false);}
+                    }}>{rolesLoading?"⏳ Loading…":"↻ Load Roles"}</button>
+                  </div>
+                ):(
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10}}>
+                    {sysRoles.map(role=>{
+                      const holders=roleAssignments.filter(a=>a.role_id===role.id);
+                      const holderMembers=holders.map(a=>members.find(m=>m.id===a.member_id)).filter(Boolean);
+                      return (
+                        <div key={role.id} style={{background:"var(--p50)",border:"1.5px solid var(--bdr)",borderRadius:10,padding:"12px 14px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4,gap:6}}>
+                            <div style={{fontWeight:800,fontSize:13,color:"var(--p800)"}}>{role.role_name}</div>
+                            <div style={{display:"flex",gap:4,flexShrink:0}}>
+                              {role.approval_order&&<span style={{fontSize:9,background:"#e3f2fd",color:"#1565c0",borderRadius:20,padding:"2px 8px",fontWeight:700,fontFamily:"var(--mono)"}}>Order #{role.approval_order}</span>}
+                              {canDo(authUser,"all")&&(
+                                <button className="btn bd xs" style={{fontSize:9,padding:"1px 6px"}} onClick={async()=>{
+                                  if(!window.confirm("Delete role '"+role.role_name+"'? Member assignments will also be removed.")) return;
+                                  await supa("DELETE","system_roles",null,"id=eq."+role.id).catch(()=>{});
+                                  setSysRoles(prev=>prev.filter(r=>r.id!==role.id));
+                                  setRoleAssignments(prev=>prev.filter(a=>a.role_id!==role.id));
+                                }}>🗑</button>
+                              )}
+                            </div>
+                          </div>
+                          {role.description&&<div style={{fontSize:11,color:"var(--tmuted)",marginBottom:6}}>{role.description}</div>}
+                          {(role.receives_email_for||[]).length>0&&(
+                            <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                              {(role.receives_email_for||[]).map(t=>(
+                                <span key={t} style={{fontSize:9,background:"#f3e5f5",color:"#6a1b9a",borderRadius:20,padding:"2px 7px",fontFamily:"var(--mono)"}}>{t.replace(/_/g," ")}</span>
+                              ))}
+                            </div>
+                          )}
+                          {/* Member list with email and remove button */}
+                          <div style={{marginBottom:8}}>
+                            {holderMembers.length===0
+                              ? <div style={{fontSize:11,color:"var(--tmuted)",fontStyle:"italic"}}>No members assigned</div>
+                              : holderMembers.map(m=>{
+                                  const assign = holders.find(a=>a.member_id===m.id);
+                                  return (
+                                    <div key={m.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                                      <div style={{width:22,height:22,borderRadius:"50%",background:"var(--p600)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,flexShrink:0}}>
+                                        {(m.name||"?")[0]}
+                                      </div>
+                                      <div style={{flex:1,minWidth:0}}>
+                                        <div style={{fontSize:11,fontWeight:700,color:"var(--p800)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</div>
+                                        {m.email&&<div style={{fontSize:9,color:"var(--tmuted)",fontFamily:"var(--mono)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.email}</div>}
+                                      </div>
+                                      {canDo(authUser,"all")&&assign&&(
+                                        <button style={{background:"none",border:"none",color:"#c62828",cursor:"pointer",fontSize:12,padding:"1px 4px",flexShrink:0}} title="Remove assignment"
+                                          onClick={async()=>{
+                                            await supa("DELETE","member_role_assignments",null,"id=eq."+assign.id).catch(()=>{});
+                                            setRoleAssignments(prev=>prev.filter(a=>a.id!==assign.id));
+                                            // Clear the assigned_role badge if this was the only role
+                                            const remaining = roleAssignments.filter(a=>a.member_id===m.id&&a.id!==assign.id);
+                                            if(remaining.length===0) await supa("PATCH","members",{assigned_role:null},"id=eq."+m.id).catch(()=>{});
+                                          }}>✕</button>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                            }
+                          </div>
+                          {canDo(authUser,"all")&&(
+                            <button className="btn bg xs" onClick={()=>{setAssignRoleModal(role.id);setAssignRoleId("");setAssignRoleExpiry("");}}>
+                              ＋ Assign Member
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Create Role Modal */}
+              {roleModal&&(
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}
+                  onClick={()=>setRoleModal(false)}>
+                  <div style={{background:"#fff",borderRadius:16,padding:"22px 20px",maxWidth:420,width:"100%",maxHeight:"90vh",overflowY:"auto"}}
+                    onClick={e=>e.stopPropagation()}>
+                    <div style={{fontWeight:800,fontSize:15,color:"var(--p800)",marginBottom:14}}>🏛️ Create New Role</div>
+                    <div style={{marginBottom:10}}>
+                      <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:4,fontFamily:"var(--mono)",textTransform:"uppercase"}}>Role Name</label>
+                      <input className="fi" value={roleF.role_name} onChange={e=>setRoleF(f=>({...f,role_name:e.target.value}))} placeholder="e.g. Chairman, Credit Committee, Auditor"/>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:4,fontFamily:"var(--mono)",textTransform:"uppercase"}}>Description</label>
+                      <input className="fi" value={roleF.description} onChange={e=>setRoleF(f=>({...f,description:e.target.value}))} placeholder="What does this role do?"/>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:6,fontFamily:"var(--mono)",textTransform:"uppercase"}}>Receives Email For</label>
+                      <div style={{background:"#f8faff",borderRadius:9,padding:"10px 12px",marginBottom:8}}>
+                        {["loans","expenses","investments","documents","payment_notifications","disbursement_confirmations","member_registrations"].map(opt=>(
+                          <label key={opt} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,cursor:"pointer"}}>
+                            <input type="checkbox"
+                              checked={(roleF.receives_email_for||[]).includes(opt)}
+                              onChange={e=>{
+                                const cur=roleF.receives_email_for||[];
+                                setRoleF(f=>({...f,receives_email_for:e.target.checked?[...cur,opt]:cur.filter(x=>x!==opt)}));
+                              }}/>
+                            <span style={{fontSize:12,color:"var(--td)"}}>{opt.replace(/_/g," ")}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:4,fontFamily:"var(--mono)",textTransform:"uppercase"}}>Custom Triggers (optional — comma-separated)</label>
+                      <input className="fi" placeholder="e.g. agm_notices, welfare_claims, board_meetings"
+                        value={(roleF.receives_email_for||[]).filter(x=>!["loans","expenses","investments","documents","payment_notifications","disbursement_confirmations","member_registrations"].includes(x)).join(", ")}
+                        onChange={e=>{
+                          const presets=["loans","expenses","investments","documents","payment_notifications","disbursement_confirmations","member_registrations"];
+                          const custom=e.target.value.split(",").map(s=>s.trim().toLowerCase().replace(/\s+/g,"_")).filter(Boolean);
+                          const kept=(roleF.receives_email_for||[]).filter(x=>presets.includes(x));
+                          setRoleF(f=>({...f,receives_email_for:[...kept,...custom]}));
+                        }}/>
+                      <div style={{fontSize:10,color:"var(--tmuted)",marginTop:3}}>Type any custom notification trigger — it will be saved and shown as a tag on the role card</div>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:4,fontFamily:"var(--mono)",textTransform:"uppercase"}}>Assign Member to This Role (optional)</label>
+                      <select className="fi" value={roleF._assignMemberId||""} onChange={e=>setRoleF(f=>({...f,_assignMemberId:e.target.value}))} style={{cursor:"pointer",background:"#fff"}}>
+                        <option value="">— Assign now (or do it later) —</option>
+                        {members.map(m=><option key={m.id} value={m.id}>{m.name}{m.email?" ✉":""}</option>)}
+                      </select>
+                      {roleF._assignMemberId&&(
+                        <div style={{fontSize:10,color:"#1b5e20",marginTop:3}}>
+                          ✅ {members.find(m=>String(m.id)===String(roleF._assignMemberId))?.name} will be assigned when you click Create Role
+                        </div>
+                      )}
+                    </div>
+                    <div style={{marginBottom:14}}>
+                      <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:4,fontFamily:"var(--mono)",textTransform:"uppercase"}}>Approval Order (optional)</label>
+                      <input className="fi" type="number" value={roleF.approval_order} onChange={e=>setRoleF(f=>({...f,approval_order:e.target.value}))} placeholder="1, 2, 3… for sequential approvals"/>
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button className="btn bg" style={{flex:1}} onClick={()=>setRoleModal(false)}>Cancel</button>
+                      <button className="btn bp" style={{flex:2}} onClick={async()=>{
+                        if(!roleF.role_name.trim()){alert("Enter a role name");return;}
+                        try{
+                          const row={role_name:roleF.role_name.trim(),description:roleF.description,receives_email_for:roleF.receives_email_for,approval_order:roleF.approval_order?+roleF.approval_order:null,is_active:true,tenant_id:"bida",created_at:new Date().toISOString()};
+                          const r=await supa("POST","system_roles",[row]);
+                          const newRole=r&&r[0] ? r[0] : {...row,id:Date.now()};
+                          setSysRoles(prev=>[...prev,newRole]);
+                          // If a member was selected, assign them now
+                          if(roleF._assignMemberId&&newRole.id){
+                            const arow={member_id:+roleF._assignMemberId,role_id:newRole.id,assigned_at:new Date().toISOString(),is_active:true,tenant_id:"bida"};
+                            await supa("POST","member_role_assignments",[arow]).catch(()=>{});
+                            setRoleAssignments(prev=>[...prev,{...arow,id:Date.now()}]);
+                            await supa("PATCH","members",{assigned_role:roleF.role_name.trim()},"id=eq."+roleF._assignMemberId).catch(()=>{});
+                            setMembers(prev=>prev.map(m=>String(m.id)===String(roleF._assignMemberId)?{...m,assigned_role:roleF.role_name.trim()}:m));
+                          }
+                          setRoleModal(false);
+                          setRoleF({role_name:"",description:"",receives_email_for:[],approval_order:"",_assignMemberId:""});
+                          alert("✅ Role '"+roleF.role_name+"' created"+(roleF._assignMemberId?" and member assigned":""));
+                        }catch(e){alert("Error: "+e.message);}
+                      }}>Create Role</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Assign Role Modal */}
+              {assignRoleModal&&(
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}
+                  onClick={()=>setAssignRoleModal(null)}>
+                  <div style={{background:"#fff",borderRadius:16,padding:"22px 20px",maxWidth:380,width:"100%"}}
+                    onClick={e=>e.stopPropagation()}>
+                    <div style={{fontWeight:800,fontSize:15,color:"var(--p800)",marginBottom:14}}>Assign Member to Role</div>
+                    <div style={{marginBottom:10}}>
+                      <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:4,fontFamily:"var(--mono)",textTransform:"uppercase"}}>Select Member</label>
+                      <select className="fi" value={assignRoleId} onChange={e=>setAssignRoleId(e.target.value)} style={{cursor:"pointer",background:"#fff"}}>
+                        <option value="">— Select member —</option>
+                        {members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                      </select>
+                    </div>
+                    <div style={{marginBottom:14}}>
+                      <label style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",display:"block",marginBottom:4,fontFamily:"var(--mono)",textTransform:"uppercase"}}>Term Expires (optional)</label>
+                      <input className="fi" type="date" value={assignRoleExpiry} onChange={e=>setAssignRoleExpiry(e.target.value)}/>
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button className="btn bg" style={{flex:1}} onClick={()=>setAssignRoleModal(null)}>Cancel</button>
+                      <button className="btn bp" style={{flex:2}} onClick={async()=>{
+                        if(!assignRoleId){alert("Select a member");return;}
+                        try{
+                          const row={member_id:+assignRoleId,role_id:assignRoleModal,assigned_by:authUser?.memberId||null,assigned_at:new Date().toISOString(),term_expires:assignRoleExpiry||null,is_active:true,tenant_id:"bida"};
+                          const r=await supa("POST","member_role_assignments",[row]);
+                          if(r&&r[0])setRoleAssignments(prev=>[...prev,r[0]]);
+                          // Also update member's assigned_role field for badge display
+                          const role=sysRoles.find(r2=>r2.id===assignRoleModal);
+                          if(role)await supa("PATCH","members",{assigned_role:role.role_name},"id=eq."+assignRoleId).catch(()=>{});
+                          setAssignRoleModal(null);
+                          alert("✅ Member assigned to role");
+                        }catch(e){alert("Error: "+e.message);}
+                      }}>Assign Role</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {getSupaKey()&&(
                 <div style={{background:"#fff",border:"1px solid rgba(197,220,245,.5)",borderRadius:"var(--radius-md)",boxShadow:"var(--shadow-sm)",padding:"14px 16px",marginBottom:12}}>
                   <div style={{fontWeight:700,fontSize:13,color:"var(--p800)",marginBottom:8}}>🔄 Manual Sync</div>
@@ -5691,6 +6060,25 @@ function AppInner(){
                   </div>
                 </div>
               )}
+            </React.Fragment>
+          )}
+
+
+          {tab==="loan_apps" && (
+            <React.Fragment>
+              <div className="ptitle"><div className="ptdot"/>📝 Loan Applications</div>
+              <LoanApplicationsPanel
+                members={members}
+                loans={loans}
+                setLoans={setLoans}
+                loanRequests={loanRequests}
+                setLoanRequests={setLoanRequests}
+                loadLoanRequests={loadLoanRequests}
+                authUser={authUser}
+                notifSettings={notifSettings}
+                saveRecord={saveRecord}
+                setSyncStatus={setSyncStatus}
+              />
             </React.Fragment>
           )}
 
@@ -6473,6 +6861,12 @@ function AppInner(){
                       :<div style={{fontSize:11,color:"rgba(255,255,255,.4)",marginTop:3,fontFamily:"var(--mono)"}}>No WhatsApp on file</div>
                     }
                     <div className="prof-rank-badge">🏅 Rank #{profRank} of {members.length}</div>
+                    {profMember.assigned_role&&(
+                      <div style={{marginTop:5,display:"inline-flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.3)",borderRadius:"var(--radius-xl)",padding:"3px 12px"}}>
+                        <span style={{fontSize:14}}>🏛️</span>
+                        <span style={{fontSize:10,fontWeight:800,color:"#fff",letterSpacing:.5,textTransform:"uppercase"}}>{profMember.assigned_role}</span>
+                      </div>
+                    )}
                     {(()=>{
                       const spRoles=serviceProviders.filter(sp=>sp.isMember&&sp.memberId===profMember.id&&spIsActive(sp));
                       if(spRoles.length===0)return null;
@@ -7799,111 +8193,944 @@ function AppInner(){
 }
 
 
-// ══════════════════════════════════════════════
-// PAYMENT REQUESTS INBOX — Manager Side
-// ══════════════════════════════════════════════
-function PaymentRequestsInbox({members,setMembers,saveRecord,setSyncStatus,authUser}){
-  // ── PAYMENT UPDATES INBOX ──
-  // Once mobile money merchant API is integrated, this will auto-receive
-  // real-time payment confirmations from MTN MoMo / Airtel Money.
-  // For now it shows confirmed payments already recorded by the treasurer.
 
-  const [recent,setRecent]=React.useState([]);
-  const [loading,setLoading]=React.useState(false);
-  const [open,setOpen]=React.useState(false);
+// ══════════════════════════════════════════════════════════════════
+// LOAN APPLICATIONS PANEL — Full manager workflow
+// ══════════════════════════════════════════════════════════════════
+function LoanApplicationsPanel({ members, loans, setLoans, loanRequests, setLoanRequests, loadLoanRequests, authUser, notifSettings, saveRecord, setSyncStatus }) {
+  const [loading,    setLoading]    = React.useState(false);
+  const [selected,   setSelected]   = React.useState(null);
+  const [busy,       setBusy]       = React.useState(false);
+  const [toast,      setToast]      = React.useState("");
+  const [noteText,   setNoteText]   = React.useState("");
+  const [rejectNote, setRejectNote] = React.useState("");
+  const [showReject, setShowReject] = React.useState(false);
+  const [filterSt,   setFilterSt]   = React.useState("all");
+  const [proofModal, setProofModal] = React.useState(null);
+  const [disbModal,  setDisbModal]  = React.useState(false);
+  const [disbProof,  setDisbProof]  = React.useState(null);
 
-  const load=React.useCallback(async()=>{
-    setLoading(true);
-    try{
-      // Show recently confirmed/settled payments as "updates"
-      const r=await supa("GET","payment_requests",null,"order=created_at.desc&limit=10").catch(()=>[]);
-      setRecent(r||[]);
-    }catch(e){console.warn("Payment updates load failed:",e.message);}
-    finally{setLoading(false);}
-  },[]);
+  const showT = (m) => { setToast(m); setTimeout(()=>setToast(""),4000); };
 
-  React.useEffect(()=>{load();},[]);
-
-  const PURP_LABELS={monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",welfare:"Welfare",shares:"Shares",loan_repayment:"Loan Repayment"};
-  const STATUS_STYLE={
-    confirmed:{bg:"#e8f5e9",border:"#a5d6a7",color:"#1b5e20",label:"✓ Confirmed"},
-    pending:  {bg:"#fff8e1",border:"#ffe082",color:"#e65100",label:"⏳ Pending"},
-    rejected: {bg:"#ffebee",border:"#ffcdd2",color:"#c62828",label:"✗ Rejected"},
-    api_initiated:{bg:"#e3f2fd",border:"#90caf9",color:"#1565c0",label:"⚡ API"},
+  const STATUS_MAP = {
+    draft:                        { label:"Draft",                    color:"#757575", bg:"#f5f5f5"  },
+    pending_guarantor:            { label:"⏳ Awaiting Guarantor",     color:"#e65100", bg:"#fff3e0"  },
+    under_review:                 { label:"🔍 Under Review",          color:"#1565c0", bg:"#e3f2fd"  },
+    pending_treasurer:            { label:"💼 Pending Treasurer",     color:"#6a1b9a", bg:"#f3e5f5"  },
+    pending_chairman:             { label:"🏛️ Pending Chairman",      color:"#0277bd", bg:"#e1f5fe"  },
+    approved:                     { label:"✅ Approved",              color:"#1b5e20", bg:"#e8f5e9"  },
+    ready_for_disbursement:       { label:"💰 Ready to Disburse",    color:"#1b5e20", bg:"#c8e6c9"  },
+    awaiting_borrower_confirmation:{ label:"⏳ Awaiting Borrower",   color:"#e65100", bg:"#fff8e1"  },
+    completed:                    { label:"✅ Completed",             color:"#1b5e20", bg:"#e8f5e9"  },
+    rejected:                     { label:"❌ Rejected",             color:"#c62828", bg:"#ffebee"  },
+    guarantor_declined:           { label:"❌ Guarantor Declined",   color:"#c62828", bg:"#ffebee"  },
+    disputed:                     { label:"⚠️ Disputed",            color:"#e65100", bg:"#fff3e0"  },
   };
 
+  const isTreasurer   = authUser?.role==="treasurer"||authUser?.role==="admin";
+  const isLoanOfficer = authUser?.role==="loan_officer"||authUser?.role==="admin";
+
+  React.useEffect(()=>{ load(); },[]);
+  const load = async()=>{
+    setLoading(true);
+    await loadLoanRequests().catch(()=>{});
+    setLoading(false);
+  };
+
+  const filtered = filterSt==="all" ? loanRequests : loanRequests.filter(r=>r.status===filterSt);
+  const sel = selected ? loanRequests.find(r=>r.id===selected) : null;
+  const selMember = sel ? members.find(m=>m.id===sel.member_id) : null;
+
+  // ── Helper: send email ────────────────────────────────────────────
+  const sendEmail = (to,subject,body)=>{
+    if(!to) return;
+    sendViaEmailJS(to,subject,body,null).catch(()=>{});
+  };
+
+  // ── Generate unique token ─────────────────────────────────────────
+  const genToken = ()=>"tk_"+Math.random().toString(36).slice(2)+Date.now().toString(36);
+
+  // ── Loan Officer: Approve ─────────────────────────────────────────
+  const loanOfficerApprove = async()=>{
+    if(!sel) return;
+    setBusy(true);
+    try {
+      const now = new Date().toISOString();
+      const actor = authUser?.name||"Loan Officer";
+      await supa("PATCH","loan_requests",
+        {status:"pending_treasurer",loan_officer_notes:noteText,updated_at:now},
+        "id=eq."+sel.id
+      );
+      await supa("POST","loan_approvals",[{
+        loan_request_id:sel.id, step:1, approver_role:"loan_officer",
+        approver_name:actor, status:"approved", notes:noteText, approved_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+      await supa("POST","audit_log",[{
+        type:"loan_officer_approved", ref_id:String(sel.id), actor,
+        actor_role:"loan_officer", note:"LO approved loan req #"+sel.id, created_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+
+      // Email to Treasurer
+      const tr_email = notifSettings?.adminEmail||"";
+      const borrowerName = sel.member_name||selMember?.name||"Borrower";
+      sendEmail(tr_email,
+        "📋 Loan #"+sel.request_number+" ready for your approval — "+borrowerName,
+        "Loan Officer "+actor+" has reviewed and approved Loan Request "+sel.request_number+" for "+borrowerName+" (UGX "+Number(sel.amount).toLocaleString("en-UG")+").\n\nLog into the manager portal → Loan Apps to review and approve.\n\n— BIDA Co-operative"
+      );
+
+      setLoanRequests(prev=>prev.map(r=>r.id===sel.id?{...r,status:"pending_treasurer",loan_officer_notes:noteText}:r));
+      setSelected(null); setNoteText("");
+      showT("✅ Loan approved by Loan Officer — sent to Treasurer");
+    } catch(e){ showT("❌ "+e.message); }
+    finally{ setBusy(false); }
+  };
+
+  // ── Treasurer: Approve → send to Chairman ────────────────────────
+  const treasurerApprove = async()=>{
+    if(!sel) return;
+    setBusy(true);
+    try {
+      const now   = new Date().toISOString();
+      const actor = authUser?.name||"Treasurer";
+      const token = genToken();
+      const exp   = new Date(Date.now()+48*3600*1000).toISOString();
+      const appUrl = notifSettings?.appUrl||"https://bida.pamojapay.co";
+
+      await supa("PATCH","loan_requests",
+        {status:"pending_chairman",treasurer_notes:noteText,updated_at:now},
+        "id=eq."+sel.id
+      );
+      await supa("POST","loan_approvals",[{
+        loan_request_id:sel.id, step:2, approver_role:"treasurer",
+        approver_name:actor, status:"approved", notes:noteText, approved_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+      await supa("POST","chairman_approvals",[{
+        loan_request_id:sel.id, status:"pending", token,
+        token_expires_at:exp, tenant_id:"bida",
+      }]).catch(()=>{});
+
+      // Email to Chairman
+      const chairEmail = notifSettings?.chairmanEmail||"";
+      const borrowerName = sel.member_name||selMember?.name||"Borrower";
+      const approvalLink = appUrl+"/chairman-approval?token="+token;
+      const monthly = Math.round((sel.amount||0)/( sel.term||12));
+      sendEmail(chairEmail,
+        "🏛️ FINAL APPROVAL NEEDED — Loan #"+sel.request_number+" — UGX "+Number(sel.amount).toLocaleString("en-UG"),
+        "Dear Chairman,\n\nThe following loan requires your final approval before disbursal.\n\nBorrower: "+borrowerName+"\nAmount: UGX "+Number(sel.amount).toLocaleString("en-UG")+"\nTerm: "+sel.term+" months\nEst. Monthly Payment: UGX "+monthly.toLocaleString("en-UG")+"\nPurpose: "+(sel.purpose||"Not specified")+"\n\nApprovals received:\n✅ Loan Officer reviewed\n✅ Treasurer: "+actor+"\n\nTo give your final approval, click the secure link below (expires in 48 hours):\n"+approvalLink+"\n\nBy approving, you authorize the Treasurer to disburse funds to the borrower's bank account.\n\n— BIDA Co-operative"
+      );
+
+      await supa("POST","audit_log",[{
+        type:"treasurer_approved_loan", ref_id:String(sel.id), actor,
+        actor_role:"treasurer", note:"Treasurer approved, sent to Chairman", created_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+
+      setLoanRequests(prev=>prev.map(r=>r.id===sel.id?{...r,status:"pending_chairman",treasurer_notes:noteText}:r));
+      setSelected(null); setNoteText("");
+      showT("✅ Sent to Chairman for final approval — email dispatched");
+    } catch(e){ showT("❌ "+e.message); }
+    finally{ setBusy(false); }
+  };
+
+  // ── Chairman approved (manual override by Treasurer/Admin) ───────
+  const markChairmanApproved = async()=>{
+    if(!sel) return;
+    setBusy(true);
+    try {
+      const now = new Date().toISOString();
+      const actor = authUser?.name||"Admin";
+      await supa("PATCH","loan_requests",
+        {status:"ready_for_disbursement",updated_at:now},
+        "id=eq."+sel.id
+      );
+      // Email borrower
+      const borrowerEmail = selMember?.email||"";
+      const borrowerName  = sel.member_name||selMember?.name||"Borrower";
+      sendEmail(borrowerEmail,
+        "✅ Loan Approved — "+sel.request_number+" — Ready for Disbursement",
+        "Dear "+borrowerName+",\n\nGreat news! Your loan of UGX "+Number(sel.amount).toLocaleString("en-UG")+" has been fully approved by all required signatories.\n\nThe Treasurer will now arrange disbursement to your bank account:\nBank: "+(sel.bank_name||"—")+"\nAccount: "+(sel.bank_account_number||"—")+"\n\nYou will receive another notification once funds have been sent.\n\n— BIDA Co-operative"
+      );
+      setLoanRequests(prev=>prev.map(r=>r.id===sel.id?{...r,status:"ready_for_disbursement"}:r));
+      setSelected(null);
+      showT("✅ Marked as Chairman approved — ready for disbursement");
+    } catch(e){ showT("❌ "+e.message); }
+    finally{ setBusy(false); }
+  };
+
+  // ── Treasurer: Confirm Disbursement ──────────────────────────────
+  const confirmDisbursement = async()=>{
+    if(!sel) return;
+    setBusy(true);
+    try {
+      const now   = new Date().toISOString();
+      const actor = authUser?.name||"Treasurer";
+      const borrowerName  = sel.member_name||selMember?.name||"Borrower";
+      const borrowerEmail = selMember?.email||"";
+
+      await supa("PATCH","loan_requests",
+        {status:"awaiting_borrower_confirmation",disbursed_by:actor,disbursed_at:now,updated_at:now},
+        "id=eq."+sel.id
+      );
+      await supa("POST","loan_disbursements",[{
+        loan_request_id:sel.id, amount:sel.amount, disbursed_by:actor, disbursed_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+
+      // Create the actual loan record
+      const newLoan = {
+        memberId:sel.member_id, amountLoaned:sel.amount, term:sel.term||12,
+        dateBanked:now.slice(0,10), status:"active", amountPaid:0, approvalStatus:"approved",
+        approvalTrail:[], payments:[], processingFeePaid:0,
+        guarantorName:sel.guarantor_name||"", purpose:sel.purpose||"",
+        last_saved_at:now, tenant_id:"bida",
+      };
+      const lrows = await supa("POST","loans",[newLoan]).catch(()=>[]);
+      const newLoanId = lrows?.[0]?.id;
+      if(newLoanId){
+        await supa("PATCH","loan_requests",{loan_id_created:newLoanId},"id=eq."+sel.id).catch(()=>{});
+        setLoans(prev=>[...prev,{...newLoan,id:newLoanId}]);
+      }
+
+      // Email borrower to confirm receipt
+      const appUrl = notifSettings?.appUrl||"https://bida.pamojapay.co";
+      sendEmail(borrowerEmail,
+        "💰 Loan Disbursed — Confirm You Received UGX "+Number(sel.amount).toLocaleString("en-UG"),
+        "Dear "+borrowerName+",\n\nThe Treasurer has confirmed that your loan of UGX "+Number(sel.amount).toLocaleString("en-UG")+" has been sent to:\nBank: "+(sel.bank_name||"—")+"\nAccount Name: "+(sel.bank_account_name||"—")+"\nAccount No.: "+(sel.bank_account_number||"—")+"\n\nPlease log into your BIDA member portal to confirm that you received the funds:\n"+appUrl+"\n\nOnce logged in, go to 'My Loan Requests' and click 'Confirm Receipt'.\n\nIf you did not receive the full amount, please contact the Treasurer immediately.\n\n— BIDA Co-operative"
+      );
+
+      // CC Chairman and Admin
+      const ccMsg = "Loan #"+sel.request_number+" for "+borrowerName+" (UGX "+Number(sel.amount).toLocaleString("en-UG")+") has been disbursed by "+actor+" on "+new Date(now).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})+".\n\nBorrower bank details:\nBank: "+(sel.bank_name||"—")+"\nAccount: "+(sel.bank_account_number||"—")+"\n\nAwaiting borrower confirmation.\n\n— BIDA Co-operative";
+      if(notifSettings?.chairmanEmail) sendEmail(notifSettings.chairmanEmail,"📋 Loan Disbursed — "+borrowerName+" — UGX "+Number(sel.amount).toLocaleString("en-UG"),ccMsg);
+      if(notifSettings?.adminEmail)    sendEmail(notifSettings.adminEmail,"📋 Loan Disbursed — "+borrowerName+" — UGX "+Number(sel.amount).toLocaleString("en-UG"),ccMsg);
+
+      await supa("POST","audit_log",[{
+        type:"loan_disbursed", ref_id:String(sel.id), actor, actor_role:"treasurer",
+        note:"Disbursed UGX "+Number(sel.amount).toLocaleString("en-UG")+" to "+borrowerName, created_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+
+      setLoanRequests(prev=>prev.map(r=>r.id===sel.id?{...r,status:"awaiting_borrower_confirmation",disbursed_by:actor,disbursed_at:now}:r));
+      setDisbModal(false); setSelected(null);
+      showT("✅ Disbursement confirmed — borrower notified by email");
+    } catch(e){ showT("❌ "+e.message); }
+    finally{ setBusy(false); }
+  };
+
+  // ── Reject a loan ─────────────────────────────────────────────────
+  const rejectLoan = async()=>{
+    if(!sel||!rejectNote.trim()) return;
+    setBusy(true);
+    try {
+      const now   = new Date().toISOString();
+      const actor = authUser?.name||"Manager";
+      await supa("PATCH","loan_requests",
+        {status:"rejected",rejection_reason:rejectNote,updated_at:now},
+        "id=eq."+sel.id
+      );
+      const borrowerEmail = selMember?.email||"";
+      const borrowerName  = sel.member_name||selMember?.name||"Borrower";
+      sendEmail(borrowerEmail,
+        "❌ Loan Application "+sel.request_number+" — Not Approved",
+        "Dear "+borrowerName+",\n\nWe regret to inform you that your loan application has not been approved at this time.\n\nReason: "+rejectNote+"\n\nYou may reapply after addressing the reason above. Contact the BIDA manager for more information.\n\n— BIDA Co-operative"
+      );
+      await supa("POST","audit_log",[{
+        type:"loan_rejected", ref_id:String(sel.id), actor, actor_role:authUser?.role||"manager",
+        note:"Rejected: "+rejectNote, created_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+      setLoanRequests(prev=>prev.map(r=>r.id===sel.id?{...r,status:"rejected",rejection_reason:rejectNote}:r));
+      setShowReject(false); setSelected(null); setRejectNote("");
+      showT("Loan rejected — borrower notified");
+    } catch(e){ showT("❌ "+e.message); }
+    finally{ setBusy(false); }
+  };
+
+  // ── Blue ink verification ─────────────────────────────────────────
+  const verifyBlueInk = async()=>{
+    if(!sel) return;
+    const now   = new Date().toISOString();
+    const actor = authUser?.name||"Loan Officer";
+    await supa("PATCH","loan_requests",
+      {blue_ink_verified:true,blue_ink_verified_by:actor,blue_ink_verified_at:now,updated_at:now},
+      "id=eq."+sel.id
+    ).catch(()=>{});
+    setLoanRequests(prev=>prev.map(r=>r.id===sel.id?{...r,blue_ink_verified:true,blue_ink_verified_by:actor}:r));
+    showT("✅ Blue ink verified");
+  };
+
+  const fmtAmt = n => n==null?"—":"UGX "+Number(n).toLocaleString("en-UG");
+  const fmtDt  = d => d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
+
   return (
-    <div style={{background:"rgba(21,101,192,.05)",border:"1.5px solid #bbdefb",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14}}>
-      {/* Header */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:20}}>📡</span>
-          <div>
-            <div style={{fontWeight:800,fontSize:13,color:"var(--p700)"}}>Payment Updates</div>
-            <div style={{fontSize:10,color:"var(--tmuted)"}}>Live mobile money confirmations — awaiting API integration</div>
-          </div>
+    <>
+      {toast&&(
+        <div style={{position:"fixed",bottom:80,left:"50%",transform:"translateX(-50%)",
+          background:toast.startsWith("✅")?"#1b5e20":"#c62828",color:"#fff",
+          padding:"10px 22px",borderRadius:30,fontWeight:700,fontSize:13,zIndex:99999,boxShadow:"0 4px 20px rgba(0,0,0,.25)"}}>
+          {toast}
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={e=>{e.stopPropagation();load();}} style={{background:"none",border:"none",color:"var(--p600)",fontWeight:700,fontSize:11,cursor:"pointer"}}>↻ Refresh</button>
-          <span style={{fontSize:12,color:"var(--p600)",fontWeight:700}}>{open?"▲":"▼"}</span>
+      )}
+
+      {/* ── Top bar ── */}
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={filterSt} onChange={e=>setFilterSt(e.target.value)}
+          style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #cfd8dc",fontSize:12,background:"#fff",cursor:"pointer"}}>
+          <option value="all">All Applications</option>
+          {Object.entries(STATUS_MAP).map(([v,{label}])=><option key={v} value={v}>{label}</option>)}
+        </select>
+        <button className="btn bg sm" onClick={load}>{loading?"⏳":"↻"} Refresh</button>
+        <div style={{marginLeft:"auto",fontSize:11,color:"var(--tmuted)"}}>
+          {filtered.length} application{filtered.length!==1?"s":""}
         </div>
       </div>
 
-      {open&&(
-        <div style={{marginTop:14}}>
-          {/* API integration notice */}
-          <div style={{background:"linear-gradient(135deg,#fff8e1,#fff3cd)",border:"1.5px solid #ffcc02",borderRadius:12,padding:"14px 16px",marginBottom:14,display:"flex",gap:12,alignItems:"flex-start"}}>
-            <div style={{fontSize:28,flexShrink:0}}>🔗</div>
-            <div>
-              <div style={{fontWeight:800,fontSize:13,color:"#e65100",marginBottom:4}}>Mobile Money API — Integration Pending</div>
-              <div style={{fontSize:12,color:"#5d4037",lineHeight:1.7}}>
-                Once MTN MoMo and Airtel Money merchant codes are attached to this app, <strong>payment confirmations will appear here automatically</strong> — no manual entry needed. Members will be able to pay directly from the member portal and their balances will update in real time.
-              </div>
-              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
-                {["MTN MoMo API","Airtel Money API","Webhook listener","Auto balance update"].map(tag=>(
-                  <span key={tag} style={{fontSize:9,fontWeight:700,padding:"3px 9px",borderRadius:20,background:"rgba(255,204,0,.2)",border:"1px solid #ffcc02",color:"#e65100",fontFamily:"var(--mono)"}}>{tag}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Recent payment records (read-only) */}
-          {loading&&<div style={{textAlign:"center",padding:16,color:"var(--tmuted)",fontSize:12}}>⏳ Loading…</div>}
-          {!loading&&recent.length===0&&(
-            <div style={{textAlign:"center",padding:"20px 0",color:"var(--tmuted)",fontSize:12}}>
-              <div style={{fontSize:32,marginBottom:8}}>📭</div>
-              No payment records yet. They will appear here once the mobile money API is connected.
-            </div>
-          )}
-          {!loading&&recent.length>0&&(
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              <div style={{fontSize:10,fontWeight:700,color:"var(--tmuted)",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)",marginBottom:4}}>Recent Payment Records</div>
-              {recent.map(req=>{
-                const mem=members.find(m=>m.id===req.member_id);
-                const st=STATUS_STYLE[req.status]||STATUS_STYLE.pending;
-                return (
-                  <div key={req.id} style={{background:"#fff",borderRadius:10,padding:"11px 13px",border:"1px solid #e3f2fd",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:700,fontSize:12,color:"#0d2a5e"}}>{mem?.name||req.member_name||"Member #"+req.member_id}</div>
-                      <div style={{fontSize:10,color:"var(--tmuted)",marginTop:2}}>
-                        {PURP_LABELS[req.category]||req.category} · {req.payment_method?.toUpperCase()||"?"} · {req.phone}
-                      </div>
-                      {req.created_at&&<div style={{fontSize:9,color:"#90a4ae",marginTop:2,fontFamily:"var(--mono)"}}>{new Date(req.created_at).toLocaleString("en-GB",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})}</div>}
-                    </div>
-                    <div style={{textAlign:"right",flexShrink:0}}>
-                      <div style={{fontWeight:800,fontSize:14,color:"var(--p600)",fontFamily:"var(--mono)"}}>UGX {Number(req.amount||0).toLocaleString("en-UG")}</div>
-                      <span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20,background:st.bg,border:"1px solid "+st.border,color:st.color}}>{st.label}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      {/* ── Role hint ── */}
+      {!isTreasurer&&!isLoanOfficer&&(
+        <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 13px",fontSize:12,color:"#e65100",marginBottom:12}}>
+          ⚠️ Loan Officer (PIN 1470) reviews documents. Treasurer (PIN 3690) approves funds.
         </div>
       )}
-    </div>
+
+      {/* ── List ── */}
+      {loading&&<div style={{textAlign:"center",padding:30,color:"var(--tmuted)"}}>⏳ Loading…</div>}
+      {!loading&&filtered.length===0&&(
+        <div style={{textAlign:"center",padding:"40px 0",color:"var(--tmuted)"}}>
+          <div style={{fontSize:40,marginBottom:8}}>📋</div>
+          <div style={{fontWeight:700}}>No loan applications found</div>
+          <div style={{fontSize:11,marginTop:4}}>Members submit loan requests from their member portal</div>
+        </div>
+      )}
+
+      {!loading&&filtered.map(req=>{
+        const st    = STATUS_MAP[req.status]||{label:req.status,color:"#546e7a",bg:"#f5f5f5"};
+        const mem   = members.find(m=>m.id===req.member_id);
+        const isSel = selected===req.id;
+        return (
+          <div key={req.id} style={{background:"#fff",borderRadius:12,padding:"13px 14px",
+            border:"1.5px solid "+(isSel?"#1565c0":"#e3f2fd"),marginBottom:10,cursor:"pointer",transition:"border-color .15s"}}
+            onClick={()=>setSelected(isSel?null:req.id)}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:13,color:"#0d2a5e"}}>
+                  {mem?.name||req.member_name||"Member #"+req.member_id}
+                  <span style={{fontSize:10,fontWeight:500,color:"#90a4ae",marginLeft:8,fontFamily:"var(--mono)"}}>#{req.request_number||req.id}</span>
+                </div>
+                <div style={{fontSize:11,color:"#546e7a",marginTop:2}}>
+                  {fmtAmt(req.amount)} · {req.term||12} months · {fmtDt(req.created_at)}
+                </div>
+                {req.purpose&&<div style={{fontSize:10,color:"#90a4ae",marginTop:1}}>Purpose: {req.purpose}</div>}
+              </div>
+              <span style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:20,
+                background:st.bg,color:st.color,flexShrink:0,whiteSpace:"nowrap"}}>
+                {st.label}
+              </span>
+            </div>
+
+            {/* ── Expanded detail ── */}
+            {isSel&&sel&&(
+              <div style={{marginTop:14,borderTop:"1px solid #e3f2fd",paddingTop:14}} onClick={e=>e.stopPropagation()}>
+
+                {/* Bank details */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                  {[
+                    ["Bank",sel.bank_name||"—"],
+                    ["Account Name",sel.bank_account_name||"—"],
+                    ["Account No.",sel.bank_account_number||"—"],
+                    ["Branch",sel.bank_branch||"—"],
+                  ].map(([l,v])=>(
+                    <div key={l} style={{background:"#f8faff",borderRadius:7,padding:"6px 10px"}}>
+                      <div style={{fontSize:9,color:"#90a4ae",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:.5}}>{l}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#0d2a5e",marginTop:2}}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Blue ink verification (Loan Officer only) */}
+                {isLoanOfficer&&sel.status==="under_review"&&(
+                  <div style={{background:sel.blue_ink_verified?"rgba(0,200,83,.08)":"#fff8e1",border:"1.5px solid "+(sel.blue_ink_verified?"#a5d6a7":"#ffe082"),borderRadius:9,padding:"10px 13px",marginBottom:12}}>
+                    <div style={{fontWeight:700,fontSize:12,color:sel.blue_ink_verified?"#1b5e20":"#e65100",marginBottom:6}}>
+                      {sel.blue_ink_verified?"✅ Blue ink verified by "+sel.blue_ink_verified_by:"📝 Blue Ink Verification Required"}
+                    </div>
+                    {!sel.blue_ink_verified&&(
+                      <>
+                        <div style={{fontSize:11,color:"#795548",marginBottom:8,lineHeight:1.5}}>
+                          Confirm that the signed application form was filled in BLUE INK and signed on every page (top AND bottom of each page).
+                        </div>
+                        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                          <input type="checkbox" onChange={e=>{ if(e.target.checked) verifyBlueInk(); }}/>
+                          <span style={{fontSize:12,fontWeight:700,color:"#e65100"}}>✅ Verified: Form filled in BLUE INK and signed on every page</span>
+                        </label>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Notes */}
+                {(sel.loan_officer_notes||sel.treasurer_notes||sel.rejection_reason)&&(
+                  <div style={{marginBottom:12}}>
+                    {sel.loan_officer_notes&&<div style={{background:"#f0f7ff",borderRadius:7,padding:"7px 10px",marginBottom:6,fontSize:11,color:"#1565c0"}}>📋 Loan Officer: {sel.loan_officer_notes}</div>}
+                    {sel.treasurer_notes&&<div style={{background:"#f3e5f5",borderRadius:7,padding:"7px 10px",marginBottom:6,fontSize:11,color:"#6a1b9a"}}>💼 Treasurer: {sel.treasurer_notes}</div>}
+                    {sel.rejection_reason&&<div style={{background:"#ffebee",borderRadius:7,padding:"7px 10px",fontSize:11,color:"#c62828"}}>❌ Rejected: {sel.rejection_reason}</div>}
+                  </div>
+                )}
+
+                {/* Disbursement info */}
+                {sel.disbursed_at&&(
+                  <div style={{background:"rgba(0,200,83,.08)",border:"1px solid #a5d6a7",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#1b5e20"}}>
+                    💸 Disbursed by {sel.disbursed_by} on {fmtDt(sel.disbursed_at)}
+                    {sel.borrower_confirmed_receipt&&<span style={{marginLeft:8,fontWeight:700}}>· ✅ Borrower confirmed receipt</span>}
+                  </div>
+                )}
+
+                {/* Notes input (for actions that need a note) */}
+                {(sel.status==="under_review"&&isLoanOfficer)||(sel.status==="pending_treasurer"&&isTreasurer) ? (
+                  <div style={{marginBottom:10}}>
+                    <label style={{fontSize:10,fontWeight:700,color:"#546e7a",display:"block",marginBottom:4,textTransform:"uppercase",fontFamily:"var(--mono)"}}>Notes (optional)</label>
+                    <textarea value={noteText} onChange={e=>setNoteText(e.target.value)}
+                      placeholder="Add any review notes…"
+                      style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #cfd8dc",fontSize:12,minHeight:60,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                  </div>
+                ):null}
+
+                {/* ── Action buttons ── */}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {/* Loan Officer Review */}
+                  {sel.status==="under_review"&&isLoanOfficer&&(
+                    <>
+                      <button onClick={loanOfficerApprove} disabled={busy||!sel.blue_ink_verified}
+                        style={{padding:"8px 16px",borderRadius:8,border:"none",
+                          background:busy||!sel.blue_ink_verified?"#eceff1":"linear-gradient(135deg,#1b5e20,#2e7d32)",
+                          color:busy||!sel.blue_ink_verified?"#90a4ae":"#fff",fontWeight:700,fontSize:12,cursor:busy||!sel.blue_ink_verified?"not-allowed":"pointer"}}>
+                        {busy?"⏳":"✅"} Approve → Send to Treasurer
+                      </button>
+                      {!sel.blue_ink_verified&&<div style={{fontSize:10,color:"#e65100",alignSelf:"center"}}>Verify blue ink first</div>}
+                    </>
+                  )}
+
+                  {/* Treasurer Approve */}
+                  {sel.status==="pending_treasurer"&&isTreasurer&&(
+                    <button onClick={treasurerApprove} disabled={busy}
+                      style={{padding:"8px 16px",borderRadius:8,border:"none",
+                        background:busy?"#eceff1":"linear-gradient(135deg,#1565c0,#0d47a1)",
+                        color:busy?"#90a4ae":"#fff",fontWeight:700,fontSize:12,cursor:busy?"not-allowed":"pointer"}}>
+                      {busy?"⏳":"💼"} Approve → Email Chairman
+                    </button>
+                  )}
+
+                  {/* Chairman approved (manual confirm after email) */}
+                  {sel.status==="pending_chairman"&&isTreasurer&&(
+                    <button onClick={markChairmanApproved} disabled={busy}
+                      style={{padding:"8px 16px",borderRadius:8,border:"none",
+                        background:busy?"#eceff1":"linear-gradient(135deg,#00695c,#004d40)",
+                        color:busy?"#90a4ae":"#fff",fontWeight:700,fontSize:12,cursor:busy?"not-allowed":"pointer"}}>
+                      {busy?"⏳":"🏛️"} Chairman Approved → Ready to Disburse
+                    </button>
+                  )}
+
+                  {/* Disburse */}
+                  {sel.status==="ready_for_disbursement"&&isTreasurer&&(
+                    <button onClick={()=>setDisbModal(true)} disabled={busy}
+                      style={{padding:"8px 16px",borderRadius:8,border:"none",
+                        background:busy?"#eceff1":"linear-gradient(135deg,#e65100,#bf360c)",
+                        color:busy?"#90a4ae":"#fff",fontWeight:700,fontSize:12,cursor:busy?"not-allowed":"pointer"}}>
+                      💸 Confirm Disbursement
+                    </button>
+                  )}
+
+                  {/* Reject */}
+                  {["under_review","pending_treasurer","pending_chairman","pending_guarantor"].includes(sel.status)&&(isTreasurer||isLoanOfficer)&&(
+                    <button onClick={()=>setShowReject(true)}
+                      style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#ffebee",color:"#c62828",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                      ❌ Reject
+                    </button>
+                  )}
+
+                  <button onClick={()=>setSelected(null)}
+                    style={{padding:"8px 14px",borderRadius:8,border:"1.5px solid #e0e0e0",background:"#fff",color:"#546e7a",fontWeight:600,fontSize:12,cursor:"pointer"}}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* ── Disburse modal ── */}
+      {disbModal&&sel&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}
+          onClick={()=>setDisbModal(false)}>
+          <div style={{background:"#fff",borderRadius:16,padding:"22px 20px",maxWidth:400,width:"100%"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:15,color:"#0d2a5e",marginBottom:12}}>💸 Confirm Disbursement</div>
+            <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 13px",marginBottom:14,fontSize:12,color:"#e65100",lineHeight:1.6}}>
+              You are confirming that <strong>UGX {Number(sel.amount||0).toLocaleString("en-UG")}</strong> has been sent to <strong>{sel.member_name}</strong> at:<br/>
+              Bank: <strong>{sel.bank_name||"—"}</strong><br/>
+              Account: <strong>{sel.bank_account_number||"—"}</strong><br/>
+              Name: <strong>{sel.bank_account_name||"—"}</strong>
+            </div>
+            <div style={{fontSize:12,color:"#546e7a",marginBottom:16,lineHeight:1.5}}>
+              This will create the active loan record, notify the borrower to confirm receipt, and CC the Chairman and Admin.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setDisbModal(false)} style={{flex:1,padding:11,borderRadius:9,border:"1.5px solid #e0e0e0",background:"#fff",cursor:"pointer",fontWeight:600,fontSize:13,color:"#546e7a"}}>Cancel</button>
+              <button onClick={confirmDisbursement} disabled={busy}
+                style={{flex:2,padding:11,borderRadius:9,border:"none",background:busy?"#eceff1":"linear-gradient(135deg,#e65100,#bf360c)",color:busy?"#90a4ae":"#fff",fontWeight:700,fontSize:13,cursor:busy?"not-allowed":"pointer"}}>
+                {busy?"⏳ Processing…":"✅ Confirm Disbursement"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reject modal ── */}
+      {showReject&&sel&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}
+          onClick={()=>setShowReject(false)}>
+          <div style={{background:"#fff",borderRadius:16,padding:"22px 20px",maxWidth:380,width:"100%"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:15,color:"#c62828",marginBottom:12}}>❌ Reject Loan Application</div>
+            <div style={{fontSize:13,color:"#546e7a",marginBottom:12}}>Rejecting loan for <strong>{sel.member_name||"Member"}</strong>. The borrower will be notified by email.</div>
+            <textarea value={rejectNote} onChange={e=>setRejectNote(e.target.value)}
+              placeholder="Enter reason for rejection…"
+              style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"1.5px solid #ffcdd2",fontSize:13,minHeight:80,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={()=>setShowReject(false)} style={{flex:1,padding:11,borderRadius:9,border:"1.5px solid #e0e0e0",background:"#fff",cursor:"pointer",fontWeight:600,fontSize:13,color:"#546e7a"}}>Cancel</button>
+              <button onClick={rejectLoan} disabled={busy||!rejectNote.trim()}
+                style={{flex:2,padding:11,borderRadius:9,border:"none",background:busy||!rejectNote.trim()?"#eceff1":"#c62828",color:busy||!rejectNote.trim()?"#90a4ae":"#fff",fontWeight:700,fontSize:13,cursor:busy||!rejectNote.trim()?"not-allowed":"pointer"}}>
+                {busy?"Rejecting…":"Confirm Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
+
+// ══════════════════════════════════════════════════════════════════
+// PAYMENT REQUESTS INBOX — Manager Side (Treasurer approves)
+// ══════════════════════════════════════════════════════════════════
+function PaymentRequestsInbox({ members, setMembers, saveRecord, setSyncStatus, authUser }) {
+  const [requests,    setRequests]    = React.useState([]);
+  const [loading,     setLoading]     = React.useState(false);
+  const [open,        setOpen]        = React.useState(false);
+  const [filterStatus,  setFilterStatus]  = React.useState("pending");
+  const [filterPurpose, setFilterPurpose] = React.useState("all");
+  const [filterFrom,    setFilterFrom]    = React.useState("");
+  const [filterTo,      setFilterTo]      = React.useState("");
+  const [selected,    setSelected]    = React.useState(new Set());
+  const [rejectModal, setRejectModal] = React.useState(null);
+  const [rejectNote,  setRejectNote]  = React.useState("");
+  const [proofModal,  setProofModal]  = React.useState(null);
+  const [actionBusy,  setActionBusy]  = React.useState(false);
+  const [batchBusy,   setBatchBusy]   = React.useState(false);
+  const [toast,       setToast]       = React.useState("");
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3500); };
+
+  const PURP_LABELS = {
+    monthly_savings:  "Monthly Savings",
+    loan_repayment:   "Loan Repayment",
+    welfare:          "Welfare",
+    annual_sub:       "Annual Subscription",
+    shares:           "Shares",
+    voluntary_savings:"Voluntary Savings",
+  };
+  const PF = {
+    monthly_savings:   "monthlySavings",
+    annual_sub:        "annualSub",
+    welfare:           "welfare",
+    shares:            "shares",
+    voluntary_savings: "voluntaryDeposit",
+  };
+  const ST = {
+    pending:  { bg:"#fff8e1", border:"#ffe082", color:"#e65100", label:"⏳ Pending"  },
+    approved: { bg:"#e8f5e9", border:"#a5d6a7", color:"#1b5e20", label:"✅ Approved" },
+    rejected: { bg:"#ffebee", border:"#ffcdd2", color:"#c62828", label:"❌ Rejected" },
+  };
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      let q = "order=created_at.desc&tenant_id=eq.bida";
+      if (filterStatus !== "all") q += "&status=eq." + filterStatus;
+      if (filterPurpose !== "all") q += "&purpose=eq." + filterPurpose;
+      if (filterFrom) q += "&created_at=gte." + filterFrom + "T00:00:00";
+      if (filterTo)   q += "&created_at=lte." + filterTo + "T23:59:59";
+      const r = await supa("GET","payment_requests",null,q).catch(()=>[]);
+      setRequests(r||[]); setSelected(new Set());
+    } catch(e){ console.warn("PaymentRequestsInbox:",e.message); }
+    finally{ setLoading(false); }
+  },[filterStatus,filterPurpose,filterFrom,filterTo]);
+
+  React.useEffect(()=>{ if(open) load(); },[open,load]);
+
+  const pendingCount = requests.filter(r=>r.status==="pending").length;
+  const isTreasurer  = authUser?.role==="treasurer"||authUser?.role==="admin";
+
+  const approveOne = async (req) => {
+    setActionBusy(true);
+    try {
+      const now   = new Date().toISOString();
+      const actor = authUser?.name||"Manager";
+      const amt   = Number(req.amount||0);
+      const mid   = Number(req.member_id);
+      const purpLabel = PURP_LABELS[req.purpose]||req.purpose;
+      const amtFmt = "UGX "+amt.toLocaleString("en-UG");
+
+      await supa("PATCH","payment_requests",
+        {status:"approved",approved_by:actor,approved_at:now,last_saved_at:now},
+        "id=eq."+req.id
+      );
+
+      let newFieldVal = null;
+      let fieldName   = null;
+
+      if (req.purpose==="loan_repayment") {
+        const lid=req.loan_id;
+        if(lid){
+          const lr=await supa("GET","loans",null,"id=eq."+lid).catch(()=>[]);
+          const loan=lr?.[0];
+          if(loan){
+            const newPaid=(Number(loan.amountPaid||loan.amountpaid||0))+amt;
+            await supa("PATCH","loans",{amountPaid:newPaid,last_saved_at:now},"id=eq."+lid);
+          }
+        }
+      } else {
+        fieldName=PF[req.purpose];
+        if(fieldName){
+          const mr=await supa("GET","members",null,"id=eq."+mid).catch(()=>[]);
+          const mem=mr?.[0];
+          if(mem){
+            newFieldVal=(Number(mem[fieldName]||0))+amt;
+            await supa("PATCH","members",{[fieldName]:newFieldVal,last_saved_at:now},"id=eq."+mid);
+            if(setMembers) setMembers(prev=>prev.map(m=>m.id===mid?{...m,[fieldName]:newFieldVal}:m));
+          }
+        }
+      }
+
+      await supa("POST","contrib_log",[{
+        memberId:mid, date:now.slice(0,10), category:req.purpose, amount:amt,
+        note:"Approved by "+actor+" (Req #"+req.id+" / TX: "+req.transaction_id+")",
+        created_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+
+      await supa("POST","audit_log",[{
+        type:"payment_approved", ref_id:String(req.id), actor,
+        actor_role:authUser?.role||"manager",
+        note:"Approved "+purpLabel+" "+amtFmt+" for member #"+mid,
+        created_at:now, tenant_id:"bida",
+      }]).catch(()=>{});
+
+      // ── Send email notifications ──────────────────────────────
+      const notif = (()=>{try{const s=localStorage.getItem("bida_notif_settings");return s?JSON.parse(s):{chairmanEmail:"",adminEmail:"",appUrl:""};}catch{return{chairmanEmail:"",adminEmail:"",appUrl:""};} })();
+      const memberEmail = req.member_email || members?.find(m=>m.id===mid)?.email || "";
+      const approvalDate = new Date(now).toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"});
+      const receiptNum = "RCP-"+Date.now().toString().slice(-6);
+      const newBal = newFieldVal!=null ? "UGX "+newFieldVal.toLocaleString("en-UG") : "—";
+
+      const memberSubject = "✅ BIDA Payment Confirmed — "+purpLabel+" — "+amtFmt;
+      const memberBody = `Dear ${req.member_name||"Member"},
+
+Your payment has been verified and approved by the Treasurer.
+
+Receipt: ${receiptNum}
+Date: ${approvalDate}
+Purpose: ${purpLabel}
+Amount: ${amtFmt}
+Transaction ID: ${req.transaction_id||"—"}
+Approved by: ${actor} (Treasurer)
+${newFieldVal!=null?"New "+purpLabel+" balance: "+newBal:""}
+
+Thank you for being a valued member of the BIDA family. Together we grow stronger.
+
+Warm regards,
+The Treasurer
+Bida Multi-Purpose Co-operative Society`;
+      const memberHtml = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:24px 0"><tr><td align="center"><table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)"><tr><td style="background:linear-gradient(135deg,#0d3461,#1565c0);padding:20px 28px;text-align:center"><div style="display:inline-block;background:#fff;border-radius:8px;padding:4px 16px;margin-bottom:6px"><span style="font-size:22px;font-weight:900;color:#1565c0;letter-spacing:3px">BIDA</span></div><div style="color:rgba(255,255,255,.8);font-size:9px;letter-spacing:2px;text-transform:uppercase">Multi-Purpose Co-operative Society</div></td></tr><tr><td style="padding:20px 28px 8px"><p style="font-size:16px;color:#1a1a2e;margin:0 0 6px">Dear <strong>${req.member_name||"Member"}</strong>,</p><p style="font-size:14px;color:#444;line-height:1.7">Your payment has been <strong style="color:#1b5e20">verified and approved</strong> by the Treasurer.</p></td></tr><tr><td style="padding:0 28px 20px"><table width="100%" cellpadding="0" cellspacing="0" style="border:1.5px solid #e3eaf5;border-radius:10px;overflow:hidden"><tr><td colspan="2" style="background:#1565c0;padding:10px 16px"><span style="color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Payment Receipt</span></td></tr><tr><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5">Receipt No.</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5">${receiptNum}</td></tr><tr style="background:#f8faff"><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5">Date</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5">${approvalDate}</td></tr><tr><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5">Purpose</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5">${purpLabel}</td></tr><tr style="background:#f8faff"><td style="padding:9px 16px;font-size:13px;color:#555;border-bottom:1px solid #e3eaf5">Transaction ID</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:right;border-bottom:1px solid #e3eaf5">${req.transaction_id||"—"}</td></tr><tr style="background:#e8f5e9"><td style="padding:11px 16px;font-size:14px;font-weight:700;color:#1b5e20">Amount Approved</td><td style="padding:11px 16px;font-size:15px;font-weight:900;color:#1b5e20;text-align:right">${amtFmt}</td></tr>${newFieldVal!=null?`<tr><td style="padding:9px 16px;font-size:13px;color:#555">New ${purpLabel} Balance</td><td style="padding:9px 16px;font-size:13px;font-weight:700;color:#1565c0;text-align:right">${newBal}</td></tr>`:""}<tr style="background:#f8faff"><td style="padding:9px 16px;font-size:12px;color:#555">Approved by</td><td style="padding:9px 16px;font-size:12px;font-weight:700;color:#1a1a2e;text-align:right">${actor} (Treasurer)</td></tr></table></td></tr><tr><td style="background:#f0f4f8;padding:12px 28px;text-align:center;border-top:1px solid #e3eaf5"><p style="font-size:10px;color:#999;margin:0">Thank you for being a valued member of the BIDA family. Together we grow stronger.</p></td></tr></table></td></tr></table></body></html>`;
+
+      const ccSubject = "📋 Payment Notification — "+req.member_name+" — "+amtFmt;
+      const ccBody = `A payment has been approved by the Treasurer.
+
+Member: ${req.member_name||"#"+mid}
+Purpose: ${purpLabel}
+Amount: ${amtFmt}
+Transaction ID: ${req.transaction_id||"—"}
+Approved by: ${actor}
+Date: ${approvalDate}
+Receipt: ${receiptNum}
+
+This is an automated notification.
+— BIDA Co-operative`;
+
+      const emails = [];
+      if(memberEmail) emails.push({to:memberEmail,subject:memberSubject,text:memberBody,html:memberHtml});
+      if(notif.chairmanEmail) emails.push({to:notif.chairmanEmail,subject:ccSubject,text:ccBody,html:null});
+      if(notif.adminEmail)    emails.push({to:notif.adminEmail,subject:ccSubject,text:ccBody,html:null});
+
+      for(const e of emails){
+        sendViaEmailJS(e.to,e.subject,e.text,e.html||e.text).catch(()=>{});
+      }
+
+      setRequests(prev=>prev.map(r=>r.id===req.id?{...r,status:"approved",approved_by:actor,approved_at:now}:r));
+      showToast("✅ Payment approved — email receipts sent");
+    } catch(e){ showToast("❌ Error: "+e.message); }
+    finally{ setActionBusy(false); }
+  };
+
+  const rejectOne = async () => {
+    if(!rejectModal) return;
+    const req=rejectModal.req;
+    setActionBusy(true);
+    try {
+      const now=new Date().toISOString();
+      const actor=authUser?.name||"Manager";
+      await supa("PATCH","payment_requests",
+        {status:"rejected",rejection_reason:rejectNote||"Rejected by manager",reviewed_by:actor,reviewed_at:now,last_saved_at:now},
+        "id=eq."+req.id
+      );
+      await supa("POST","audit_log",[{
+        type:"payment_rejected",ref_id:String(req.id),actor,actor_role:authUser?.role||"manager",
+        note:"Rejected: "+(rejectNote||"no reason given"),
+        created_at:now,tenant_id:"bida",
+      }]).catch(()=>{});
+      setRequests(prev=>prev.map(r=>r.id===req.id?{...r,status:"rejected",rejection_reason:rejectNote||"Rejected by manager"}:r));
+      setRejectModal(null); setRejectNote("");
+      showToast("Payment rejected and logged");
+    } catch(e){ showToast("❌ Error: "+e.message); }
+    finally{ setActionBusy(false); }
+  };
+
+  const toggleSelect=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  const selectAllPending=()=>setSelected(new Set(requests.filter(r=>r.status==="pending").map(r=>r.id)));
+  const batchApprove=async()=>{
+    if(!selected.size) return;
+    setBatchBusy(true);
+    for(const req of requests.filter(r=>selected.has(r.id)&&r.status==="pending"))
+      await approveOne(req).catch(()=>{});
+    setSelected(new Set()); setBatchBusy(false);
+    showToast("✅ Batch approval complete");
+  };
+
+  return (
+    <>
+      {toast&&(
+        <div style={{position:"fixed",bottom:80,left:"50%",transform:"translateX(-50%)",
+          background:toast.startsWith("✅")?"#1b5e20":"#c62828",color:"#fff",
+          padding:"10px 22px",borderRadius:30,fontWeight:700,fontSize:13,
+          zIndex:99999,boxShadow:"0 4px 20px rgba(0,0,0,.25)"}}>
+          {toast}
+        </div>
+      )}
+
+      <div style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"14px 16px",marginBottom:14}}>
+        <div onClick={()=>setOpen(o=>!o)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:20}}>📥</span>
+            <div>
+              <div style={{fontWeight:800,fontSize:14,color:"#0d2a5e"}}>Payment Requests Inbox</div>
+              <div style={{fontSize:11,color:"#546e7a"}}>Review and approve member payment submissions</div>
+            </div>
+            {pendingCount>0&&(
+              <span style={{background:"#e53935",color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:800,marginLeft:4}}>
+                {pendingCount}
+              </span>
+            )}
+          </div>
+          <span style={{fontSize:12,color:"var(--p600)",fontWeight:700}}>{open?"▲":"▼"}</span>
+        </div>
+
+        {open&&(
+          <div style={{marginTop:14}}>
+            {/* Filters */}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+              <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
+                style={{flex:1,minWidth:110,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cfd8dc",fontSize:12,background:"#fff",cursor:"pointer"}}>
+                <option value="pending">⏳ Pending</option>
+                <option value="approved">✅ Approved</option>
+                <option value="rejected">❌ Rejected</option>
+                <option value="all">All Statuses</option>
+              </select>
+              <select value={filterPurpose} onChange={e=>setFilterPurpose(e.target.value)}
+                style={{flex:1,minWidth:130,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cfd8dc",fontSize:12,background:"#fff",cursor:"pointer"}}>
+                <option value="all">All Purposes</option>
+                {Object.entries(PURP_LABELS).map(([v,l])=><option key={v} value={v}>{l}</option>)}
+              </select>
+              <input type="date" value={filterFrom} onChange={e=>setFilterFrom(e.target.value)}
+                style={{flex:1,minWidth:120,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cfd8dc",fontSize:12}} placeholder="From"/>
+              <input type="date" value={filterTo} onChange={e=>setFilterTo(e.target.value)}
+                style={{flex:1,minWidth:120,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cfd8dc",fontSize:12}} placeholder="To"/>
+              <button onClick={load}
+                style={{padding:"7px 14px",borderRadius:8,border:"none",background:"var(--p600)",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                Filter
+              </button>
+            </div>
+
+            {!isTreasurer&&(
+              <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 13px",fontSize:12,color:"#e65100",marginBottom:12}}>
+                ⚠️ Only the Treasurer (PIN 3690) or Administrator can approve or reject payments.
+              </div>
+            )}
+
+            {/* Batch approve toolbar */}
+            {isTreasurer&&filterStatus==="pending"&&requests.filter(r=>r.status==="pending").length>0&&(
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12,padding:"8px 12px",background:"rgba(21,101,192,.06)",borderRadius:9}}>
+                <input type="checkbox"
+                  checked={selected.size>0&&selected.size===requests.filter(r=>r.status==="pending").length}
+                  onChange={e=>e.target.checked?selectAllPending():setSelected(new Set())}
+                  style={{width:16,height:16,cursor:"pointer"}}/>
+                <span style={{fontSize:12,color:"#1565c0",fontWeight:600}}>
+                  {selected.size>0?`${selected.size} selected`:"Select all pending"}
+                </span>
+                {selected.size>0&&(
+                  <button onClick={batchApprove} disabled={batchBusy}
+                    style={{marginLeft:"auto",padding:"6px 16px",borderRadius:8,border:"none",
+                      background:batchBusy?"#eceff1":"linear-gradient(135deg,#1b5e20,#2e7d32)",
+                      color:batchBusy?"#90a4ae":"#fff",fontWeight:700,fontSize:12,cursor:batchBusy?"not-allowed":"pointer"}}>
+                    {batchBusy?"⏳ Approving…":"✅ Approve "+selected.size+" Selected"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {loading&&<div style={{textAlign:"center",padding:20,color:"var(--tmuted)",fontSize:12}}>⏳ Loading…</div>}
+            {!loading&&requests.length===0&&(
+              <div style={{textAlign:"center",padding:"28px 0",color:"var(--tmuted)"}}>
+                <div style={{fontSize:36,marginBottom:8}}>📭</div>
+                <div style={{fontWeight:600,fontSize:13}}>No payment requests found</div>
+                <div style={{fontSize:11,marginTop:4}}>Change filters or check back later</div>
+              </div>
+            )}
+
+            {!loading&&requests.map(req=>{
+              const mem=members?.find(m=>m.id===req.member_id);
+              const st=ST[req.status]||ST.pending;
+              const isSel=selected.has(req.id);
+              return (
+                <div key={req.id} style={{background:"#fff",borderRadius:12,padding:"13px 14px",
+                  border:"1.5px solid "+(isSel?"#1565c0":"#e3f2fd"),marginBottom:10,transition:"border-color .15s"}}>
+                  <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                    {req.status==="pending"&&isTreasurer
+                      ?<input type="checkbox" checked={isSel} onChange={()=>toggleSelect(req.id)}
+                          style={{marginTop:3,width:16,height:16,cursor:"pointer",flexShrink:0}}/>
+                      :<div style={{width:16,flexShrink:0}}/>
+                    }
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:6}}>
+                        <div>
+                          <div style={{fontWeight:800,fontSize:13,color:"#0d2a5e"}}>{req.member_name||mem?.name||"Member #"+req.member_id}</div>
+                          <div style={{fontSize:11,color:"#546e7a",marginTop:2}}>
+                            {PURP_LABELS[req.purpose]||req.purpose}
+                            {req.loan_id?<span style={{marginLeft:6,color:"#7b1fa2"}}>· Loan #{req.loan_id}</span>:""}
+                            <span style={{marginLeft:6,color:"#90a4ae"}}>· {(req.payment_method||"mtn").toUpperCase()} · {req.phone||"—"}</span>
+                          </div>
+                          <div style={{fontSize:10,color:"#90a4ae",marginTop:2,fontFamily:"var(--mono)"}}>
+                            TX: {req.transaction_id||"—"} · #{req.id}
+                            {req.created_at?" · "+new Date(req.created_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):""}
+                          </div>
+                          {req.status==="rejected"&&req.rejection_reason&&(
+                            <div style={{background:"#ffebee",borderRadius:7,padding:"5px 9px",marginTop:5,fontSize:11,color:"#c62828"}}>
+                              ❌ Reason: {req.rejection_reason}
+                            </div>
+                          )}
+                          {req.status==="approved"&&req.approved_by&&(
+                            <div style={{fontSize:10,color:"#388e3c",marginTop:4}}>
+                              ✅ Approved by {req.approved_by} · {req.approved_at?new Date(req.approved_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short"}):""}
+                            </div>
+                          )}
+                          {req.note&&<div style={{fontSize:10,color:"#90a4ae",marginTop:3,fontStyle:"italic"}}>{req.note.slice(0,80)}</div>}
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontWeight:900,fontSize:15,color:"var(--p600)",fontFamily:"var(--mono)"}}>
+                            UGX {Number(req.amount||0).toLocaleString("en-UG")}
+                          </div>
+                          <span style={{fontSize:9,fontWeight:700,padding:"2px 9px",borderRadius:20,
+                            background:st.bg,border:"1px solid "+st.border,color:st.color}}>
+                            {st.label}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+                        {req.proof_url&&(
+                          <button onClick={()=>setProofModal({url:req.proof_url,name:"Proof — "+(req.member_name||"")})}
+                            style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid #90caf9",background:"#e3f2fd",color:"#1565c0",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                            🔍 View Proof
+                          </button>
+                        )}
+                        {req.status==="pending"&&isTreasurer&&(
+                          <>
+                            <button onClick={()=>approveOne(req)} disabled={actionBusy}
+                              style={{padding:"6px 14px",borderRadius:8,border:"none",
+                                background:actionBusy?"#eceff1":"linear-gradient(135deg,#1b5e20,#2e7d32)",
+                                color:actionBusy?"#90a4ae":"#fff",fontWeight:700,fontSize:11,cursor:actionBusy?"not-allowed":"pointer"}}>
+                              {actionBusy?"…":"✅ Approve"}
+                            </button>
+                            <button onClick={()=>{setRejectModal({req});setRejectNote("");}}
+                              style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#ffebee",color:"#c62828",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                              ❌ Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Proof viewer modal */}
+      {proofModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}
+          onClick={()=>setProofModal(null)}>
+          <div style={{background:"#fff",borderRadius:16,padding:20,maxWidth:520,width:"100%",maxHeight:"90vh",overflow:"auto"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:14,color:"#0d2a5e"}}>{proofModal.name}</div>
+              <button onClick={()=>setProofModal(null)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#90a4ae"}}>✕</button>
+            </div>
+            {(proofModal.url.startsWith("data:image")||/\.(jpg|jpeg|png|gif)$/i.test(proofModal.url))
+              ?<img src={proofModal.url} alt="Payment proof" style={{width:"100%",borderRadius:10,border:"1px solid #e3f2fd"}}/>
+              :proofModal.url.startsWith("data:application/pdf")
+                ?<iframe src={proofModal.url} style={{width:"100%",height:400,border:"none",borderRadius:8}} title="Proof PDF"/>
+                :<div style={{background:"#f5f5f5",borderRadius:8,padding:16,fontSize:12,color:"#546e7a",wordBreak:"break-all"}}>{proofModal.url}</div>
+            }
+          </div>
+        </div>
+      )}
+
+      {/* Reject modal */}
+      {rejectModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}
+          onClick={()=>setRejectModal(null)}>
+          <div style={{background:"#fff",borderRadius:16,padding:"22px 20px",maxWidth:380,width:"100%"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:15,color:"#c62828",marginBottom:12}}>❌ Reject Payment</div>
+            <div style={{fontSize:13,color:"#546e7a",marginBottom:14}}>
+              Rejecting <strong>UGX {Number(rejectModal.req.amount||0).toLocaleString("en-UG")}</strong> from <strong>{rejectModal.req.member_name}</strong>. Enter a reason:
+            </div>
+            <textarea value={rejectNote} onChange={e=>setRejectNote(e.target.value)}
+              placeholder="e.g. Transaction ID not found in bank statement, unclear proof…"
+              style={{width:"100%",padding:"10px 12px",borderRadius:9,border:"1.5px solid #ffcdd2",fontSize:13,
+                outline:"none",boxSizing:"border-box",minHeight:80,resize:"vertical",fontFamily:"inherit"}}/>
+            <div style={{display:"flex",gap:8,marginTop:14}}>
+              <button onClick={()=>setRejectModal(null)}
+                style={{flex:1,padding:12,borderRadius:9,border:"1.5px solid #e0e0e0",background:"#fff",cursor:"pointer",fontWeight:600,fontSize:13,color:"#546e7a"}}>
+                Cancel
+              </button>
+              <button onClick={rejectOne} disabled={actionBusy}
+                style={{flex:2,padding:12,borderRadius:9,border:"none",
+                  background:actionBusy?"#eceff1":"#c62828",
+                  color:actionBusy?"#90a4ae":"#fff",fontWeight:700,fontSize:13,cursor:actionBusy?"not-allowed":"pointer"}}>
+                {actionBusy?"Rejecting…":"Confirm Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 
 // ══════════════════════════════════════════════
 // VOTING ADMIN PANEL — Manager Side
@@ -8686,158 +9913,260 @@ const PURPOSE_FIELD={
   voluntary_savings: "voluntaryDeposit",
 };
 
+// ══════════════════════════════════════════════════════════════════
+// BIDA — REPLACEMENT PaymentModalInline
+// Paste this block into App.jsx to REPLACE the existing
+// PaymentModalInline function (lines ~8689–8935 in App_38__1.jsx).
+//
+// Key changes vs. the old version:
+//  • Payments are NEVER auto-approved — they start as "pending"
+//  • Proof attachment is MANDATORY (not optional)
+//  • Duplicate transaction ID detection (warns before submit)
+//  • Partial loan repayment: shows remaining balance after entry
+//  • Success screen reflects "awaiting verification" state
+//  • Member balances are NOT changed — manager approval does that
+// ══════════════════════════════════════════════════════════════════
+
 function PaymentModalInline({ member, loans, onSuccess, onClose }) {
-  const [method,  setMethod]  = useState("mtn");
-  const [phone,   setPhone]   = useState(member?.phone||member?.whatsapp||"");
-  const [amount,  setAmount]  = useState("");
-  const [purpose, setPurpose] = useState("monthly_savings");
-  const [loanId,  setLoanId]  = useState(""); // for loan_repayment
-  const [txId,    setTxId]    = useState("");
-  const [proof,   setProof]   = useState(null);
-  const [busy,    setBusy]    = useState(false);
-  const [err,     setErr]     = useState("");
-  const [done,    setDone]    = useState(null);
+  const [method,   setMethod]   = useState("mtn");
+  const [phone,    setPhone]    = useState(member?.phone || member?.whatsapp || "");
+  const [amount,   setAmount]   = useState("");
+  const [purpose,  setPurpose]  = useState("monthly_savings");
+  const [loanId,   setLoanId]   = useState("");
+  const [txId,     setTxId]     = useState("");
+  const [proof,    setProof]    = useState(null);          // { name, data, size }
+  const [busy,     setBusy]     = useState(false);
+  const [err,      setErr]      = useState("");
+  const [done,     setDone]     = useState(null);
+  const [dupWarn,  setDupWarn]  = useState(false);         // duplicate TX ID warning
+  const [txChecked,setTxChecked]= useState("");            // last checked TX ID
 
-  const activeLoans = (loans||[]).filter(l=>l.status!=="paid");
+  const activeLoans = (loans || []).filter(l => l.status !== "paid");
 
-  // Auto-select first active loan when switching to loan_repayment
-  React.useEffect(()=>{
-    if(purpose==="loan_repayment" && !loanId && activeLoans.length>0){
+  // ── Auto-select first active loan when switching to loan_repayment ──
+  React.useEffect(() => {
+    if (purpose === "loan_repayment" && !loanId && activeLoans.length > 0) {
       setLoanId(String(activeLoans[0].id));
     }
-  },[purpose]);
+  }, [purpose]);
 
+  // ── Loan balance helper ──
+  const selectedLoan = activeLoans.find(l => String(l.id) === String(loanId));
+  const loanBalance = (() => {
+    if (!selectedLoan) return 0;
+    const p = selectedLoan.amountLoaned || 0;
+    const isR = p >= 7000000;
+    const rate = isR ? 0.06 : 0.04;
+    const term = isR ? 12 : (selectedLoan.term || 12);
+    let ti = 0;
+    if (isR) {
+      let b = p;
+      for (let i = 0; i < term; i++) { ti += Math.round(b * rate); b -= Math.round(p / term); }
+    } else {
+      ti = Math.round(p * rate * term);
+    }
+    return Math.max(0, p + ti - (selectedLoan.amountPaid || 0));
+  })();
+
+  const amtNum = parseInt(String(amount).replace(/,/g, ""), 10) || 0;
+  const afterRepayment = Math.max(0, loanBalance - amtNum);
+
+  // ── File handler — max 5 MB ──
   const handleProof = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setErr("File too large — maximum 5 MB (JPG, PNG, PDF)");
+      return;
+    }
+    const allowed = ["image/jpeg", "image/png", "application/pdf"];
+    if (!allowed.includes(file.type)) {
+      setErr("Only JPG, PNG, or PDF files are accepted");
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = r => setProof({ name: file.name, data: r.target.result });
+    reader.onload = r => setProof({ name: file.name, data: r.target.result, size: file.size, type: file.type });
     reader.readAsDataURL(file);
   };
 
-  const submit = async () => {
+  // ── Duplicate TX ID check ──
+  const checkDuplicate = async (id) => {
+    if (!id.trim() || id === txChecked) return;
+    setTxChecked(id);
+    try {
+      const existing = await mDb.get(
+        "payment_requests",
+        "transaction_id=eq." + encodeURIComponent(id.trim()) + "&tenant_id=eq.bida&limit=1"
+      );
+      setDupWarn(Array.isArray(existing) && existing.length > 0);
+    } catch {
+      setDupWarn(false);
+    }
+  };
+
+  // ── Submit ──
+  const submit = async (force = false) => {
     setErr("");
-    const amt = parseInt(String(amount).replace(/,/g,""), 10);
-    if (!amt || amt < 1000) { setErr("Minimum payment is UGX 1,000"); return; }
-    if (amt > 10000000)     { setErr("Maximum UGX 10,000,000 per transaction"); return; }
-    if (purpose==="loan_repayment" && !loanId) { setErr("Select a loan to repay"); return; }
-    if (!txId.trim()) { setErr("Enter the MoMo transaction ID / reference to verify payment"); return; }
+    if (!amtNum || amtNum < 1000) { setErr("Minimum payment is UGX 1,000"); return; }
+    if (amtNum > 10_000_000)      { setErr("Maximum UGX 10,000,000 per transaction"); return; }
+    if (purpose === "loan_repayment" && !loanId) { setErr("Select a loan to repay"); return; }
+    if (!txId.trim())              { setErr("Transaction ID / MoMo reference is required"); return; }
+    if (!proof)                    { setErr("Please attach a payment proof screenshot or receipt"); return; }
+    if (dupWarn && !force) {
+      // Show confirmation — caller should pass force=true on re-click
+      return; // dupWarn banner handles the UI
+    }
 
     setBusy(true);
     try {
       const now = new Date().toISOString();
-      const ref = "PAY-"+Date.now()+"-"+member.id;
+      const ref = "PAY-" + Date.now() + "-" + member.id;
 
-      if (purpose === "loan_repayment") {
-        // ── Loan repayment: update amountPaid on the loan ──
-        const lid = parseInt(loanId, 10);
-        const loan = (loans||[]).find(l=>l.id===lid);
-        if (!loan) throw new Error("Loan not found");
-        const newPaid = (loan.amountPaid||0) + amt;
-        await mDb.update("loans", "id=eq."+lid, { amountPaid: newPaid, last_saved_at: now });
-        // Log to contrib_log
-        await mDb.insert("contrib_log", {
-          memberId: member.id,
-          date: now.slice(0,10),
-          category: "loan_repayment",
-          amount: amt,
-          note: "Loan #"+lid+" repayment via "+method.toUpperCase()+" (TX: "+txId+")",
-        }).catch(()=>{});
-        setDone({ amt, purpose, method, ref, loanId: lid });
+      // Determine storage path for the proof
+      const ext = proof.type === "application/pdf" ? "pdf" : "png";
+      const dateSlug = now.slice(0, 10);
+      const nameSlug = (member.name || "member").replace(/\s+/g, "_").toLowerCase();
+      const folderMap = {
+        monthly_savings:   "savings",
+        loan_repayment:    "loans",
+        welfare:           "welfare",
+        annual_sub:        "subscriptions",
+        shares:            "shares",
+        voluntary_savings: "voluntary",
+      };
+      const folder = folderMap[purpose] || "savings";
+      const fileName = purpose === "loan_repayment"
+        ? `${nameSlug}_loan_${loanId}_${dateSlug}.${ext}`
+        : `${nameSlug}_${dateSlug}.${ext}`;
+      const filePath = `${folder}/${fileName}`;
 
-      } else {
-        // ── Savings / subscription / shares / voluntary ──
-        const field = PURPOSE_FIELD[purpose];
-        if (!field) throw new Error("Unknown payment category");
-        const current = member[field] || 0;
-        const newVal  = current + amt;
-        // Update member record directly in Supabase
-        await mDb.update("members", "id=eq."+member.id, { [field]: newVal, last_saved_at: now });
-        // Log contribution
-        await mDb.insert("contrib_log", {
-          memberId: member.id,
-          date: now.slice(0,10),
-          category: purpose,
-          amount: amt,
-          note: "Payment via "+method.toUpperCase()+" (TX: "+txId+")",
-        }).catch(()=>{});
-        // Record in payment_requests for manager audit trail (read-only)
-        await mDb.insert("payment_requests", {
-          member_id: member.id,
-          member_name: member.name,
-          amount: amt,
-          category: purpose,
-          payment_method: method,
-          phone: phone||member.phone||member.whatsapp||"",
-          reference: ref,
-          transaction_id: txId,
-          proof_url: proof?.data||null,
-          status: "confirmed",
-          note: "Self-recorded by member",
-          confirmed_at: now,
-        }).catch(()=>{});
-        setDone({ amt, purpose, method, ref, field, newVal });
-      }
+      // Insert payment_request as PENDING — no balance changes yet
+      const rows = await mDb.insert("payment_requests", {
+        member_id:      member.id,
+        member_name:    member.name,
+        amount:         amtNum,
+        purpose:        purpose,
+        loan_id:        purpose === "loan_repayment" ? parseInt(loanId, 10) : null,
+        transaction_id: txId.trim(),
+        payment_method: method,
+        phone:          phone || member.phone || member.whatsapp || "",
+        proof_url:      proof.data,          // base64 — swap for filePath after Storage upload
+        status:         "pending",
+        recorded_by:    member.name,
+        note:           `Submitted by member via portal — awaiting manager verification`,
+        created_at:     now,
+        last_saved_at:  now,
+        tenant_id:      "bida",
+      });
 
-      // Trigger a refresh so the dashboard reflects new values immediately
+      const newId = rows?.[0]?.id || null;
+
+      setDone({
+        ref,
+        amt:    amtNum,
+        purpose,
+        method,
+        loanId: purpose === "loan_repayment" ? loanId : null,
+        requestId: newId,
+      });
+
+      // Tell parent to refresh (member portal shows pending payment in activity)
       onSuccess?.();
 
-    } catch(e) { setErr(e.message||"Payment failed. Please try again."); }
-    finally { setBusy(false); }
+    } catch (e) {
+      if (e.message?.includes("unique") || e.message?.includes("transaction_id")) {
+        setErr("That transaction ID was already submitted. If this is a new payment, check the reference number.");
+        setDupWarn(true);
+      } else {
+        setErr(e.message || "Submission failed. Please try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
+  // ── Styles ──
   const S = {
-    ov:  { position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999,padding:"0 0 0 0" },
-    sh:  { background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,padding:"24px 20px",maxHeight:"92vh",overflowY:"auto" },
+    ov:  { position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999 },
+    sh:  { background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:520,padding:"24px 20px 32px",maxHeight:"94vh",overflowY:"auto" },
     lb:  { fontSize:10,fontWeight:700,color:"#546e7a",textTransform:"uppercase",letterSpacing:.8,display:"block",marginBottom:7,fontFamily:"var(--mono)" },
-    inp: { width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #cfd8dc",fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"var(--sans)",transition:"border-color .15s" },
-    btn: (d) => ({ width:"100%",padding:14,borderRadius:12,border:"none",fontWeight:800,fontSize:15,cursor:d?"not-allowed":"pointer",background:d?"#eceff1":"linear-gradient(135deg,#1b5e20,#2e7d32)",color:d?"#90a4ae":"#fff",marginTop:4,boxShadow:d?"none":"0 3px 14px rgba(27,94,32,.35)",transition:"all .15s" }),
+    inp: { width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #cfd8dc",fontSize:15,outline:"none",boxSizing:"border-box",fontFamily:"var(--sans)" },
+    btn: (d) => ({ width:"100%",padding:14,borderRadius:12,border:"none",fontWeight:800,fontSize:15,cursor:d?"not-allowed":"pointer",background:d?"#eceff1":"linear-gradient(135deg,#1b5e20,#2e7d32)",color:d?"#90a4ae":"#fff",marginTop:4,boxShadow:d?"none":"0 3px 14px rgba(27,94,32,.35)" }),
   };
 
-  const PURP_LABELS = { monthly_savings:"Monthly Savings",annual_sub:"Annual Subscription",welfare:"Welfare",shares:"Shares",voluntary_savings:"Voluntary Savings",loan_repayment:"Loan Repayment" };
+  const PURP_LABELS = {
+    monthly_savings:"Monthly Savings", annual_sub:"Annual Subscription",
+    welfare:"Welfare", shares:"Shares", voluntary_savings:"Voluntary Savings",
+    loan_repayment:"Loan Repayment",
+  };
 
+  // ── Success screen ──
   if (done) {
-    const isLoan = done.purpose==="loan_repayment";
     return (
       <div style={S.ov} onClick={onClose}>
-        <div style={S.sh} onClick={e=>e.stopPropagation()}>
+        <div style={S.sh} onClick={e => e.stopPropagation()}>
           <div style={{textAlign:"center",padding:"24px 0 16px"}}>
-            <div style={{fontSize:54,marginBottom:14}}>✅</div>
-            <div style={{fontWeight:900,fontSize:20,color:"#1b5e20",marginBottom:8}}>Payment Recorded!</div>
-            <div style={{fontSize:14,color:"#546e7a",lineHeight:1.8,marginBottom:8}}>
-              <strong>UGX {Number(done.amt).toLocaleString("en-UG")}</strong> — {PURP_LABELS[done.purpose]||done.purpose}<br/>
-              {isLoan ? "Loan #"+done.loanId+" balance & schedule updated." : "Your "+PURP_LABELS[done.purpose]+" balance updated."}<br/>
-              <span style={{fontSize:12,color:"#90a4ae"}}>Via {done.method==="mtn"?"MTN MoMo":"Airtel Money"} · Ref: {done.ref}</span>
+            <div style={{fontSize:54,marginBottom:14}}>📨</div>
+            <div style={{fontWeight:900,fontSize:20,color:"#0d2a5e",marginBottom:8}}>Payment Request Submitted!</div>
+            <div style={{fontSize:13,color:"#546e7a",lineHeight:1.8,marginBottom:10}}>
+              <strong>UGX {Number(done.amt).toLocaleString("en-UG")}</strong> — {PURP_LABELS[done.purpose] || done.purpose}
+              {done.loanId && <><br/>For Loan #{done.loanId}</>}
+              <br/>
+              <span style={{fontSize:11,color:"#90a4ae"}}>
+                Ref: {done.ref}{done.requestId ? " · Request #" + done.requestId : ""}
+              </span>
             </div>
-            <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:10,padding:"10px 16px",fontSize:12,color:"#2e7d32",marginBottom:20,lineHeight:1.6}}>
-              ✓ Your dashboard and {isLoan?"loan balance":"savings balance"} reflect this payment immediately.
+            {/* Pending notice */}
+            <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:10,padding:"12px 16px",fontSize:12,color:"#795548",marginBottom:20,lineHeight:1.7,textAlign:"left"}}>
+              <div style={{fontWeight:800,marginBottom:4}}>⏳ Awaiting Manager Verification</div>
+              Your payment is under review. Your BIDA manager will verify the transaction against the bank or MoMo statement.<br/>
+              <strong>Your balance will update only after approval.</strong><br/>
+              You will be notified once the manager acts on your request.
             </div>
-            <button onClick={onClose} style={{background:"#1565c0",border:"none",color:"#fff",fontWeight:700,padding:"11px 36px",borderRadius:10,cursor:"pointer",fontSize:14}}>Done →</button>
+            <button onClick={onClose} style={{background:"#1565c0",border:"none",color:"#fff",fontWeight:700,padding:"11px 36px",borderRadius:10,cursor:"pointer",fontSize:14}}>
+              Got it →
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
+  const isDisabled = busy || !amtNum || !txId.trim() || !proof || (purpose === "loan_repayment" && !loanId);
+
   return (
-    <div style={S.ov} onClick={onClose}>
-      <div style={S.sh} onClick={e=>e.stopPropagation()}>
-        {/* Title */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+    <div style={S.ov} onClick={busy ? undefined : onClose}>
+      {/* Full-screen busy overlay */}
+      {busy && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:10000}}>
+          <div style={{width:56,height:56,border:"5px solid rgba(255,255,255,.25)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.8s linear infinite",marginBottom:16}}/>
+          <div style={{color:"#fff",fontWeight:700,fontSize:15}}>Submitting payment…</div>
+          <div style={{color:"rgba(255,255,255,.7)",fontSize:12,marginTop:6}}>Please wait, do not close this window</div>
+        </div>
+      )}
+      <div style={S.sh} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
           <div>
-            <div style={{fontWeight:900,fontSize:18,color:"#0d2a5e"}}>Make a Payment</div>
-            <div style={{fontSize:11,color:"#90a4ae",marginTop:2}}>Recorded directly to your account</div>
+            <div style={{fontWeight:900,fontSize:18,color:"#0d2a5e"}}>Submit a Payment</div>
+            <div style={{fontSize:11,color:"#90a4ae",marginTop:2}}>Your request will be reviewed by the manager</div>
           </div>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#90a4ae",lineHeight:1}}>✕</button>
+          <button onClick={busy ? undefined : onClose} style={{background:"none",border:"none",fontSize:22,cursor:busy?"not-allowed":"pointer",color:"#90a4ae",lineHeight:1,opacity:busy?.3:1}}>✕</button>
         </div>
 
-        {/* Payment method tabs */}
+        {/* Pending workflow notice */}
+        <div style={{background:"rgba(21,101,192,.06)",border:"1.5px solid #bbdefb",borderRadius:10,padding:"10px 14px",marginBottom:18,fontSize:11,color:"#1565c0",lineHeight:1.6}}>
+          🔒 <strong>Secure workflow:</strong> Payments are verified by a manager before your balance updates. Attach your MoMo screenshot or bank receipt as proof.
+        </div>
+
+        {/* Payment method */}
         <div style={{marginBottom:16}}>
           <label style={S.lb}>Payment Method</label>
           <div style={{display:"flex",gap:8}}>
-            {[["mtn","🟡 MTN MoMo"],["airtel","🔴 Airtel Money"],["bank","🏦 Bank"]].map(([v,l])=>(
-              <button key={v} onClick={()=>setMethod(v)}
-                style={{flex:1,padding:"9px 6px",borderRadius:10,fontWeight:method===v?700:500,border:"2px solid "+(method===v?"#1565c0":"#e0e0e0"),background:method===v?"#e3f2fd":"#fff",cursor:"pointer",fontSize:11,color:method===v?"#0d47a1":"#546e7a",transition:"all .15s"}}>
+            {[["mtn","🟡 MTN MoMo"],["airtel","🔴 Airtel Money"],["bank","🏦 Bank Transfer"]].map(([v,l]) => (
+              <button key={v} onClick={() => setMethod(v)}
+                style={{flex:1,padding:"9px 6px",borderRadius:10,fontWeight:method===v?700:500,border:"2px solid "+(method===v?"#1565c0":"#e0e0e0"),background:method===v?"#e3f2fd":"#fff",cursor:"pointer",fontSize:11,color:method===v?"#0d47a1":"#546e7a"}}>
                 {l}
               </button>
             ))}
@@ -8847,92 +10176,161 @@ function PaymentModalInline({ member, loans, onSuccess, onClose }) {
         {/* Purpose */}
         <div style={{marginBottom:16}}>
           <label style={S.lb}>Payment Purpose</label>
-          <select style={{...S.inp,cursor:"pointer",background:"#fff"}} value={purpose} onChange={e=>setPurpose(e.target.value)}>
-            {PURPOSES.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
+          <select style={{...S.inp,cursor:"pointer",background:"#fff"}} value={purpose} onChange={e => { setPurpose(e.target.value); setErr(""); }}>
+            {PURPOSES.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
           </select>
         </div>
 
-        {/* Loan selector (only shown for loan_repayment) */}
-        {purpose==="loan_repayment"&&(
+        {/* Loan selector */}
+        {purpose === "loan_repayment" && (
           <div style={{marginBottom:16}}>
             <label style={S.lb}>Which Loan?</label>
-            {activeLoans.length===0
+            {activeLoans.length === 0
               ? <div style={{background:"#fff3e0",border:"1px solid #ffcc80",borderRadius:9,padding:"10px 13px",fontSize:12,color:"#e65100"}}>No active loans found.</div>
-              : <select style={{...S.inp,cursor:"pointer",background:"#fff"}} value={loanId} onChange={e=>setLoanId(e.target.value)}>
-                  {activeLoans.map(l=>{
-                    const p=l.amountLoaned||0,paid=l.amountPaid||0,isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
-                    let ti=0;if(isR){let b=p;for(let i=0;i<term;i++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}else ti=Math.round(p*rate*term);
-                    const bal=Math.max(0,p+ti-paid);
-                    return <option key={l.id} value={l.id}>Loan #{l.id} — Balance UGX {Number(bal).toLocaleString("en-UG")}</option>;
-                  })}
-                </select>
+              : <>
+                  <select style={{...S.inp,cursor:"pointer",background:"#fff"}} value={loanId} onChange={e => setLoanId(e.target.value)}>
+                    {activeLoans.map(l => {
+                      const p=l.amountLoaned||0,paid=l.amountPaid||0;
+                      const isR=p>=7000000,rate=isR?.06:.04,term=isR?12:(l.term||12);
+                      let ti=0;
+                      if(isR){let b=p;for(let i=0;i<term;i++){ti+=Math.round(b*rate);b-=Math.round(p/term);}}
+                      else ti=Math.round(p*rate*term);
+                      const bal=Math.max(0,p+ti-paid);
+                      return <option key={l.id} value={l.id}>Loan #{l.id} — Balance UGX {Number(bal).toLocaleString("en-UG")}</option>;
+                    })}
+                  </select>
+                  {selectedLoan && (
+                    <div style={{background:"#f3e5f5",borderRadius:8,padding:"8px 12px",marginTop:6,fontSize:11,color:"#6a1b9a",fontFamily:"var(--mono)"}}>
+                      Current balance: UGX {Number(loanBalance).toLocaleString("en-UG")}
+                      {amtNum > 0 && (
+                        <span style={{marginLeft:10,color:afterRepayment===0?"#1b5e20":"#6a1b9a"}}>
+                          → After this payment: UGX {Number(afterRepayment).toLocaleString("en-UG")}
+                          {afterRepayment === 0 && " 🎉 Fully settled!"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
             }
           </div>
         )}
 
         {/* Phone */}
         <div style={{marginBottom:16}}>
-          <label style={S.lb}>{method==="bank"?"Bank Account / Reference":"Your Phone Number"}</label>
-          <input style={S.inp} type={method==="bank"?"text":"tel"}
-            placeholder={method==="bank"?"Account number or bank ref":"0772 123 456"}
-            value={phone} onChange={e=>setPhone(e.target.value)}/>
+          <label style={S.lb}>{method === "bank" ? "Bank Account / Reference" : "Your Phone Number"}</label>
+          <input style={S.inp} type={method === "bank" ? "text" : "tel"}
+            placeholder={method === "bank" ? "Account number or bank reference" : "0772 123 456"}
+            value={phone} onChange={e => setPhone(e.target.value)}/>
         </div>
 
         {/* Amount */}
         <div style={{marginBottom:16}}>
           <label style={S.lb}>Amount (UGX)</label>
-          <input style={S.inp} type="number" inputMode="numeric" placeholder="e.g. 50000"
-            value={amount} onChange={e=>setAmount(e.target.value)}/>
-          {amount&&!isNaN(+amount)&&+amount>0&&(
+          <input style={S.inp} type="number" inputMode="numeric" placeholder="e.g. 50,000"
+            value={amount} onChange={e => setAmount(e.target.value)}/>
+          {amtNum > 0 && (
             <div style={{fontSize:13,color:"#1565c0",marginTop:5,fontFamily:"var(--mono)",fontWeight:700}}>
-              UGX {Number(+amount).toLocaleString("en-UG")}
+              UGX {Number(amtNum).toLocaleString("en-UG")}
+            </div>
+          )}
+          {purpose === "loan_repayment" && amtNum > loanBalance && loanBalance > 0 && (
+            <div style={{fontSize:11,color:"#e65100",marginTop:4}}>
+              ⚠️ Amount exceeds loan balance (UGX {Number(loanBalance).toLocaleString("en-UG")}). Overpayment will be reviewed by manager.
             </div>
           )}
         </div>
 
-        {/* Transaction ID — required for verification */}
+        {/* Transaction ID */}
         <div style={{marginBottom:16}}>
-          <label style={S.lb}>Transaction ID / MoMo Reference <span style={{color:"#e53935",fontWeight:900}}>*</span></label>
-          <input style={S.inp} placeholder="e.g. QK7XXXXXX or bank ref number"
-            value={txId} onChange={e=>setTxId(e.target.value)}/>
-          <div style={{fontSize:10,color:"#90a4ae",marginTop:4}}>Required — from your MoMo confirmation SMS or bank receipt</div>
-        </div>
-
-        {/* Proof (optional) */}
-        <div style={{marginBottom:18}}>
-          <label style={S.lb}>Attach Proof Screenshot <span style={{fontWeight:400,opacity:.7}}>(optional)</span></label>
-          <label style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"1.5px dashed #cfd8dc",borderRadius:10,cursor:"pointer",background:"#fafafa"}}>
-            <span style={{fontSize:20}}>📎</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13,fontWeight:600,color:"#546e7a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                {proof?proof.name:"Tap to attach MoMo screenshot or receipt"}
-              </div>
-              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>JPG, PNG or PDF</div>
-            </div>
-            <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={handleProof}/>
-          </label>
-          {proof&&(
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"6px 10px",background:"rgba(0,200,83,.08)",borderRadius:8}}>
-              <span style={{fontSize:11,color:"#2e7d32",fontWeight:700}}>✓ {proof.name}</span>
-              <button onClick={()=>setProof(null)} style={{background:"none",border:"none",color:"#c62828",cursor:"pointer",fontSize:12,fontWeight:700}}>✕</button>
+          <label style={S.lb}>Transaction ID / Reference <span style={{color:"#e53935",fontWeight:900}}>*</span></label>
+          <input style={{...S.inp, borderColor: dupWarn ? "#ff8f00" : "#cfd8dc"}}
+            placeholder="e.g. QK7XXXXXX or bank transfer ref"
+            value={txId}
+            onChange={e => { setTxId(e.target.value); setDupWarn(false); setErr(""); }}
+            onBlur={() => checkDuplicate(txId)}/>
+          <div style={{fontSize:10,color:"#90a4ae",marginTop:4}}>
+            From your MoMo confirmation SMS or bank receipt — required for manager verification
+          </div>
+          {dupWarn && (
+            <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:8,padding:"9px 12px",marginTop:6,fontSize:11,color:"#e65100",lineHeight:1.5}}>
+              ⚠️ <strong>Possible duplicate:</strong> This transaction ID was already submitted.
+              If you are certain this is a new, different payment, tap "Submit Anyway" below.
             </div>
           )}
         </div>
 
-        {err&&<div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:9,padding:"10px 13px",fontSize:12,color:"#c62828",marginBottom:14}}>{err}</div>}
+        {/* Proof — MANDATORY */}
+        <div style={{marginBottom:18}}>
+          <label style={S.lb}>
+            Attach Payment Proof <span style={{color:"#e53935",fontWeight:900}}>* Required</span>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",border:"1.5px dashed "+(proof?"#4caf50":"#e53935"),borderRadius:10,cursor:"pointer",background:proof?"rgba(76,175,80,.05)":"#fafafa"}}>
+            <span style={{fontSize:22}}>{proof ? "✅" : "📎"}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:600,color:proof?"#2e7d32":"#546e7a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                {proof ? proof.name : "Tap to attach MoMo screenshot or receipt"}
+              </div>
+              <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>
+                JPG, PNG or PDF · Max 5 MB
+              </div>
+            </div>
+            <input type="file" accept="image/jpeg,image/png,application/pdf"
+              style={{display:"none"}} onChange={handleProof}/>
+          </label>
+          {proof && (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:6,padding:"6px 10px",background:"rgba(0,200,83,.08)",borderRadius:8}}>
+              <span style={{fontSize:11,color:"#2e7d32",fontWeight:700}}>
+                ✓ {proof.name} · {(proof.size/1024).toFixed(0)} KB
+              </span>
+              <button onClick={() => setProof(null)}
+                style={{background:"none",border:"none",color:"#c62828",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                ✕ Remove
+              </button>
+            </div>
+          )}
+          {!proof && (
+            <div style={{fontSize:10,color:"#e53935",marginTop:5}}>
+              ⚠️ A screenshot or receipt is required for manager verification
+            </div>
+          )}
+        </div>
 
-        <button style={S.btn(busy||!amount||!txId.trim()||(purpose==="loan_repayment"&&!loanId))} onClick={submit}
-          disabled={busy||!amount||!txId.trim()||(purpose==="loan_repayment"&&!loanId)}>
-          {busy?"⏳ Recording payment…":"✓ Record Payment "+(!isNaN(+amount)&&+amount>0?"— UGX "+Number(+amount).toLocaleString("en-UG"):"")+" →"}
-        </button>
+        {/* Error */}
+        {err && (
+          <div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:9,padding:"10px 13px",fontSize:12,color:"#c62828",marginBottom:14}}>
+            {err}
+          </div>
+        )}
+
+        {/* Submit (or Submit Anyway if duplicate) */}
+        {dupWarn ? (
+          <div style={{display:"flex",gap:8}}>
+            <button style={{...S.btn(busy), flex:1, background: busy?"#eceff1":"#e65100"}}
+              disabled={busy || !amtNum || !proof}
+              onClick={() => submit(true)}>
+              {busy ? "⏳ Submitting…" : "⚠️ Submit Anyway"}
+            </button>
+            <button onClick={() => { setDupWarn(false); setTxId(""); setTxChecked(""); }}
+              style={{padding:"14px 16px",borderRadius:12,border:"1.5px solid #e0e0e0",background:"#fff",cursor:"pointer",fontWeight:600,fontSize:13,color:"#546e7a"}}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button style={S.btn(isDisabled)} onClick={() => submit(false)} disabled={isDisabled}>
+            {busy
+              ? "⏳ Submitting request…"
+              : "📨 Submit Payment Request" + (amtNum > 0 ? " — UGX " + Number(amtNum).toLocaleString("en-UG") : "") + " →"}
+          </button>
+        )}
 
         <div style={{fontSize:10,color:"#90a4ae",textAlign:"center",marginTop:10,lineHeight:1.6}}>
-          Payment is recorded immediately to your account. Ensure your transaction ID is correct.
+          Your balance updates only after a manager approves your request.
         </div>
       </div>
     </div>
   );
 }
+
 
 function OTPBoxes({ value, onChange, onDone, disabled }) {
   const refs = React.useRef([]);
@@ -9159,199 +10557,6 @@ function MemberForgotPasswordModal({ onClose }) {
             <button style={bSt(busy||!newPass||!confirmPass)} onClick={resetPassword} disabled={busy||!newPass||!confirmPass}>{busy?'Saving...':'Set New Password →'}</button>
           </React.Fragment>
         )}
-      </div>
-    </div>
-  );
-}
-
-function MemberLoginScreenInline({ onLogin, onBack }) {
-  const [phase, setPhase] = useState("phone");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("      ");
-  const [name, setName] = useState("");
-  const [devCode, setDevCode] = useState(null);
-  const [canResend, setCR] = useState(false);
-  const [cd, setCd] = useState(0);
-  const [pErr, setPErr] = useState("");
-  const [oErr, setOErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const sendOTP = async () => {
-    setPErr("");
-    const raw = phone.trim();
-    if (!raw) { setPErr("Enter your registered phone number"); return; }
-    const n256 = normPhoneInline(raw);
-    const n0   = n256 ? "0" + n256.slice(3) : null;
-    if (!n256) { setPErr("Enter a valid Uganda number (e.g. 0772 123 456)"); return; }
-    setBusy(true);
-    try {
-      const all = await mDb.get("members");
-      const member = all.find(m => {
-        const p = (m.phone||"").replace(/\s/g,"");
-        const w = (m.whatsapp||"").replace(/\s/g,"");
-        return p===n256||p===n0||w===n256||w===n0;
-      });
-      if (!member) {
-        setPErr("Member not found. Ask your manager to add your phone number to your profile first.");
-        setBusy(false);
-        return;
-      }
-      setName(member.name);
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const exp = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      const old = await mDb.get("login_codes", `phone=eq.${n256}&used=eq.false`);
-      for (const c of old) await mDb.update("login_codes", `id=eq.${c.id}`, { used: true });
-      await mDb.insert("login_codes", { phone: n256, code, expires_at: exp, used: false, member_id: member.id });
-
-      // Try to send real SMS via API
-      let smsSent = false;
-      try {
-        const smsMsg = `Your BIDA login code is: ${code}. Valid for 5 minutes. Do not share this code.\n— Bida Co-operative`;
-        const smsRes = await fetch("/api/send-sms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: n256, message: smsMsg })
-        });
-        if (smsRes.ok) smsSent = true;
-      } catch (_) { /* SMS API not yet deployed */ }
-
-      // Only show dev code on screen if SMS API isn't set up yet
-      setDevCode(smsSent ? null : code);
-      setPhase("verify");
-      setCR(false);
-      setCd(60);
-      setOtp("      ");
-    } catch (e) {
-      setPErr("Failed to send code. Please check your connection and try again.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const verifyOTP = async (code) => {
-    const c = (code || otp).replace(/\s/g, "");
-    setOErr("");
-    if (c.length !== 6) { setOErr("Enter the 6-digit code"); return; }
-    setBusy(true);
-    
-    try {
-      const n = normPhoneInline(phone);
-      const now = new Date().toISOString();
-      const rows = await mDb.get("login_codes", `phone=eq.${n}&used=eq.false&expires_at=gt.${now}&order=created_at.desc&limit=1`);
-      
-      if (!rows.length || rows[0].code !== c) throw new Error("Invalid or expired code");
-      
-      await mDb.update("login_codes", `id=eq.${rows[0].id}`, { used: true });
-      
-      const members = await mDb.get("members");
-      const member = members.find(m => m.id === rows[0].member_id);
-      if (!member) throw new Error("Member not found");
-      
-      const fp = await mFingerprint();
-      const token = crypto.randomUUID() + "-" + Date.now();
-      
-      await mDb.insert("member_sessions", {
-        member_id: member.id,
-        token,
-        device_id: fp,
-        user_agent: navigator.userAgent,
-        expires_at: new Date(Date.now() + 8 * 3600 * 1000).toISOString()
-      });
-      
-      onLogin({ type: "member", token, memberId: member.id, memberName: member.name });
-    } catch (e) {
-      setOErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const styles = {
-    page: { minHeight: "100vh", background: "linear-gradient(135deg,#0d2a5e,#1565c0)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "var(--sans)" },
-    card: { background: "#fff", borderRadius: 22, padding: "36px 28px", width: "100%", maxWidth: 400, boxShadow: "0 24px 64px rgba(0,0,0,.35)" },
-    label: { fontSize: 10, fontWeight: 700, color: "#90a4ae", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 7, fontFamily: "monospace" },
-    input: { width: "100%", padding: "13px 14px", borderRadius: 11, border: "1.5px solid #cfd8dc", fontSize: 15, outline: "none", boxSizing: "border-box" },
-    btn: (d) => ({ width: "100%", padding: 13, borderRadius: 11, border: "none", fontWeight: 700, fontSize: 15, cursor: d ? "not-allowed" : "pointer", background: d ? "#cfd8dc" : "linear-gradient(135deg,#1565c0,#0d47a1)", color: d ? "#90a4ae" : "#fff" }),
-    err: { background: "#ffebee", border: "1px solid #ffcdd2", borderRadius: 9, padding: "9px 12px", fontSize: 12, color: "#c62828", marginBottom: 12, textAlign: "center" },
-    ok: { background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: 9, padding: "9px 12px", fontSize: 12, color: "#1b5e20", marginBottom: 12, textAlign: "center" },
-    dev: { background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 9, padding: "10px 12px", fontSize: 12, color: "#bf360c", marginBottom: 12, textAlign: "center" }
-  };
-
-  return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <svg width="50" height="50" viewBox="0 0 80 80" fill="none">
-            <defs><linearGradient id="lg" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#1E88E5" /><stop offset="100%" stopColor="#0D47A1" /></linearGradient></defs>
-            <polygon points="40,3 75,21.5 75,58.5 40,77 5,58.5 5,21.5" fill="url(#lg)" stroke="#42A5F5" strokeWidth="1.5" />
-            <rect x="19" y="40" width="10" height="15" rx="2.5" fill="#90CAF9" opacity=".85" />
-            <rect x="32" y="31" width="10" height="24" rx="2.5" fill="#64B5F6" />
-            <rect x="45" y="22" width="10" height="33" rx="2.5" fill="#fff" />
-            <polygon points="50,17 56,23 44,23" fill="#fff" />
-          </svg>
-          <div style={{ fontSize: 22, fontWeight: 900, color: "#0d2a5e", letterSpacing: 2, marginTop: 8 }}>BIDA</div>
-          <div style={{ fontSize: 10, color: "#90a4ae", letterSpacing: 1, textTransform: "uppercase" }}>Multi-Purpose Co-operative Society</div>
-        </div>
-
-        {phase === "phone" && (
-          <>
-            <div style={{ marginBottom: 16 }}>
-              <label style={styles.label}>Your registered phone number</label>
-              <input style={styles.input} type="tel" placeholder="0772 123 456" value={phone}
-                onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === "Enter" && sendOTP()} />
-            </div>
-            {pErr && <div style={styles.err}>{pErr}</div>}
-            <button style={styles.btn(busy)} onClick={sendOTP} disabled={busy}>
-              {busy ? "⏳ Sending…" : "Send Verification Code →"}
-            </button>
-            <div style={{ textAlign: "center", marginTop: 12, fontSize: 11, color: "#b0bec5" }}>
-              A 6-digit code will be sent via SMS
-            </div>
-          </>
-        )}
-
-        {phase === "verify" && (
-          <>
-            {name && <div style={styles.ok}>👋 Welcome, <strong>{name}</strong>! Enter the code sent to your phone.</div>}
-            {devCode && <div style={styles.dev}>⚠️ SMS not yet configured — your code is: <strong style={{ fontFamily: "monospace", fontSize: 20, letterSpacing: 2 }}>{devCode}</strong><div style={{fontSize:10,marginTop:4,opacity:.8}}>Once you deploy api/send-sms.js to Vercel, this box disappears and members receive the code on their phone.</div></div>}
-            
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ ...styles.label, textAlign: "center", display: "block" }}>6-digit verification code</label>
-              <OTPBoxes value={otp} onChange={setOtp} onDone={verifyOTP} disabled={busy} />
-              <div style={{ textAlign: "center", fontSize: 11, color: "#90a4ae", marginTop: 8 }}>Sent to {phone}</div>
-            </div>
-            
-            {oErr && <div style={styles.err}>{oErr}</div>}
-            
-            <button style={styles.btn(busy || otp.trim().length < 6)} onClick={() => verifyOTP()} disabled={busy || otp.trim().length < 6}>
-              {busy ? "⏳ Verifying…" : "Verify & Sign In →"}
-            </button>
-            
-            <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, color: "#90a4ae" }}>
-              {canResend ? (
-                <button onClick={() => { setPhase("phone"); setDevCode(null); }} style={{ background: "none", border: "none", color: "#1565c0", cursor: "pointer", fontWeight: 700 }}>
-                  Resend code
-                </button>
-              ) : (
-                <Timer s={cd} onEnd={() => setCR(true)} />
-              )}
-              {" · "}
-              <button onClick={() => { setPhase("phone"); setOtp("      "); setOErr(""); setDevCode(null); }} style={{ background: "none", border: "none", color: "#90a4ae", cursor: "pointer", fontSize: 11 }}>
-                Change number
-              </button>
-            </div>
-          </>
-        )}
-
-        <div style={{ textAlign: "center", marginTop: 20 }}>
-          <button onClick={onBack} style={{ background: "none", border: "none", color: "#90a4ae", cursor: "pointer", fontSize: 11 }}>
-            ← Back to Manager Login
-          </button>
-        </div>
-
-        <div style={{ textAlign: "center", marginTop: 12, fontSize: 10, color: "#cfd8dc" }}>
-          Authorised access only · Bida Multi-Purpose Co-operative Society
-        </div>
       </div>
     </div>
   );
@@ -9766,6 +10971,490 @@ function MemberStatementButton({ m, loans }) {
   );
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// MEMBER LOAN REQUEST MODAL — member submits a loan application
+// ══════════════════════════════════════════════════════════════════
+function MemberLoanRequestModal({ member, loans, onSuccess, onClose }) {
+  const [step,        setStep]       = useState(1);
+  const [amount,      setAmount]     = useState("");
+  const [term,        setTerm]       = useState(12);
+  const [purpose,     setPurpose]    = useState("");
+  const [bankName,    setBankName]   = useState(member?.bankName||"");
+  const [bankAccName, setBankAccName]= useState(member?.depositorName||"");
+  const [bankAccNum,  setBankAccNum] = useState(member?.bankAccount||"");
+  const [bankBranch,  setBankBranch] = useState("");
+  const [guarantorId, setGuarantorId]= useState("");
+  const [relationship,setRelationship]=useState("");
+  const [busy,        setBusy]       = useState(false);
+  const [err,         setErr]        = useState("");
+  const [done,        setDone]       = useState(null);
+  const [allMembers,  setAllMembers] = useState([]);
+
+  // Borrowing limit: 70% of (monthlySavings + shares)
+  const savings = (member?.monthlySavings||0)+(member?.shares||0);
+  const maxLoan = Math.round(savings*0.70);
+  const amtNum  = parseInt(String(amount).replace(/,/g,""),10)||0;
+
+  // Monthly payment estimate (flat 4%)
+  const monthlyEst = amtNum>0&&term>0 ? Math.round(amtNum/term + amtNum*0.04) : 0;
+  const totalDue   = amtNum>0&&term>0 ? Math.round(amtNum*(1+0.04*term)) : 0;
+
+  const genToken = ()=>"tk_"+Math.random().toString(36).slice(2)+Date.now().toString(36);
+  const genReqNum = ()=>"LN-"+new Date().toISOString().slice(0,10).replace(/-/g,"")+"-"+Math.floor(Math.random()*900+100);
+
+  React.useEffect(()=>{
+    mDb.get("members","order=name").then(r=>setAllMembers(r||[])).catch(()=>{});
+  },[]);
+
+  const otherMembers = allMembers.filter(m=>m.id!==member?.id);
+  const guarantorMember = otherMembers.find(m=>m.id===+guarantorId);
+
+  const submit = async()=>{
+    setErr("");
+    if(amtNum<100000){setErr("Minimum loan amount is UGX 100,000");return;}
+    if(amtNum>maxLoan&&maxLoan>0){setErr("Amount exceeds your borrowing limit of UGX "+maxLoan.toLocaleString("en-UG"));return;}
+    if(!purpose.trim()){setErr("Enter a loan purpose");return;}
+    if(!bankName.trim()||!bankAccNum.trim()){setErr("Enter your bank details");return;}
+    if(!guarantorId){setErr("Select a guarantor");return;}
+    if(!relationship.trim()){setErr("Enter your relationship to the guarantor");return;}
+    setBusy(true);
+    try{
+      const now    = new Date().toISOString();
+      const reqNum = genReqNum();
+      const token  = genToken();
+      const exp    = new Date(Date.now()+7*24*3600*1000).toISOString();
+
+      const rows = await mDb.insert("loan_requests",{
+        request_number:   reqNum,
+        member_id:        member.id,
+        member_name:      member.name,
+        amount:           amtNum,
+        term:             term,
+        purpose:          purpose.trim(),
+        status:           "pending_guarantor",
+        bank_name:        bankName.trim(),
+        bank_account_name: bankAccName.trim(),
+        bank_account_number: bankAccNum.trim(),
+        bank_branch:      bankBranch.trim(),
+        created_at:       now,
+        updated_at:       now,
+        tenant_id:        "bida",
+      });
+      const lrId = rows?.[0]?.id;
+
+      if(lrId){
+        // Insert guarantor record
+        await mDb.insert("loan_guarantors",{
+          loan_request_id:      lrId,
+          guarantor_member_id:  +guarantorId,
+          guarantor_name:       guarantorMember?.name||"",
+          relationship:         relationship.trim(),
+          confirmation_token:   token,
+          token_expires_at:     exp,
+          tenant_id:            "bida",
+        }).catch(()=>{});
+
+        // Email guarantor
+        const appUrl = (()=>{try{const s=localStorage.getItem("bida_notif_settings");return JSON.parse(s).appUrl||"https://bida.pamojapay.co";}catch{return "";}})();
+        const gEmail = guarantorMember?.email||"";
+        const confirmLink = appUrl+"/guarantor-confirm?token="+token;
+        if(gEmail){
+          sendViaEmailJS(gEmail,
+            "ACTION REQUIRED: Confirm as Guarantor for "+member.name+" — UGX "+amtNum.toLocaleString("en-UG"),
+            "Dear "+(guarantorMember?.name||"Guarantor")+",\n\n"+member.name+" has listed you as a guarantor for a loan of UGX "+amtNum.toLocaleString("en-UG")+".\n\nLoan Details:\nBorrower: "+member.name+"\nAmount: UGX "+amtNum.toLocaleString("en-UG")+"\nTerm: "+term+" months\nEst. Monthly Payment: UGX "+monthlyEst.toLocaleString("en-UG")+"\nPurpose: "+purpose+"\n\nAs a guarantor, you are confirming that you understand the borrower's obligation.\n\nTo confirm or decline, click the link below (expires in 7 days):\n"+confirmLink+"\n\nThis link requires no login.\n\n— BIDA Co-operative",
+            null
+          ).catch(()=>{});
+        }
+      }
+
+      setDone({reqNum, lrId, guarantorName:guarantorMember?.name||""});
+      onSuccess?.();
+    }catch(e){
+      if(e.message?.includes("loan_requests"))setErr("Failed to submit. Check your connection and try again.");
+      else setErr(e.message||"Submission failed");
+    }finally{ setBusy(false); }
+  };
+
+  const S = {
+    ov:  {position:"fixed",inset:0,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:9999},
+    sh:  {background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:540,padding:"22px 20px 32px",maxHeight:"95vh",overflowY:"auto"},
+    lb:  {fontSize:10,fontWeight:700,color:"#546e7a",textTransform:"uppercase",letterSpacing:.8,display:"block",marginBottom:6,fontFamily:"var(--mono)"},
+    inp: {width:"100%",padding:"11px 13px",borderRadius:10,border:"1.5px solid #cfd8dc",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"var(--sans)"},
+    btn: (d)=>({width:"100%",padding:13,borderRadius:12,border:"none",fontWeight:800,fontSize:14,cursor:d?"not-allowed":"pointer",background:d?"#eceff1":"linear-gradient(135deg,#1565c0,#0d47a1)",color:d?"#90a4ae":"#fff",marginTop:6}),
+  };
+
+  if(done){
+    return(
+      <div style={S.ov} onClick={onClose}>
+        <div style={S.sh} onClick={e=>e.stopPropagation()}>
+          <div style={{textAlign:"center",padding:"20px 0 10px"}}>
+            <div style={{fontSize:52,marginBottom:12}}>📝</div>
+            <div style={{fontWeight:900,fontSize:18,color:"#0d2a5e",marginBottom:8}}>Loan Request Submitted!</div>
+            <div style={{fontSize:12,color:"#546e7a",lineHeight:1.8,marginBottom:14}}>
+              Reference: <strong style={{fontFamily:"var(--mono)"}}>{done.reqNum}</strong><br/>
+              Amount: <strong>UGX {amtNum.toLocaleString("en-UG")}</strong>
+            </div>
+            <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:10,padding:"12px 14px",fontSize:11,color:"#795548",marginBottom:18,textAlign:"left",lineHeight:1.7}}>
+              <strong>⏳ Next step: Guarantor confirmation</strong><br/>
+              An email has been sent to <strong>{done.guarantorName}</strong> to confirm as your guarantor. Once they confirm, a Loan Officer will review your application.<br/><br/>
+              Track your application status in <strong>My Loan Requests</strong>.
+            </div>
+            <button onClick={onClose} style={{background:"#1565c0",border:"none",color:"#fff",fontWeight:700,padding:"11px 36px",borderRadius:10,cursor:"pointer",fontSize:14}}>
+              View My Loan Requests →
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={S.ov} onClick={busy ? undefined : onClose}>
+      {/* Full-screen busy overlay */}
+      {busy && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:10000}}>
+          <div style={{width:56,height:56,border:"5px solid rgba(255,255,255,.25)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.8s linear infinite",marginBottom:16}}/>
+          <div style={{color:"#fff",fontWeight:700,fontSize:15}}>Submitting loan request…</div>
+          <div style={{color:"rgba(255,255,255,.7)",fontSize:12,marginTop:6}}>Sending guarantor email — please wait</div>
+        </div>
+      )}
+      <div style={S.sh} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div>
+            <div style={{fontWeight:900,fontSize:17,color:"#0d2a5e"}}>Request a Loan</div>
+            <div style={{fontSize:10,color:"#90a4ae",marginTop:2}}>Step {step} of 3 — {step===1?"Loan Details":step===2?"Bank & Guarantor":"Review & Submit"}</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#90a4ae"}}>✕</button>
+        </div>
+
+        {/* Borrowing limit banner */}
+        <div style={{background:"rgba(21,101,192,.07)",border:"1.5px solid #bbdefb",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:11,color:"#1565c0",lineHeight:1.6}}>
+          💡 <strong>Your borrowing limit:</strong> UGX {maxLoan.toLocaleString("en-UG")}<br/>
+          <span style={{fontSize:10,color:"#546e7a"}}>Based on 70% of your savings (UGX {(member?.monthlySavings||0).toLocaleString("en-UG")} monthly savings + UGX {(member?.shares||0).toLocaleString("en-UG")} shares)</span>
+        </div>
+
+        {step===1&&<>
+          <div style={{marginBottom:14}}>
+            <label style={S.lb}>Loan Amount (UGX)</label>
+            <input style={{...S.inp,borderColor:amtNum>maxLoan&&maxLoan>0?"#ef5350":"#cfd8dc"}}
+              type="number" inputMode="numeric" placeholder={"Up to UGX "+maxLoan.toLocaleString("en-UG")}
+              value={amount} onChange={e=>setAmount(e.target.value)}/>
+            {amtNum>0&&<div style={{fontSize:12,color:"#1565c0",marginTop:4,fontFamily:"var(--mono)",fontWeight:700}}>UGX {amtNum.toLocaleString("en-UG")}</div>}
+            {amtNum>maxLoan&&maxLoan>0&&<div style={{fontSize:10,color:"#e53935",marginTop:3}}>⚠️ Exceeds your borrowing limit of UGX {maxLoan.toLocaleString("en-UG")}</div>}
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={S.lb}>Repayment Term</label>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {[3,6,9,12,18,24].map(t=>(
+                <button key={t} onClick={()=>setTerm(t)}
+                  style={{padding:"8px 14px",borderRadius:9,fontWeight:term===t?700:500,border:"2px solid "+(term===t?"#1565c0":"#e0e0e0"),background:term===t?"#e3f2fd":"#fff",cursor:"pointer",fontSize:12,color:term===t?"#0d47a1":"#546e7a"}}>
+                  {t} mo
+                </button>
+              ))}
+            </div>
+          </div>
+          {amtNum>0&&term>0&&(
+            <div style={{background:"#f0f7ff",borderRadius:9,padding:"10px 13px",marginBottom:14,fontSize:11,fontFamily:"var(--mono)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{color:"#546e7a"}}>Est. monthly payment</span>
+                <span style={{fontWeight:700,color:"#1565c0"}}>UGX {monthlyEst.toLocaleString("en-UG")}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{color:"#546e7a"}}>Interest (4% flat)</span>
+                <span style={{fontWeight:700,color:"#e65100"}}>UGX {(totalDue-amtNum).toLocaleString("en-UG")}</span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #e3f2fd",paddingTop:4,marginTop:4}}>
+                <span style={{color:"#546e7a",fontWeight:700}}>Total due</span>
+                <span style={{fontWeight:900,color:"#0d2a5e"}}>UGX {totalDue.toLocaleString("en-UG")}</span>
+              </div>
+            </div>
+          )}
+          <div style={{marginBottom:14}}>
+            <label style={S.lb}>Loan Purpose</label>
+            <textarea style={{...S.inp,minHeight:70,resize:"vertical"}}
+              placeholder="e.g. Business expansion, school fees, medical expenses…"
+              value={purpose} onChange={e=>setPurpose(e.target.value)}/>
+          </div>
+          <button style={S.btn(!amtNum||amtNum<100000||!purpose.trim())} disabled={!amtNum||amtNum<100000||!purpose.trim()} onClick={()=>setStep(2)}>
+            Next: Bank & Guarantor →
+          </button>
+        </>}
+
+        {step===2&&<>
+          <div style={{marginBottom:12}}>
+            <label style={S.lb}>Bank Name</label>
+            <input style={S.inp} value={bankName} onChange={e=>setBankName(e.target.value)} placeholder="e.g. Stanbic Bank"/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={S.lb}>Account Name</label>
+            <input style={S.inp} value={bankAccName} onChange={e=>setBankAccName(e.target.value)} placeholder="Name on bank account"/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={S.lb}>Account Number</label>
+            <input style={S.inp} value={bankAccNum} onChange={e=>setBankAccNum(e.target.value)} placeholder="Bank account number" inputMode="numeric"/>
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={S.lb}>Bank Branch (optional)</label>
+            <input style={S.inp} value={bankBranch} onChange={e=>setBankBranch(e.target.value)} placeholder="e.g. Kampala Road Branch"/>
+          </div>
+          <div style={{borderTop:"1px solid #e3f2fd",paddingTop:14,marginBottom:12}}>
+            <label style={S.lb}>Select Guarantor</label>
+            <select style={{...S.inp,cursor:"pointer",background:"#fff"}} value={guarantorId} onChange={e=>setGuarantorId(e.target.value)}>
+              <option value="">— Select a BIDA member —</option>
+              {otherMembers.map(m=>(
+                <option key={m.id} value={m.id}>{m.name}{m.email?"":" ⚠ no email"}</option>
+              ))}
+            </select>
+            {guarantorMember&&!guarantorMember.email&&(
+              <div style={{fontSize:10,color:"#e65100",marginTop:4}}>⚠️ This guarantor has no email — they cannot receive the confirmation link. Select someone with an email address.</div>
+            )}
+            {guarantorMember&&guarantorMember.email&&(
+              <div style={{fontSize:10,color:"#1b5e20",marginTop:4}}>✅ Confirmation will be sent to {guarantorMember.email}</div>
+            )}
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={S.lb}>Your Relationship to Guarantor</label>
+            <input style={S.inp} value={relationship} onChange={e=>setRelationship(e.target.value)} placeholder="e.g. Friend, Colleague, Family member"/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setStep(1)} style={{flex:1,padding:12,borderRadius:10,border:"1.5px solid #e0e0e0",background:"#fff",cursor:"pointer",fontWeight:600,fontSize:13,color:"#546e7a"}}>← Back</button>
+            <button style={{...S.btn(!bankName||!bankAccNum||!guarantorId||!relationship||(guarantorMember&&!guarantorMember.email)),flex:2}} disabled={!bankName||!bankAccNum||!guarantorId||!relationship||(guarantorMember&&!guarantorMember.email)} onClick={()=>setStep(3)}>
+              Review & Submit →
+            </button>
+          </div>
+        </>}
+
+        {step===3&&<>
+          <div style={{background:"#f8faff",borderRadius:11,padding:"14px 15px",marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",marginBottom:10,textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>Application Summary</div>
+            {[
+              ["Amount",           "UGX "+amtNum.toLocaleString("en-UG")],
+              ["Term",             term+" months"],
+              ["Est. Monthly Pay", "UGX "+monthlyEst.toLocaleString("en-UG")],
+              ["Total Due",        "UGX "+totalDue.toLocaleString("en-UG")],
+              ["Purpose",          purpose],
+              ["Bank",             bankName],
+              ["Account",          bankAccNum+" ("+bankAccName+")"],
+              ["Guarantor",        (guarantorMember?.name||"—")+" · "+relationship],
+            ].map(([l,v])=>(
+              <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #e8eaf6",fontSize:12}}>
+                <span style={{color:"#546e7a"}}>{l}</span>
+                <span style={{fontWeight:600,color:"#0d2a5e",textAlign:"right",maxWidth:"60%"}}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:9,padding:"10px 13px",marginBottom:14,fontSize:11,color:"#795548",lineHeight:1.6}}>
+            By submitting, you confirm this information is accurate and you agree to the BIDA loan terms. The guarantor will receive an email to confirm.
+          </div>
+          {err&&<div style={{background:"rgba(229,57,53,.07)",border:"1px solid #ffcdd2",borderRadius:9,padding:"9px 12px",fontSize:12,color:"#c62828",marginBottom:12}}>{err}</div>}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setStep(2)} style={{flex:1,padding:12,borderRadius:10,border:"1.5px solid #e0e0e0",background:"#fff",cursor:"pointer",fontWeight:600,fontSize:13,color:"#546e7a"}}>← Back</button>
+            <button style={{...S.btn(busy),flex:2}} disabled={busy} onClick={submit}>
+              {busy?"⏳ Submitting…":"📨 Submit Loan Request →"}
+            </button>
+          </div>
+        </>}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MEMBER LOAN REQUESTS TAB — status tracker + receipt confirmation
+// ══════════════════════════════════════════════════════════════════
+function MemberLoanRequestsTab({ session, m, myLoanReqs, lrLoading, loadMyLoanReqs, onNewRequest }) {
+  const [confirmModal, setConfirmModal] = useState(null);  // loan_request object
+  const [confirmed,    setConfirmed]    = useState(null);  // "yes"|"no"
+  const [confNote,     setConfNote]     = useState("");
+  const [confBusy,     setConfBusy]     = useState(false);
+
+  const STATUS_STEPS = [
+    {key:"pending_guarantor",            label:"Guarantor confirmation"},
+    {key:"under_review",                 label:"Loan Officer review"},
+    {key:"pending_treasurer",            label:"Treasurer approval"},
+    {key:"pending_chairman",             label:"Chairman approval"},
+    {key:"ready_for_disbursement",       label:"Ready to disburse"},
+    {key:"awaiting_borrower_confirmation",label:"Confirm you received funds"},
+    {key:"completed",                    label:"Completed"},
+  ];
+
+  const stepIndex = (status)=>{
+    const i = STATUS_STEPS.findIndex(s=>s.key===status);
+    return i===-1 ? 0 : i;
+  };
+
+  const confirmReceipt = async()=>{
+    if(!confirmModal||!confirmed) return;
+    setConfBusy(true);
+    try{
+      const now    = new Date().toISOString();
+      const newStatus = confirmed==="yes" ? "completed" : "disputed";
+      await mDb.update("loan_requests","id=eq."+confirmModal.id,{
+        status:newStatus,
+        borrower_confirmed_receipt: confirmed==="yes",
+        borrower_confirmed_at: now,
+        borrower_confirmation_note: confNote||"",
+        updated_at: now,
+      });
+
+      // Notify Treasurer and Chairman by email
+      const notif=(()=>{try{const s=localStorage.getItem("bida_notif_settings");return JSON.parse(s);}catch{return{};}})();
+      const borrowerName = m?.name||session?.memberName||"Borrower";
+      const amtFmt = "UGX "+(confirmModal.amount||0).toLocaleString("en-UG");
+      const msg = confirmed==="yes"
+        ? "Borrower "+borrowerName+" has confirmed receipt of loan "+confirmModal.request_number+" ("+amtFmt+"). Loan is now COMPLETED.\n\n— BIDA Co-operative"
+        : "⚠️ ALERT: Borrower "+borrowerName+" has indicated they did NOT receive the full amount for loan "+confirmModal.request_number+" ("+amtFmt+"). Please investigate immediately.\n\nBorrower note: "+(confNote||"None provided")+"\n\n— BIDA Co-operative";
+      const subj = confirmed==="yes"
+        ? "✅ Loan Receipt Confirmed — "+borrowerName+" — "+amtFmt
+        : "⚠️ DISPUTED — Borrower Did Not Receive Funds — "+amtFmt;
+      if(notif.adminEmail)    sendViaEmailJS(notif.adminEmail,subj,msg,null).catch(()=>{});
+      if(notif.chairmanEmail) sendViaEmailJS(notif.chairmanEmail,subj,msg,null).catch(()=>{});
+
+      setConfirmModal(null); setConfirmed(null); setConfNote("");
+      await loadMyLoanReqs();
+    }catch(e){ alert("Error: "+e.message); }
+    finally{ setConfBusy(false); }
+  };
+
+  const fmtAmt = n=>n==null?"—":"UGX "+Number(n).toLocaleString("en-UG");
+  const fmtDt  = d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
+
+  return(
+    <>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,fontFamily:"var(--mono)"}}>
+          My Loan Applications ({myLoanReqs.length})
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={loadMyLoanReqs} style={{background:"none",border:"none",color:"var(--p600)",fontWeight:700,fontSize:12,cursor:"pointer"}}>{lrLoading?"…":"↻"}</button>
+          <button onClick={onNewRequest} style={{background:"#1565c0",border:"none",color:"#fff",borderRadius:9,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>＋ New Request</button>
+        </div>
+      </div>
+
+      {lrLoading&&<div style={{textAlign:"center",padding:30,color:"#90a4ae"}}>⏳ Loading…</div>}
+      {!lrLoading&&myLoanReqs.length===0&&(
+        <div style={{textAlign:"center",padding:"40px 0",color:"#90a4ae"}}>
+          <div style={{fontSize:40,marginBottom:10}}>🏦</div>
+          <div style={{fontWeight:700,fontSize:14}}>No loan applications yet</div>
+          <div style={{fontSize:12,marginTop:6,marginBottom:16}}>Apply for a loan and track its status here</div>
+          <button onClick={onNewRequest} style={{background:"#1565c0",border:"none",color:"#fff",borderRadius:10,padding:"10px 24px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Apply for a Loan →</button>
+        </div>
+      )}
+
+      {myLoanReqs.map(req=>{
+        const curStep  = stepIndex(req.status);
+        const isActive = !["completed","rejected","guarantor_declined","disputed"].includes(req.status);
+        const needsConfirm = req.status==="awaiting_borrower_confirmation"&&!req.borrower_confirmed_receipt;
+        return(
+          <div key={req.id} style={{background:"#fff",borderRadius:14,padding:"14px 16px",marginBottom:12,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:13,color:"#0d2a5e"}}>{fmtAmt(req.amount)} — {req.purpose||"Loan"}</div>
+                <div style={{fontSize:10,color:"#90a4ae",fontFamily:"var(--mono)",marginTop:2}}>#{req.request_number||req.id} · Applied {fmtDt(req.created_at)}</div>
+              </div>
+              {req.status==="rejected"&&<span style={{fontSize:10,background:"#ffebee",color:"#c62828",borderRadius:20,padding:"2px 9px",fontWeight:700}}>❌ Rejected</span>}
+              {req.status==="completed"&&<span style={{fontSize:10,background:"#e8f5e9",color:"#1b5e20",borderRadius:20,padding:"2px 9px",fontWeight:700}}>✅ Completed</span>}
+              {req.status==="disputed"&&<span style={{fontSize:10,background:"#fff3e0",color:"#e65100",borderRadius:20,padding:"2px 9px",fontWeight:700}}>⚠️ Disputed</span>}
+            </div>
+
+            {/* Progress tracker */}
+            {isActive&&(
+              <div style={{marginBottom:12}}>
+                {STATUS_STEPS.filter(s=>s.key!=="completed").map((s,i)=>{
+                  const done = i<curStep;
+                  const curr = i===curStep;
+                  return(
+                    <div key={s.key} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      <div style={{width:20,height:20,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,
+                        background:done?"#1b5e20":curr?"#1565c0":"#e0e0e0",color:done||curr?"#fff":"#90a4ae"}}>
+                        {done?"✓":i+1}
+                      </div>
+                      <div style={{fontSize:11,color:done?"#1b5e20":curr?"#1565c0":"#90a4ae",fontWeight:curr?700:400}}>
+                        {s.label}
+                        {curr&&<span style={{marginLeft:6,fontSize:9,background:curr?"#e3f2fd":"transparent",borderRadius:20,padding:"1px 7px",color:"#1565c0",fontWeight:700}}>← CURRENT</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Rejection reason */}
+            {req.rejection_reason&&(
+              <div style={{background:"#ffebee",borderRadius:8,padding:"8px 11px",fontSize:11,color:"#c62828",marginBottom:10}}>
+                ❌ Reason: {req.rejection_reason}
+              </div>
+            )}
+
+            {/* Confirm receipt button */}
+            {needsConfirm&&(
+              <div style={{background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:10,padding:"12px 14px",marginTop:6}}>
+                <div style={{fontWeight:700,fontSize:12,color:"#e65100",marginBottom:6}}>⚠️ Action Required: Confirm Fund Receipt</div>
+                <div style={{fontSize:11,color:"#795548",marginBottom:10,lineHeight:1.5}}>
+                  The Treasurer has confirmed that <strong>{fmtAmt(req.amount)}</strong> was sent to your account at <strong>{req.bank_name||"your bank"}</strong>. Please confirm below.
+                </div>
+                <button onClick={()=>setConfirmModal(req)}
+                  style={{background:"linear-gradient(135deg,#1b5e20,#2e7d32)",border:"none",color:"#fff",borderRadius:9,padding:"9px 18px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  ✅ Confirm / Dispute Receipt
+                </button>
+              </div>
+            )}
+
+            {/* Completed */}
+            {req.status==="completed"&&req.borrower_confirmed_receipt&&(
+              <div style={{background:"rgba(0,200,83,.07)",border:"1px solid #a5d6a7",borderRadius:8,padding:"8px 11px",fontSize:11,color:"#1b5e20"}}>
+                ✅ You confirmed receipt on {fmtDt(req.borrower_confirmed_at)}. Loan is active in your Loans tab.
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Confirm receipt modal */}
+      {confirmModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}
+          onClick={()=>setConfirmModal(null)}>
+          <div style={{background:"#fff",borderRadius:16,padding:"22px 20px",maxWidth:380,width:"100%"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontWeight:800,fontSize:15,color:"#0d2a5e",marginBottom:12}}>Confirm Fund Receipt</div>
+            <div style={{fontSize:13,color:"#546e7a",marginBottom:14}}>
+              Did you receive <strong>{fmtAmt(confirmModal.amount)}</strong> in your {confirmModal.bank_name||"bank"} account (A/C: {confirmModal.bank_account_number||"—"})?
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              <button onClick={()=>setConfirmed("yes")}
+                style={{flex:1,padding:11,borderRadius:9,border:"2px solid "+(confirmed==="yes"?"#1b5e20":"#e0e0e0"),background:confirmed==="yes"?"#e8f5e9":"#fff",fontWeight:700,fontSize:13,cursor:"pointer",color:confirmed==="yes"?"#1b5e20":"#546e7a"}}>
+                ✅ YES, I received it
+              </button>
+              <button onClick={()=>setConfirmed("no")}
+                style={{flex:1,padding:11,borderRadius:9,border:"2px solid "+(confirmed==="no"?"#c62828":"#e0e0e0"),background:confirmed==="no"?"#ffebee":"#fff",fontWeight:700,fontSize:13,cursor:"pointer",color:confirmed==="no"?"#c62828":"#546e7a"}}>
+                ❌ NO, I did not
+              </button>
+            </div>
+            {confirmed==="no"&&(
+              <div style={{marginBottom:12}}>
+                <label style={{fontSize:10,fontWeight:700,color:"#546e7a",display:"block",marginBottom:4,textTransform:"uppercase",fontFamily:"var(--mono)"}}>Please explain</label>
+                <textarea value={confNote} onChange={e=>setConfNote(e.target.value)}
+                  placeholder="e.g. I received only partial amount, or nothing at all…"
+                  style={{width:"100%",padding:"9px 11px",borderRadius:8,border:"1.5px solid #ffcdd2",fontSize:12,minHeight:60,resize:"vertical",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              </div>
+            )}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setConfirmModal(null)} style={{flex:1,padding:11,borderRadius:9,border:"1.5px solid #e0e0e0",background:"#fff",cursor:"pointer",fontWeight:600,fontSize:13,color:"#546e7a"}}>Cancel</button>
+              <button onClick={confirmReceipt} disabled={!confirmed||confBusy||(confirmed==="no"&&!confNote.trim())}
+                style={{flex:2,padding:11,borderRadius:9,border:"none",fontWeight:700,fontSize:13,cursor:!confirmed||confBusy?"not-allowed":"pointer",
+                  background:!confirmed||confBusy?"#eceff1":confirmed==="yes"?"#1b5e20":"#c62828",
+                  color:!confirmed||confBusy?"#90a4ae":"#fff"}}>
+                {confBusy?"Submitting…":"Confirm →"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function MemberDashboardInline({ session, onLogout }) {
   const [m,       setM]       = useState(null);
   const [loans,   setLoans]   = useState([]);
@@ -9775,6 +11464,19 @@ function MemberDashboardInline({ session, onLogout }) {
   const [load,    setLoad]    = useState(true);
   const [err,     setErr]     = useState(null);
   const [showPay, setShowPay] = useState(false);
+  const [showLoanReq, setShowLoanReq] = useState(false);
+  const [myLoanReqs, setMyLoanReqs]   = useState([]);
+  const [lrLoading,  setLrLoading]    = useState(false);
+
+  const loadMyLoanReqs = React.useCallback(async()=>{
+    if(!session?.memberId) return;
+    setLrLoading(true);
+    try{
+      const r=await mDb.get("loan_requests","member_id=eq."+session.memberId+"&order=created_at.desc");
+      setMyLoanReqs(Array.isArray(r)?r:[]);
+    }catch(e){ console.warn("loadMyLoanReqs:",e.message); }
+    finally{ setLrLoading(false); }
+  },[session]);
   // Monthly report state
   const [rptMonth, setRptMonth] = useState(new Date().getMonth());
   const [rptYear,  setRptYear]  = useState(new Date().getFullYear());
@@ -9883,6 +11585,24 @@ function MemberDashboardInline({ session, onLogout }) {
   },[session]);
 
   useEffect(()=>{fetch_();},[fetch_]);
+  useEffect(()=>{if(tab==="loan_requests") loadMyLoanReqs();},[tab,loadMyLoanReqs]);
+
+  // ── 30-minute inactivity timeout for member session ──
+  const MEMBER_SESSION_MINUTES = 30;
+  useEffect(()=>{
+    let timer;
+    const reset=()=>{
+      clearTimeout(timer);
+      timer=setTimeout(()=>{
+        onLogout();
+        alert("Your session expired after "+MEMBER_SESSION_MINUTES+" minutes of inactivity. Please log in again.");
+      }, MEMBER_SESSION_MINUTES*60*1000);
+    };
+    const events=["mousedown","mousemove","keydown","touchstart","scroll","click"];
+    events.forEach(e=>window.addEventListener(e,reset,{passive:true}));
+    reset();
+    return ()=>{ clearTimeout(timer); events.forEach(e=>window.removeEventListener(e,reset)); };
+  },[]);
 
   const total  = m?(m.membership||0)+(m.annualSub||0)+(m.monthlySavings||0)+(m.welfare||0)+(m.shares||0)+(m.voluntaryDeposit||0):0;
   const active = loans.filter(l=>l.status!=="paid");
@@ -10064,18 +11784,20 @@ function MemberDashboardInline({ session, onLogout }) {
     finally{setRptGen(false);}
   };
 
+  const pendingLRCount = myLoanReqs.filter(r=>!["completed","rejected","guarantor_declined"].includes(r.status)).length;
   const TABS=[
     ["overview","📊 Overview"],
     ["report","📅 My Report"],
     ["activity","📋 Activity"],
     ["loans","💳 Loans"],
+    ["loan_requests","📝 Loan Requests"+(pendingLRCount?" ("+pendingLRCount+")":"")],
     ["profile","👤 Profile"],
     ["votes","🗳 Voting"+(polls.length?" ("+polls.length+")":"")],
   ];
 
   return (
     <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"var(--sans)"}}>
-      <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
+      <style>{`@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       {/* Header */}
       <div style={{background:"linear-gradient(135deg,#0d2a5e,#1565c0)",color:"#fff",padding:"14px 18px"}}>
@@ -10178,6 +11900,20 @@ function MemberDashboardInline({ session, onLogout }) {
             <div style={{fontSize:11,color:"#388e3c",marginTop:3}}>Tap to view →</div>
           </div>}
 
+          {/* Pending loan requests notice */}
+          {!load&&myLoanReqs.filter(r=>r.status==="awaiting_borrower_confirmation"&&!r.borrower_confirmed_receipt).length>0&&(
+            <div onClick={()=>setTab("loan_requests")} style={{background:"#fff8e1",border:"1.5px solid #ffe082",borderRadius:"var(--radius-md)",padding:"12px 16px",marginBottom:14,cursor:"pointer"}}>
+              <div style={{fontWeight:700,color:"#e65100",fontSize:13}}>⚠️ Action Required — Confirm Loan Receipt</div>
+              <div style={{fontSize:11,color:"#795548",marginTop:3}}>You have {myLoanReqs.filter(r=>r.status==="awaiting_borrower_confirmation"&&!r.borrower_confirmed_receipt).length} loan disbursement{myLoanReqs.filter(r=>r.status==="awaiting_borrower_confirmation"&&!r.borrower_confirmed_receipt).length>1?"s":""} awaiting your confirmation. Tap to confirm →</div>
+            </div>
+          )}
+
+          {/* Pending payment requests notice */}
+          {!load&&(()=>{
+            const pendPay = myLoanReqs.filter(r=>false); // loaded from payment_requests below if needed
+            return null; // payment requests show in activity feed via contrib_log
+          })()}
+
           {!load&&cl.length>0&&<div style={{background:"#fff",borderRadius:14,padding:"16px 18px",marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,.06)"}}>
             <div style={{fontSize:11,fontWeight:700,color:"#0d2a5e",textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>📒 Contribution History</div>
             <div style={{maxHeight:260,overflowY:"auto"}}>
@@ -10204,6 +11940,11 @@ function MemberDashboardInline({ session, onLogout }) {
               <div style={{fontSize:24,marginBottom:4}}>💳</div>
               <div style={{fontSize:12,fontWeight:700}}>Make Payment</div>
               <div style={{fontSize:10,marginTop:2,opacity:.8}}>MoMo / Bank Transfer</div>
+            </button>
+            <button onClick={()=>{setShowLoanReq(true);}} style={{background:"linear-gradient(135deg,#1565c0,#0d47a1)",border:"none",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center",color:"#fff"}}>
+              <div style={{fontSize:24,marginBottom:4}}>🏦</div>
+              <div style={{fontSize:12,fontWeight:700}}>Request a Loan</div>
+              <div style={{fontSize:10,marginTop:2,opacity:.8}}>Apply online</div>
             </button>
             <button onClick={()=>setTab("report")} style={{background:"#fff",border:"1.5px solid #e3f2fd",borderRadius:14,padding:"16px 12px",cursor:"pointer",textAlign:"center"}}>
               <div style={{fontSize:24,marginBottom:4}}>📄</div>
@@ -10389,6 +12130,14 @@ function MemberDashboardInline({ session, onLogout }) {
           </>}
         </>}
 
+        {/* ── LOAN REQUESTS ── */}
+        {tab==="loan_requests"&&<MemberLoanRequestsTab
+          session={session} m={m} loans={loans} members={[]}
+          myLoanReqs={myLoanReqs} lrLoading={lrLoading}
+          loadMyLoanReqs={loadMyLoanReqs}
+          onNewRequest={()=>setShowLoanReq(true)}
+        />}
+
         {/* ── VOTING ── */}
         {tab==="votes"&&<VotingPanelInline memberId={session.memberId} polls={polls} onRefresh={setPolls}/>}
 
@@ -10396,6 +12145,7 @@ function MemberDashboardInline({ session, onLogout }) {
       </div>
 
       {showPay&&m&&<PaymentModalInline member={m} loans={loans} onSuccess={()=>{setShowPay(false);fetch_();}} onClose={()=>setShowPay(false)}/>}
+      {showLoanReq&&m&&<MemberLoanRequestModal member={m} loans={loans} onSuccess={()=>{setShowLoanReq(false);loadMyLoanReqs();setTab("loan_requests");}} onClose={()=>setShowLoanReq(false)}/>}
     </div>
   );
 }
